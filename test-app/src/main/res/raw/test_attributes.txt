@@ -1,0 +1,25 @@
+Text Attributes Test:
+
+[1mBold text[0m
+[3mItalic text[0m
+[4mUnderlined text[0m
+[9mStrikethrough text[0m
+[1m[3m[4mBold + Italic + Underline[0m
+
+[7mReverse video[0m
+
+Foreground colors:
+[30mBlack[0m [31mRed[0m [32mGreen[0m [33mYellow[0m [34mBlue[0m [35mMagenta[0m [36mCyan[0m [37mWhite[0m
+
+Bright foreground:
+[90mBright Black[0m [91mBright Red[0m [92mBright Green[0m [93mBright Yellow[0m
+[94mBright Blue[0m [95mBright Magenta[0m [96mBright Cyan[0m [97mBright White[0m
+
+Background colors:
+[40m Black BG [0m [41m Red BG [0m [42m Green BG [0m [43m Yellow BG [0m
+[44m Blue BG [0m [45m Magenta BG [0m [46m Cyan BG [0m [47m White BG [0m
+
+Combined:
+[1m[31m[44mBold Red on Blue[0m
+[3m[33m[45mItalic Yellow on Magenta[0m
+[4m[32m[41mUnderline Green on Red[0m
