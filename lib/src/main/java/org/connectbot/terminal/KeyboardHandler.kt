@@ -114,10 +114,15 @@ internal class KeyboardHandler(
      * This handles multi-byte UTF-8 text from the software keyboard.
      */
     fun onTextInput(bytes: ByteArray) {
-        if (bytes.isNotEmpty()) {
-            terminalEmulator.writeInput(bytes)
-            modifierManager?.clearTransients()
+        if (bytes.isEmpty()) return
+
+        val modifiers = getModifierMask()
+        val text = bytes.toString(Charsets.UTF_8)
+
+        text.forEach { char ->
+            terminalEmulator.dispatchCharacter(modifiers, char)
         }
+        modifierManager?.clearTransients()
     }
 
     /**
