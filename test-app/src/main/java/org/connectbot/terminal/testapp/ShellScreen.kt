@@ -48,6 +48,10 @@ fun ShellScreen() {
     var terminalNative by remember { mutableStateOf<TerminalNative?>(null) }
     var currentTest by remember { mutableStateOf("Welcome") }
     var keyboardEnabled by remember { mutableStateOf(false) }
+    var useForcedSize by remember { mutableStateOf(false) }
+    var customRows by remember { mutableStateOf(24) }
+    var customCols by remember { mutableStateOf(80) }
+    var showSizeDialog by remember { mutableStateOf(false) }
 
     // Font selection
     val availableFonts = remember {
@@ -143,6 +147,20 @@ fun ShellScreen() {
                 }
             }
         }
+    }
+
+    // Size configuration dialog
+    if (showSizeDialog) {
+        SizeConfigDialog(
+            currentRows = customRows,
+            currentCols = customCols,
+            onDismiss = { showSizeDialog = false },
+            onConfirm = { rows, cols ->
+                customRows = rows
+                customCols = cols
+                showSizeDialog = false
+            }
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -286,30 +304,56 @@ fun ShellScreen() {
                 }
             }
 
-            // Keyboard toggle
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconToggleButton(
-                    checked = keyboardEnabled,
-                    onCheckedChange = { keyboardEnabled = it }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Keyboard,
-                        contentDescription = "Toggle Keyboard Input",
-                        tint = if (keyboardEnabled)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Forced size toggle with config button
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = useForcedSize,
+                        onCheckedChange = { useForcedSize = it }
+                    )
+                    TextButton(
+                        onClick = { showSizeDialog = true },
+                        modifier = Modifier.padding(start = 4.dp)
+                    ) {
+                        Text(
+                            text = if (useForcedSize) "${customRows}x${customCols}" else "Auto",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (useForcedSize)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                // Keyboard toggle
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconToggleButton(
+                        checked = keyboardEnabled,
+                        onCheckedChange = { keyboardEnabled = it }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Keyboard,
+                            contentDescription = "Toggle Keyboard Input",
+                            tint = if (keyboardEnabled)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Text(
+                        text = if (keyboardEnabled) "Keyboard: ON" else "Keyboard: OFF",
+                        modifier = Modifier.padding(start = 8.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (keyboardEnabled)
                             MaterialTheme.colorScheme.primary
                         else
                             MaterialTheme.colorScheme.onSurface
                     )
                 }
-                Text(
-                    text = if (keyboardEnabled) "Keyboard: ON" else "Keyboard: OFF",
-                    modifier = Modifier.padding(start = 8.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (keyboardEnabled)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurface
-                )
             }
         }
 
@@ -343,7 +387,8 @@ fun ShellScreen() {
                         typeface = availableFonts[selectedFont] ?: Typeface.MONOSPACE,
                         backgroundColor = Color.Black,
                         foregroundColor = Color(0xFFD0D0D0), // Light gray for better readability
-                        keyboardEnabled = keyboardEnabled
+                        keyboardEnabled = keyboardEnabled,
+                        forcedSize = if (useForcedSize) Pair(customRows, customCols) else null
                     )
                 }
                 else -> {
@@ -357,4 +402,116 @@ fun ShellScreen() {
             }
         }
     }
+}
+
+/**
+ * Dialog for configuring custom terminal size with presets
+ */
+@Composable
+fun SizeConfigDialog(
+    currentRows: Int,
+    currentCols: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (rows: Int, cols: Int) -> Unit
+) {
+    var rows by remember { mutableStateOf(currentRows.toString()) }
+    var cols by remember { mutableStateOf(currentCols.toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Terminal Size") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Preset buttons
+                Text(
+                    text = "Presets:",
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { rows = "24"; cols = "80" },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("24×80", maxLines = 1)
+                    }
+                    Button(
+                        onClick = { rows = "25"; cols = "80" },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("25×80", maxLines = 1)
+                    }
+                    Button(
+                        onClick = { rows = "40"; cols = "132" },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("40×132", maxLines = 1)
+                    }
+                }
+
+                // Custom input fields
+                Text(
+                    text = "Custom:",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = rows,
+                        onValueChange = {
+                            if (it.isEmpty() || it.toIntOrNull() != null) {
+                                rows = it
+                            }
+                        },
+                        label = { Text("Rows") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = cols,
+                        onValueChange = {
+                            if (it.isEmpty() || it.toIntOrNull() != null) {
+                                cols = it
+                            }
+                        },
+                        label = { Text("Cols") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
+
+                // Info text
+                Text(
+                    text = "Common sizes:\n• 24×80 - Classic terminal\n• 25×80 - VT100 standard\n• 40×132 - Wide format",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val r = rows.toIntOrNull()?.coerceIn(1, 200) ?: currentRows
+                    val c = cols.toIntOrNull()?.coerceIn(1, 500) ?: currentCols
+                    onConfirm(r, c)
+                }
+            ) {
+                Text("Apply")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
