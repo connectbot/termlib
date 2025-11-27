@@ -44,7 +44,7 @@ fun ShellScreen() {
     val context = LocalContext.current
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var terminalBuffer by remember { mutableStateOf<TerminalBuffer?>(null) }
-    var terminal by remember { mutableStateOf<Terminal?>(null) }
+    var terminalNative by remember { mutableStateOf<TerminalNative?>(null) }
     var currentTest by remember { mutableStateOf("Welcome") }
     var keyboardEnabled by remember { mutableStateOf(false) }
 
@@ -61,14 +61,14 @@ fun ShellScreen() {
                     onKeyboardInput = { data ->
                         // Echo keyboard input back to terminal for testing
                         // In a real app, this would write to PTY which would echo back
-                        terminal?.writeInput(data)
+                        terminalNative?.writeInput(data)
                     }
                 )
                 terminalBuffer = buffer
 
                 // Get terminal from buffer for direct access
-                val term = buffer.terminal
-                terminal = term
+                val term = buffer.terminalNative
+                terminalNative = term
 
                 // Load welcome message
                 val welcomeText = """
@@ -100,7 +100,7 @@ fun ShellScreen() {
         }
 
         onDispose {
-            terminal?.close()
+            terminalNative?.close()
         }
     }
 
@@ -108,7 +108,7 @@ fun ShellScreen() {
     fun loadTest(testName: String, resourceId: Int) {
         scope.launch(Dispatchers.IO) {
             try {
-                terminal?.let { term ->
+                terminalNative?.let { term ->
                     // Clear screen and scrollback
                     terminalBuffer?.clearScrollback()
                     term.writeInput("$escape[2J$escape[H".toByteArray())
@@ -145,7 +145,7 @@ fun ShellScreen() {
             Button(
                 onClick = {
                     scope.launch(Dispatchers.IO) {
-                        terminal?.let { term ->
+                        terminalNative?.let { term ->
                             // Clear screen and scrollback
                             terminalBuffer?.clearScrollback()
                             term.writeInput("$escape[2J$escape[H".toByteArray())
@@ -297,7 +297,7 @@ fun ShellScreen() {
                     }
                 }
                 terminalBuffer != null -> {
-                    TermScreen(
+                    Terminal(
                         terminalBuffer = terminalBuffer!!,
                         modifier = Modifier.fillMaxSize(),
                         backgroundColor = Color.Black,

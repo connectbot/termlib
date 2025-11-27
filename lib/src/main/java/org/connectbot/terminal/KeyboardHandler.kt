@@ -17,7 +17,6 @@
 package org.connectbot.terminal
 
 import android.util.Log
-import android.view.KeyEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -34,7 +33,7 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
  * and control characters that can be sent to the terminal via Terminal.dispatchKey()
  * or Terminal.dispatchCharacter().
  */
-class KeyboardHandler(private val terminal: Terminal) {
+class KeyboardHandler(private val terminalNative: TerminalNative) {
 
     /**
      * Process a Compose KeyEvent and send to terminal.
@@ -58,7 +57,7 @@ class KeyboardHandler(private val terminal: Terminal) {
         val vtermKey = mapToVTermKey(key)
         if (vtermKey != null) {
             Log.d("KeyboardHandler", "onKeyEvent: vtermKey: $vtermKey")
-            return terminal.dispatchKey(modifiers, vtermKey)
+            return terminalNative.dispatchKey(modifiers, vtermKey)
         }
 
         // Check for control character shortcuts
@@ -66,7 +65,7 @@ class KeyboardHandler(private val terminal: Terminal) {
             val controlChar = getControlCharacter(key)
             if (controlChar != null) {
                 Log.d("KeyboardHandler", "onKeyEvent: controlChar: $controlChar")
-                return terminal.dispatchCharacter(modifiers, controlChar.code)
+                return terminalNative.dispatchCharacter(modifiers, controlChar.code)
             }
         }
 
@@ -74,7 +73,7 @@ class KeyboardHandler(private val terminal: Terminal) {
         val char = getCharacterFromKey(key, shift)
         if (char != null) {
             Log.d("KeyboardHandler", "onKeyEvent: printable char: '$char' (${char.code})")
-            return terminal.dispatchCharacter(modifiers, char.code)
+            return terminalNative.dispatchCharacter(modifiers, char.code)
         }
 
         Log.d("KeyboardHandler", "onKeyEvent: not handled")
@@ -91,10 +90,10 @@ class KeyboardHandler(private val terminal: Terminal) {
         // For control characters (Ctrl+letter), convert to control code
         if (ctrl && char.isLetter()) {
             val controlCode = char.uppercaseChar().code - 'A'.code + 1
-            return terminal.dispatchCharacter(modifiers, controlCode)
+            return terminalNative.dispatchCharacter(modifiers, controlCode)
         }
 
-        return terminal.dispatchCharacter(modifiers, char.code)
+        return terminalNative.dispatchCharacter(modifiers, char.code)
     }
 
     /**

@@ -37,7 +37,7 @@ import androidx.compose.ui.graphics.Color
  */
 @Stable
 class TerminalBuffer(
-    val terminal: Terminal,
+    val terminalNative: TerminalNative,
     initialRows: Int,
     initialCols: Int,
     val defaultForeground: Color = Color.White,
@@ -96,7 +96,7 @@ class TerminalBuffer(
 
         while (col < cols) {
             cellRun.reset()
-            val runLength = terminal.getCellRun(row, col, cellRun)
+            val runLength = terminalNative.getCellRun(row, col, cellRun)
 
             if (runLength <= 0) {
                 // Fill remaining with empty cells
@@ -206,7 +206,7 @@ class TerminalBuffer(
     fun resize(newRows: Int, newCols: Int, scrollbackRows: Int = 100) {
         rows = newRows
         cols = newCols
-        terminal.resize(newRows, newCols, scrollbackRows)
+        terminalNative.resize(newRows, newCols, scrollbackRows)
 
         // Clear and update all lines after resize
         _lines.clear()
@@ -376,9 +376,9 @@ class TerminalBuffer(
                 }
             }
 
-            val terminal = Terminal(callbacks)
+            val terminalNative = TerminalNative(callbacks)
             buffer = TerminalBuffer(
-                terminal = terminal,
+                terminalNative = terminalNative,
                 initialRows = initialRows,
                 initialCols = initialCols,
                 defaultForeground = defaultForeground,
