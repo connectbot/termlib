@@ -64,7 +64,7 @@ data class SelectionRange(
     }
 }
 
-class SelectionManager(private val terminalBuffer: TerminalBuffer) {
+class SelectionManager {
     var mode by mutableStateOf(SelectionMode.NONE)
         private set
 
@@ -107,7 +107,7 @@ class SelectionManager(private val terminalBuffer: TerminalBuffer) {
         isSelecting = false
     }
 
-    fun toggleMode() {
+    fun toggleMode(cols: Int) {
         mode = when (mode) {
             SelectionMode.BLOCK -> SelectionMode.LINE
             SelectionMode.LINE -> SelectionMode.BLOCK
@@ -119,12 +119,12 @@ class SelectionManager(private val terminalBuffer: TerminalBuffer) {
             val range = selectionRange!!
             selectionRange = range.copy(
                 startCol = 0,
-                endCol = terminalBuffer.cols - 1
+                endCol = cols - 1
             )
         }
     }
 
-    fun getSelectedText(): String {
+    fun getSelectedText(snapshot: TerminalSnapshot): String {
         val range = selectionRange ?: return ""
 
         val minRow = minOf(range.startRow, range.endRow)
@@ -132,7 +132,7 @@ class SelectionManager(private val terminalBuffer: TerminalBuffer) {
 
         return buildString {
             for (row in minRow..maxRow) {
-                val line = terminalBuffer.getLine(row)
+                val line = snapshot.lines.getOrNull(row) ?: continue
 
                 when (mode) {
                     SelectionMode.LINE -> {

@@ -95,7 +95,7 @@ private enum class GestureType {
  * - Displays cursor
  * - Supports colors, bold, italic, underline, etc.
  *
- * @param terminalBuffer The terminal buffer containing screen state
+ * @param terminalEmulator The terminal emulator containing terminal state
  * @param modifier Modifier for the composable
  * @param typeface Typeface for terminal text (default: Typeface.MONOSPACE)
  * @param initialFontSize Initial font size for terminal text (can be changed with pinch-to-zoom)
@@ -108,7 +108,7 @@ private enum class GestureType {
  */
 @Composable
 fun Terminal(
-    terminalBuffer: TerminalBuffer,
+    terminalEmulator: TerminalEmulator,
     modifier: Modifier = Modifier,
     typeface: Typeface = Typeface.MONOSPACE,
     initialFontSize: TextUnit = 11.sp,
@@ -122,8 +122,12 @@ fun Terminal(
     val density = LocalDensity.current
     val clipboardManager = LocalClipboardManager.current
     val focusRequester = remember { FocusRequester() }
-    val keyboardHandler = remember(terminalBuffer.terminalNative) {
-        KeyboardHandler(terminalBuffer.terminalNative)
+
+    // Observe terminal state via StateFlow
+    val screenState = rememberTerminalScreenState(terminalEmulator)
+
+    val keyboardHandler = remember(terminalEmulator) {
+        KeyboardHandler(terminalEmulator)
     }
 
     // Font size and zoom state
@@ -174,13 +178,13 @@ fun Terminal(
 
     // Scroll animation state
     val scrollOffset = remember { Animatable(0f) }
-    val maxScroll = remember(terminalBuffer.scrollback.size, baseCharHeight) {
-        terminalBuffer.scrollback.size * baseCharHeight
+    val maxScroll = remember(screenState.snapshot.scrollback.size, baseCharHeight) {
+        screenState.snapshot.scrollback.size * baseCharHeight
     }
 
     // Selection manager
-    val selectionManager = remember(terminalBuffer) {
-        SelectionManager(terminalBuffer)
+    val selectionManager = remember {
+        SelectionManager()
     }
 
     // Coroutine scope for animations
@@ -230,26 +234,27 @@ fun Terminal(
             if (forcedSize != null) forcedSize.first else (availableHeight / baseCharHeight).toInt()
                 .coerceAtLeast(1)
 
-        // Resize terminal when dimensions change
-        LaunchedEffect(newRows, newCols) {
-            if (newRows != terminalBuffer.rows || newCols != terminalBuffer.cols) {
-                terminalBuffer.resize(newRows, newCols)
+        // Resize terminal when dimensions change OR when snapshot changes
+        // Key on screenState.snapshot (immutable) ensures re-check when switching managers
+        LaunchedEffect(screenState.snapshot, newRows, newCols) {
+            if (newRows != screenState.snapshot.rows || newCols != screenState.snapshot.cols) {
+                terminalEmulator.resize(newRows, newCols)
             }
         }
 
         // Auto-scroll to bottom when new content arrives (if not manually scrolled)
-        val wasAtBottom = terminalBuffer.scrollbackPosition == 0
-        LaunchedEffect(terminalBuffer.lines.size, terminalBuffer.scrollback.size) {
+        val wasAtBottom = screenState.scrollbackPosition == 0
+        LaunchedEffect(screenState.snapshot.lines.size, screenState.snapshot.scrollback.size) {
             // Only auto-scroll if user was already at bottom
-            if (wasAtBottom) {
-                terminalBuffer.scrollToBottom()
+            if (wasAtBottom && screenState.scrollbackPosition != 0) {
+                screenState.scrollToBottom()
                 scrollOffset.snapTo(0f)
             }
         }
 
         // Sync scrollOffset when scrollbackPosition changes externally (but not during user scrolling)
-        LaunchedEffect(terminalBuffer.scrollbackPosition) {
-            val targetOffset = terminalBuffer.scrollbackPosition * baseCharHeight
+        LaunchedEffect(screenState.scrollbackPosition) {
+            val targetOffset = screenState.scrollbackPosition * baseCharHeight
             if (!scrollOffset.isRunning && scrollOffset.value != targetOffset) {
                 scrollOffset.snapTo(targetOffset)
             }
@@ -312,10 +317,10 @@ fun Terminal(
                                                 drag(down.id) { change ->
                                                     val newCol =
                                                         (change.position.x / baseCharWidth).toInt()
-                                                            .coerceIn(0, terminalBuffer.cols - 1)
+                                                            .coerceIn(0, screenState.snapshot.cols - 1)
                                                     val newRow =
                                                         (change.position.y / baseCharHeight).toInt()
-                                                            .coerceIn(0, terminalBuffer.rows - 1)
+                                                            .coerceIn(0, screenState.snapshot.rows - 1)
 
                                                     if (touchingStart) {
                                                         selectionManager.updateSelectionStart(
@@ -350,9 +355,9 @@ fun Terminal(
 
                                             // Start selection
                                             val col = (down.position.x / baseCharWidth).toInt()
-                                                .coerceIn(0, terminalBuffer.cols - 1)
+                                                .coerceIn(0, screenState.snapshot.cols - 1)
                                             val row = (down.position.y / baseCharHeight).toInt()
-                                                .coerceIn(0, terminalBuffer.rows - 1)
+                                                .coerceIn(0, screenState.snapshot.rows - 1)
                                             selectionManager.startSelection(
                                                 row,
                                                 col,
@@ -440,10 +445,10 @@ fun Terminal(
                                                 if (selectionManager.isSelecting) {
                                                     val dragCol =
                                                         (change.position.x / baseCharWidth).toInt()
-                                                            .coerceIn(0, terminalBuffer.cols - 1)
+                                                            .coerceIn(0, screenState.snapshot.cols - 1)
                                                     val dragRow =
                                                         (change.position.y / baseCharHeight).toInt()
-                                                            .coerceIn(0, terminalBuffer.rows - 1)
+                                                            .coerceIn(0, screenState.snapshot.rows - 1)
                                                     selectionManager.updateSelection(
                                                         dragRow,
                                                         dragCol
@@ -465,8 +470,7 @@ fun Terminal(
                                                 // Update terminal buffer scrollback position
                                                 val scrolledLines =
                                                     (scrollOffset.value / baseCharHeight).toInt()
-                                                terminalBuffer.scrollbackPosition = scrolledLines
-                                                    .coerceIn(0, terminalBuffer.scrollback.size)
+                                                screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
                                             }
 
                                             else -> {}
@@ -492,28 +496,16 @@ fun Terminal(
                                                     // Update terminal buffer during animation
                                                     val scrolledLines =
                                                         (value / baseCharHeight).toInt()
-                                                    terminalBuffer.scrollbackPosition =
-                                                        scrolledLines
-                                                            .coerceIn(
-                                                                0,
-                                                                terminalBuffer.scrollback.size
-                                                            )
+                                                    screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
                                                 }
 
                                                 // Clamp final position if needed
                                                 if (targetValue < 0f) {
                                                     scrollOffset.snapTo(0f)
-                                                    terminalBuffer.scrollbackPosition = 0
+                                                    screenState.scrollToBottom()
                                                 } else if (targetValue > maxScroll) {
                                                     scrollOffset.snapTo(maxScroll)
-                                                    val scrolledLines =
-                                                        (maxScroll / baseCharHeight).toInt()
-                                                    terminalBuffer.scrollbackPosition =
-                                                        scrolledLines
-                                                            .coerceIn(
-                                                                0,
-                                                                terminalBuffer.scrollback.size
-                                                            )
+                                                    screenState.scrollToTop()
                                                 }
                                             }
                                         }
@@ -545,8 +537,8 @@ fun Terminal(
                     )
 
                     // Draw each line (zoom/pan applied via graphicsLayer)
-                    for (row in 0 until terminalBuffer.rows) {
-                        val line = terminalBuffer.getLine(row)
+                    for (row in 0 until screenState.snapshot.rows) {
+                        val line = screenState.getVisibleLine(row)
                         drawLine(
                             line = line,
                             row = row,
@@ -561,13 +553,14 @@ fun Terminal(
                     }
 
                     // Draw cursor (only when viewing current screen, not scrollback)
-                    if (terminalBuffer.cursorVisible && terminalBuffer.scrollbackPosition == 0) {
+                    if (screenState.snapshot.cursorVisible && screenState.scrollbackPosition == 0) {
                         drawCursor(
-                            row = terminalBuffer.cursorRow,
-                            col = terminalBuffer.cursorCol,
+                            row = screenState.snapshot.cursorRow,
+                            col = screenState.snapshot.cursorCol,
                             charWidth = baseCharWidth,
                             charHeight = baseCharHeight,
-                            foregroundColor = foregroundColor
+                            foregroundColor = foregroundColor,
+                            cursorShape = screenState.snapshot.cursorShape
                         )
                     }
 
@@ -603,7 +596,7 @@ fun Terminal(
             if (showMagnifier) {
                 MagnifyingGlass(
                     position = magnifierPosition,
-                    terminalBuffer = terminalBuffer,
+                    screenState = screenState,
                     baseCharWidth = baseCharWidth,
                     baseCharHeight = baseCharHeight,
                     baseCharBaseline = baseCharBaseline,
@@ -632,7 +625,7 @@ fun Terminal(
                     ) {
                         FloatingActionButton(
                             onClick = {
-                                val selectedText = selectionManager.getSelectedText()
+                                val selectedText = selectionManager.getSelectedText(screenState.snapshot)
                                 clipboardManager.setText(AnnotatedString(selectedText))
                                 selectionManager.clearSelection()
                             },
@@ -748,7 +741,7 @@ private fun isTouchingHandle(
 @Composable
 private fun MagnifyingGlass(
     position: Offset,
-    terminalBuffer: TerminalBuffer,
+    screenState: TerminalScreenState,
     baseCharWidth: Float,
     baseCharHeight: Float,
     baseCharBaseline: Float,
@@ -804,14 +797,14 @@ private fun MagnifyingGlass(
             translate(-centerOffset.x * magnifierScale, -centerOffset.y * magnifierScale) {
                 scale(magnifierScale, magnifierScale) {
                     // Calculate which rows and columns to draw
-                    val centerRow = (position.y / baseCharHeight).toInt().coerceIn(0, terminalBuffer.rows - 1)
-                    val centerCol = (position.x / baseCharWidth).toInt().coerceIn(0, terminalBuffer.cols - 1)
+                    val centerRow = (position.y / baseCharHeight).toInt().coerceIn(0, screenState.snapshot.rows - 1)
+                    val centerCol = (position.x / baseCharWidth).toInt().coerceIn(0, screenState.snapshot.cols - 1)
 
                     // Draw a few rows around the touch point
                     val rowRange = 3
                     for (rowOffset in -rowRange..rowRange) {
-                        val row = (centerRow + rowOffset).coerceIn(0, terminalBuffer.rows - 1)
-                        val line = terminalBuffer.getLine(row)
+                        val row = (centerRow + rowOffset).coerceIn(0, screenState.snapshot.rows - 1)
+                        val line = screenState.getVisibleLine(row)
                         drawLine(
                             line = line,
                             row = row,
@@ -873,25 +866,50 @@ private fun DrawScope.drawSelectionHandle(
 }
 
 /**
- * Draw the cursor.
+ * Draw the cursor with shape support (block, underline, bar).
  */
 private fun DrawScope.drawCursor(
     row: Int,
     col: Int,
     charWidth: Float,
     charHeight: Float,
-    foregroundColor: Color
+    foregroundColor: Color,
+    cursorShape: CursorShape = CursorShape.BLOCK
 ) {
     val x = col * charWidth
     val y = row * charHeight
 
-    // Draw cursor as a rectangle outline
-    drawRect(
-        color = foregroundColor,
-        topLeft = Offset(x, y),
-        size = Size(charWidth, charHeight),
-        alpha = 0.7f
-    )
+    when (cursorShape) {
+        CursorShape.BLOCK -> {
+            // Block cursor - full cell rectangle outline
+            drawRect(
+                color = foregroundColor,
+                topLeft = Offset(x, y),
+                size = Size(charWidth, charHeight),
+                alpha = 0.7f
+            )
+        }
+        CursorShape.UNDERLINE -> {
+            // Underline cursor - line at bottom of cell
+            val underlineHeight = charHeight * 0.15f  // 15% of cell height
+            drawRect(
+                color = foregroundColor,
+                topLeft = Offset(x, y + charHeight - underlineHeight),
+                size = Size(charWidth, underlineHeight),
+                alpha = 0.9f
+            )
+        }
+        CursorShape.BAR_LEFT -> {
+            // Bar cursor - vertical line at left of cell
+            val barWidth = charWidth * 0.15f  // 15% of cell width
+            drawRect(
+                color = foregroundColor,
+                topLeft = Offset(x, y),
+                size = Size(barWidth, charHeight),
+                alpha = 0.9f
+            )
+        }
+    }
 }
 
 /**

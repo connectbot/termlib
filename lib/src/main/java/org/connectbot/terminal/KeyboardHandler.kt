@@ -30,10 +30,10 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
  * Handles keyboard input conversion for terminal emulation.
  *
  * Converts Android/Compose keyboard events to terminal escape sequences
- * and control characters that can be sent to the terminal via Terminal.dispatchKey()
- * or Terminal.dispatchCharacter().
+ * and control characters that can be sent to the terminal via TerminalEmulator.dispatchKey()
+ * or TerminalEmulator.dispatchCharacter().
  */
-class KeyboardHandler(private val terminalNative: TerminalNative) {
+class KeyboardHandler(private val terminalEmulator: TerminalEmulator) {
 
     /**
      * Process a Compose KeyEvent and send to terminal.
@@ -57,7 +57,8 @@ class KeyboardHandler(private val terminalNative: TerminalNative) {
         val vtermKey = mapToVTermKey(key)
         if (vtermKey != null) {
             Log.d("KeyboardHandler", "onKeyEvent: vtermKey: $vtermKey")
-            return terminalNative.dispatchKey(modifiers, vtermKey)
+            terminalEmulator.dispatchKey(modifiers, vtermKey)
+            return true
         }
 
         // Check for control character shortcuts
@@ -65,7 +66,8 @@ class KeyboardHandler(private val terminalNative: TerminalNative) {
             val controlChar = getControlCharacter(key)
             if (controlChar != null) {
                 Log.d("KeyboardHandler", "onKeyEvent: controlChar: $controlChar")
-                return terminalNative.dispatchCharacter(modifiers, controlChar.code)
+                terminalEmulator.dispatchCharacter(modifiers, controlChar)
+                return true
             }
         }
 
@@ -73,7 +75,8 @@ class KeyboardHandler(private val terminalNative: TerminalNative) {
         val char = getCharacterFromKey(key, shift)
         if (char != null) {
             Log.d("KeyboardHandler", "onKeyEvent: printable char: '$char' (${char.code})")
-            return terminalNative.dispatchCharacter(modifiers, char.code)
+            terminalEmulator.dispatchCharacter(modifiers, char)
+            return true
         }
 
         Log.d("KeyboardHandler", "onKeyEvent: not handled")
@@ -89,11 +92,13 @@ class KeyboardHandler(private val terminalNative: TerminalNative) {
 
         // For control characters (Ctrl+letter), convert to control code
         if (ctrl && char.isLetter()) {
-            val controlCode = char.uppercaseChar().code - 'A'.code + 1
-            return terminalNative.dispatchCharacter(modifiers, controlCode)
+            val controlCode = (char.uppercaseChar().code - 'A'.code + 1).toChar()
+            terminalEmulator.dispatchCharacter(modifiers, controlCode)
+            return true
         }
 
-        return terminalNative.dispatchCharacter(modifiers, char.code)
+        terminalEmulator.dispatchCharacter(modifiers, char)
+        return true
     }
 
     /**

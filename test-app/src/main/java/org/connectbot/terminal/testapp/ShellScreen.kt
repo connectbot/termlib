@@ -37,16 +37,45 @@ import java.io.InputStreamReader
 const val escape = "\u001B"
 
 /**
- * Test app screen with buttons to load different test assets.
+ * Represents a terminal session/tab
+ */
+data class TerminalSession(
+    val name: String,
+    val emulator: TerminalEmulator,
+    val resourceId: Int
+)
+
+/**
+ * Create a TerminalEmulator with keyboard echo for testing.
+ * In a real app, onKeyboardInput would write to PTY.
+ */
+private fun createTerminalEmulator(): TerminalEmulator {
+    lateinit var manager: TerminalEmulator
+    manager = TerminalEmulator(
+        initialRows = 24,
+        initialCols = 80,
+        defaultForeground = Color.White,
+        defaultBackground = Color.Black,
+        onKeyboardInput = { data ->
+            // Echo keyboard input back to terminal for testing
+            // In a real app, this would write to PTY which would echo back
+            manager.writeInput(data)
+        }
+    )
+    return manager
+}
+
+/**
+ * Test app screen with multiple terminal sessions (tabs).
+ * Each tab has its own TerminalEmulator instance, simulating
+ * multiple SSH/Telnet connections in ConnectBot.
  */
 @Composable
 fun ShellScreen() {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var terminalBuffer by remember { mutableStateOf<TerminalBuffer?>(null) }
-    var terminalNative by remember { mutableStateOf<TerminalNative?>(null) }
-    var currentTest by remember { mutableStateOf("Welcome") }
+    var currentSessionIndex by remember { mutableStateOf(0) }
     var keyboardEnabled by remember { mutableStateOf(false) }
     var useForcedSize by remember { mutableStateOf(false) }
     var customRows by remember { mutableStateOf(24) }
@@ -63,51 +92,47 @@ fun ShellScreen() {
     var selectedFont by remember { mutableStateOf("0xProto Regular") }
     var showFontMenu by remember { mutableStateOf(false) }
 
-    // Initialize terminal once
+    // Create separate TerminalEmulator for each session (simulating multiple connections)
+    val sessions = remember {
+        listOf(
+            TerminalSession("Welcome", createTerminalEmulator(), R.raw.test_output),
+            TerminalSession("256 Colors", createTerminalEmulator(), R.raw.test_output),
+            TerminalSession("Attributes", createTerminalEmulator(), R.raw.test_attributes),
+            TerminalSession("Unicode", createTerminalEmulator(), R.raw.test_unicode),
+            TerminalSession("Scrolling", createTerminalEmulator(), R.raw.test_scroll)
+        )
+    }
+
+    // Initialize all sessions once
     DisposableEffect(Unit) {
         scope.launch {
             try {
-                // Create TerminalBuffer with automatic scrollback handling
-                val buffer = TerminalBuffer.create(
-                    initialRows = 24,
-                    initialCols = 80,
-                    defaultForeground = Color.White,
-                    defaultBackground = Color.Black,
-                    onKeyboardInput = { data ->
-                        // Echo keyboard input back to terminal for testing
-                        // In a real app, this would write to PTY which would echo back
-                        terminalNative?.writeInput(data)
-                    }
-                )
-                terminalBuffer = buffer
-
-                // Get terminal from buffer for direct access
-                val term = buffer.terminalNative
-                terminalNative = term
-
-                // Load welcome message
+                // Load welcome message into first session
                 val welcomeText = """
                     |Terminal Test Application
                     |===========================
                     |
-                    |Use the buttons below to load different test files:
+                    |Each tab is a separate TerminalEmulator instance:
                     |
                     |$escape[1m256 Colors$escape[0m - Test 256-color palette rendering
                     |$escape[1mAttributes$escape[0m - Test bold, italic, underline, etc.
                     |$escape[1mUnicode$escape[0m    - Test Unicode characters and CJK
                     |$escape[1mScrolling$escape[0m  - Test scrolling with 25 lines
                     |
+                    |$escape[1mMulti-Session Demo:$escape[0m
+                    |Switch between tabs to see independent terminal sessions.
+                    |Each tab maintains its own state, scrollback, and content.
+                    |This simulates ConnectBot's multiple SSH connections.
+                    |
                     |$escape[1mKeyboard Input:$escape[0m
                     |Toggle the keyboard icon to enable typing.
-                    |When enabled, you can type and see characters echoed.
-                    |Try Ctrl+C, arrow keys, and other special keys!
+                    |Input is sent to the currently active tab.
                     |
-                    |Select a test to begin.
+                    |Select a tab to begin.
                 """.trimMargin()
 
-                // Convert LF to CRLF for proper terminal display
                 val normalizedWelcome = welcomeText.replace("\n", "\r\n")
-                term.writeInput(normalizedWelcome.toByteArray())
+                sessions[0].emulator.writeInput(normalizedWelcome.toByteArray())
 
             } catch (e: Exception) {
                 errorMessage = "Failed to initialize: ${e.message}\n${e.stackTraceToString()}"
@@ -115,35 +140,33 @@ fun ShellScreen() {
         }
 
         onDispose {
-            terminalNative?.close()
+            // Cleanup all sessions
+            sessions.forEach { it.emulator.cleanup() }
         }
     }
 
-    // Load test function
-    fun loadTest(testName: String, resourceId: Int) {
+    // Get current terminal emulator
+    val currentTerminal = sessions[currentSessionIndex].emulator
+
+    // Load test content into a specific session
+    fun loadTestIntoSession(sessionIndex: Int) {
+        val session = sessions[sessionIndex]
         scope.launch(Dispatchers.IO) {
             try {
-                terminalNative?.let { term ->
-                    // Clear screen and scrollback
-                    terminalBuffer?.clearScrollback()
-                    term.writeInput("$escape[2J$escape[H".toByteArray())
+                // Clear screen
+                session.emulator.writeInput("$escape[2J$escape[H".toByteArray())
 
-                    // Load test file
-                    context.resources.openRawResource(resourceId).use { inputStream ->
-                        val reader = BufferedReader(InputStreamReader(inputStream))
-                        val content = reader.readText()
-                        // Convert LF to CRLF for proper terminal display
-                        val normalizedContent = content.replace("\r\n", "\n").replace("\n", "\r\n")
-                        term.writeInput(normalizedContent.toByteArray())
-                    }
-
-                    withContext(Dispatchers.Main) {
-                        currentTest = testName
-                    }
+                // Load test file
+                context.resources.openRawResource(session.resourceId).use { inputStream ->
+                    val reader = BufferedReader(InputStreamReader(inputStream))
+                    val content = reader.readText()
+                    // Convert LF to CRLF for proper terminal display
+                    val normalizedContent = content.replace("\r\n", "\n").replace("\n", "\r\n")
+                    session.emulator.writeInput(normalizedContent.toByteArray())
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    errorMessage = "Failed to load test: ${e.message}"
+                    errorMessage = "Failed to load test for ${session.name}: ${e.message}"
                 }
             }
         }
@@ -164,108 +187,42 @@ fun ShellScreen() {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Button bar at top
+        // Tab bar at top - each tab is a separate TerminalEmulator session
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
-                onClick = {
-                    scope.launch(Dispatchers.IO) {
-                        terminalNative?.let { term ->
-                            // Clear screen and scrollback
-                            terminalBuffer?.clearScrollback()
-                            term.writeInput("$escape[2J$escape[H".toByteArray())
-                            val welcomeText = """
-                                |TermScreen Test Application
-                                |===========================
-                                |
-                                |Use the buttons below to load different test files:
-                                |
-                                |$escape[1m256 Colors$escape[0m - Test 256-color palette rendering
-                                |$escape[1mAttributes$escape[0m - Test bold, italic, underline, etc.
-                                |$escape[1mUnicode$escape[0m    - Test Unicode characters and CJK
-                                |$escape[1mScrolling$escape[0m  - Test scrolling with 25 lines
-                                |
-                                |$escape[1mKeyboard Input:$escape[0m
-                                |Toggle the keyboard icon to enable typing.
-                                |When enabled, you can type and see characters echoed.
-                                |Try Ctrl+C, arrow keys, and other special keys!
-                                |
-                                |Select a test to begin.
-                            """.trimMargin()
-                            // Convert LF to CRLF for proper terminal display
-                            val normalizedWelcome = welcomeText.replace("\n", "\r\n")
-                            term.writeInput(normalizedWelcome.toByteArray())
-                            withContext(Dispatchers.Main) {
-                                currentTest = "Welcome"
-                            }
+            sessions.forEachIndexed { index, session ->
+                Button(
+                    onClick = {
+                        currentSessionIndex = index
+                        // Lazy load test content when tab is first selected
+                        if (index > 0) {
+                            loadTestIntoSession(index)
                         }
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (currentTest == "Welcome")
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.secondary
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Welcome", maxLines = 1)
-            }
-
-            Button(
-                onClick = { loadTest("256 Colors", R.raw.test_output) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (currentTest == "256 Colors")
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.secondary
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("256 Colors", maxLines = 1)
-            }
-
-            Button(
-                onClick = { loadTest("Attributes", R.raw.test_attributes) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (currentTest == "Attributes")
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.secondary
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Attributes", maxLines = 1)
-            }
-
-            Button(
-                onClick = { loadTest("Unicode", R.raw.test_unicode) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (currentTest == "Unicode")
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.secondary
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Unicode", maxLines = 1)
-            }
-
-            Button(
-                onClick = { loadTest("Scrolling", R.raw.test_scroll) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (currentTest == "Scrolling")
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.secondary
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Scrolling", maxLines = 1)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentSessionIndex == index)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.secondary
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = when (index) {
+                            0 -> "Wel"
+                            1 -> "256"
+                            2 -> "Attr"
+                            3 -> "Uni"
+                            4 -> "Scr"
+                            else -> session.name.take(3)
+                        },
+                        maxLines = 1
+                    )
+                }
             }
         }
 
@@ -359,46 +316,36 @@ fun ShellScreen() {
 
         HorizontalDivider()
 
-        // Terminal display area
+        // Terminal display area - shows current session
         Box(modifier = Modifier.fillMaxSize()) {
-            when {
-                errorMessage != null -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Error",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = errorMessage ?: "",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-                terminalBuffer != null -> {
-                    Terminal(
-                        terminalBuffer = terminalBuffer!!,
-                        modifier = Modifier.fillMaxSize(),
-                        typeface = availableFonts[selectedFont] ?: Typeface.MONOSPACE,
-                        backgroundColor = Color.Black,
-                        foregroundColor = Color(0xFFD0D0D0), // Light gray for better readability
-                        keyboardEnabled = keyboardEnabled,
-                        forcedSize = if (useForcedSize) Pair(customRows, customCols) else null
+            if (errorMessage != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Error",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = errorMessage ?: "",
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
-                else -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
+            } else {
+                // Display the currently selected terminal session
+                Terminal(
+                    terminalEmulator = currentTerminal,
+                    modifier = Modifier.fillMaxSize(),
+                    typeface = availableFonts[selectedFont] ?: Typeface.MONOSPACE,
+                    backgroundColor = Color.Black,
+                    foregroundColor = Color(0xFFD0D0D0), // Light gray for better readability
+                    keyboardEnabled = keyboardEnabled,
+                    forcedSize = if (useForcedSize) Pair(customRows, customCols) else null
+                )
             }
         }
     }
