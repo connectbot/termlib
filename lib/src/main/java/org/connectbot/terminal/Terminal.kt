@@ -104,6 +104,7 @@ private enum class GestureType {
  * @param backgroundColor Default background color
  * @param foregroundColor Default foreground color
  * @param keyboardEnabled Enable keyboard input handling (default: false for display-only mode)
+ * @param focusRequester Focus requester for keyboard input (if enabled)
  * @param forcedSize Force terminal to specific dimensions (rows, cols). When set, font size is calculated to fit.
  */
 @Composable
@@ -117,11 +118,11 @@ fun Terminal(
     backgroundColor: Color = Color.Black,
     foregroundColor: Color = Color.White,
     keyboardEnabled: Boolean = false,
+    focusRequester: FocusRequester = remember { FocusRequester() },
     forcedSize: Pair<Int, Int>? = null
 ) {
     val density = LocalDensity.current
     val clipboardManager = LocalClipboardManager.current
-    val focusRequester = remember { FocusRequester() }
 
     // Observe terminal state via StateFlow
     val screenState = rememberTerminalScreenState(terminalEmulator)
