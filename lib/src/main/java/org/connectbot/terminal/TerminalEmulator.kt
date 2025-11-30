@@ -83,8 +83,10 @@ class TerminalEmulator(
     private var sequenceNumber = 0L
 
     // Terminal dimensions
-    private var rows = initialRows
-    private var cols = initialCols
+    var rows = initialRows
+        private set
+    var cols = initialCols
+        private set
 
     // Cursor state
     private var cursorRow = 0
@@ -350,7 +352,7 @@ class TerminalEmulator(
      */
     private fun updateLine(row: Int) {
         // Safety check: ensure row is within bounds
-        if (row < 0 || row >= rows) {
+        if (row !in 0..<rows) {
             return
         }
 

@@ -256,6 +256,13 @@ fun Terminal(
                 )
                 calculatedFontSize = optimalSize.sp
             }
+        } else {
+            // When not forcing size, reset the font size to the initial value.
+            LaunchedEffect(initialFontSize) {
+                if (calculatedFontSize != initialFontSize) {
+                    calculatedFontSize = initialFontSize
+                }
+            }
         }
 
         // Use base dimensions for terminal sizing (not zoomed dimensions)
@@ -266,10 +273,9 @@ fun Terminal(
             if (forcedSize != null) forcedSize.first else (availableHeight / baseCharHeight).toInt()
                 .coerceAtLeast(1)
 
-        // Resize terminal when dimensions change OR when snapshot changes
-        // Key on screenState.snapshot (immutable) ensures re-check when switching managers
-        LaunchedEffect(screenState.snapshot, newRows, newCols) {
-            if (newRows != screenState.snapshot.rows || newCols != screenState.snapshot.cols) {
+        // Resize terminal when dimensions change
+        LaunchedEffect(terminalEmulator, newRows, newCols) {
+            if (newRows != terminalEmulator.rows || newCols != terminalEmulator.cols) {
                 terminalEmulator.resize(newRows, newCols)
             }
         }
