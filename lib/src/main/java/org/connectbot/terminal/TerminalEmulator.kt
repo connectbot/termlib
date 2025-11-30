@@ -171,6 +171,11 @@ class TerminalEmulator(
         terminalNative.dispatchCharacter(modifiers, character.code)
     }
 
+    /**
+     * Clears the terminal emulator screen.
+     */
+    fun clearScreen() = writeInput("\u001B[2J\u001B[H".toByteArray())
+
     // ================================================================================
     // TerminalCallbacks implementation
     // ================================================================================

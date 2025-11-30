@@ -154,7 +154,7 @@ fun ShellScreen() {
         scope.launch(Dispatchers.IO) {
             try {
                 // Clear screen
-                session.emulator.writeInput("$escape[2J$escape[H".toByteArray())
+                session.emulator.clearScreen()
 
                 // Load test file
                 context.resources.openRawResource(session.resourceId).use { inputStream ->
