@@ -91,6 +91,7 @@ class TerminalEmulator(
     private var cursorCol = 0
     private var cursorVisible = true
     private var cursorShape = CursorShape.BLOCK
+    private var cursorBlink = false
 
     // Terminal properties
     private var terminalTitle = ""
@@ -216,10 +217,17 @@ class TerminalEmulator(
                     }
                 }
                 is TerminalProperty.BoolValue -> {
-                    // Property 1 is VTERM_PROP_CURSORVISIBLE (from vterm.h line 254)
-                    if (prop == 1) {
-                        cursorVisible = value.value
-                        propertyChanged = true
+                    when (prop) {
+                        // Property 1 is VTERM_PROP_CURSORVISIBLE (from vterm.h line 254)
+                        1 -> {
+                            cursorVisible = value.value
+                            propertyChanged = true
+                        }
+                        // Property 2 is VTERM_PROP_CURSORBLINK (from vterm.h line 255)
+                        2 -> {
+                            cursorBlink = value.value
+                            propertyChanged = true
+                        }
                     }
                 }
                 is TerminalProperty.IntValue -> {
@@ -448,6 +456,7 @@ class TerminalEmulator(
             cursorCol = cursorCol,
             cursorVisible = cursorVisible,
             cursorShape = cursorShape,
+            cursorBlink = cursorBlink,
             terminalTitle = terminalTitle,
             rows = rows,
             cols = cols,

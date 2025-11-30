@@ -87,6 +87,11 @@ private enum class GestureType {
 }
 
 /**
+ * The rate at which the cursor blinks in milliseconds when enabled.
+ */
+private const val CURSOR_BLINK_RATE_MS = 500L
+
+/**
  * Terminal - A Jetpack Compose terminal screen component.
  *
  * This component:
@@ -144,10 +149,34 @@ fun Terminal(
     var showMagnifier by remember { mutableStateOf(false) }
     var magnifierPosition by remember { mutableStateOf(Offset.Zero) }
 
+    // Cursor blink state
+    var cursorBlinkVisible by remember { mutableStateOf(true) }
+
     // Request focus when keyboard is enabled
     LaunchedEffect(keyboardEnabled) {
         if (keyboardEnabled) {
             focusRequester.requestFocus()
+        }
+    }
+
+    // Cursor blink animation
+    LaunchedEffect(
+        screenState.snapshot.cursorVisible,
+        screenState.snapshot.cursorBlink,
+        screenState.snapshot.cursorRow,
+        screenState.snapshot.cursorCol
+    ) {
+        if (screenState.snapshot.cursorVisible) {
+            cursorBlinkVisible = true
+            if (screenState.snapshot.cursorBlink) {
+                // Show cursor immediately when it moves or becomes visible
+                while (true) {
+                    delay(CURSOR_BLINK_RATE_MS)
+                    cursorBlinkVisible = !cursorBlinkVisible
+                }
+            }
+        } else {
+            cursorBlinkVisible = false
         }
     }
 
@@ -559,7 +588,7 @@ fun Terminal(
                     }
 
                     // Draw cursor (only when viewing current screen, not scrollback)
-                    if (screenState.snapshot.cursorVisible && screenState.scrollbackPosition == 0) {
+                    if (screenState.snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
                         drawCursor(
                             row = screenState.snapshot.cursorRow,
                             col = screenState.snapshot.cursorCol,
