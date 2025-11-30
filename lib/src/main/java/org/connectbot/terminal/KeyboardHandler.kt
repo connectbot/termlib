@@ -16,7 +16,6 @@
  */
 package org.connectbot.terminal
 
-import android.util.Log
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -40,7 +39,6 @@ class KeyboardHandler(private val terminalEmulator: TerminalEmulator) {
      * Returns true if the event was handled.
      */
     fun onKeyEvent(event: ComposeKeyEvent): Boolean {
-        Log.d("KeyboardHandler", "onKeyEvent: $event")
         if (event.type != KeyEventType.KeyDown) {
             return false
         }
@@ -56,7 +54,6 @@ class KeyboardHandler(private val terminalEmulator: TerminalEmulator) {
         // Check if this is a special key that libvterm handles
         val vtermKey = mapToVTermKey(key)
         if (vtermKey != null) {
-            Log.d("KeyboardHandler", "onKeyEvent: vtermKey: $vtermKey")
             terminalEmulator.dispatchKey(modifiers, vtermKey)
             return true
         }
@@ -65,7 +62,6 @@ class KeyboardHandler(private val terminalEmulator: TerminalEmulator) {
         if (ctrl) {
             val controlChar = getControlCharacter(key)
             if (controlChar != null) {
-                Log.d("KeyboardHandler", "onKeyEvent: controlChar: $controlChar")
                 terminalEmulator.dispatchCharacter(modifiers, controlChar)
                 return true
             }
@@ -74,12 +70,10 @@ class KeyboardHandler(private val terminalEmulator: TerminalEmulator) {
         // Handle regular printable characters
         val char = getCharacterFromKey(key, shift)
         if (char != null) {
-            Log.d("KeyboardHandler", "onKeyEvent: printable char: '$char' (${char.code})")
             terminalEmulator.dispatchCharacter(modifiers, char)
             return true
         }
 
-        Log.d("KeyboardHandler", "onKeyEvent: not handled")
         return false
     }
 
