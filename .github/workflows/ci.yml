@@ -14,6 +14,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -159,3 +161,82 @@ jobs:
           generate_release_notes: true
           files: |
             ConnectBotTerminal-*.aar
+
+  javadoc:
+    name: Publish Javadoc to GitHub Pages
+    needs: build
+    if: ${{ (github.event_name == 'push') && ((github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/')) }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout (with history)
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up JDK
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
+
+      - name: Delete old Android SDK cmdline-tools
+        run: |
+          rm -rf $ANDROID_HOME/cmdline-tools/latest
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          cmdline-tools-version: '13114758'
+          packages: 'cmdline-tools;latest tools platform-tools'
+
+      - name: Build Javadoc JAR
+        run: ./gradlew javaDocReleaseJar
+
+      - name: Determine subdirectory name
+        id: subdir
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            SUBDIR="${{ github.ref_name }}"
+          else
+            SUBDIR="${{ github.ref_name }}"
+          fi
+          echo "name=${SUBDIR}" >> "$GITHUB_OUTPUT"
+
+      - name: Download existing GitHub Pages content
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          ref: gh-pages
+          path: gh-pages
+        continue-on-error: true
+
+      - name: Prepare Javadoc for deployment
+        run: |
+          mkdir -p gh-pages-deploy
+          if [ -d "gh-pages" ]; then
+            cp -r gh-pages/* gh-pages-deploy/ 2>/dev/null || true
+          fi
+          rm -rf "gh-pages-deploy/${{ steps.subdir.outputs.name }}"
+          mkdir -p "gh-pages-deploy/${{ steps.subdir.outputs.name }}"
+          unzip -o ./lib/build/intermediates/java_doc_jar/release/release-javadoc.jar -d "gh-pages-deploy/${{ steps.subdir.outputs.name }}"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: gh-pages-deploy
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
