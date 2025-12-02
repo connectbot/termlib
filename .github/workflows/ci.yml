@@ -205,12 +205,7 @@ jobs:
       - name: Determine subdirectory name
         id: subdir
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            SUBDIR="${{ github.ref_name }}"
-          else
-            SUBDIR="${{ github.ref_name }}"
-          fi
-          echo "name=${SUBDIR}" >> "$GITHUB_OUTPUT"
+          echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
 
       - name: Download existing GitHub Pages content
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
