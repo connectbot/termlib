@@ -60,6 +60,12 @@ data class TerminalLine(
 
     companion object {
         /**
+         * Shared empty list to avoid allocation for 99% of cells without combining chars.
+         * This single shared instance prevents ~1,920 empty list allocations per frame.
+         */
+        val EMPTY_COMBINING_CHARS = emptyList<Char>()
+
+        /**
          * Create an empty line with default cells.
          */
         fun empty(row: Int, cols: Int, defaultFg: Color = Color.White, defaultBg: Color = Color.Black): TerminalLine {

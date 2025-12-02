@@ -25,6 +25,11 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
+// Thread-local CharArray pool to eliminate per-frame allocations
+// Each thread gets one reusable CharArray, sized to handle typical cell runs
+static thread_local jcharArray tls_charArray = nullptr;
+static thread_local jsize tls_charArraySize = 0;
+
 // Terminal implementation
 Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols, int scrollRows)
     : mRows(rows), mCols(cols), mScrollRows(scrollRows) {
@@ -100,6 +105,64 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols, int scrol
     mCharsField = env->GetFieldID(mCellRunClass, "chars", "[C");
     mRunLengthField = env->GetFieldID(mCellRunClass, "runLength", "I");
 
+    // Cache all callback-related classes and methods to avoid repeated FindClass/GetMethodID
+    LOGD("Caching callback classes and methods...");
+
+    // TermRect
+    jclass termRectLocal = env->FindClass("org/connectbot/terminal/TermRect");
+    mTermRectClass = (jclass)env->NewGlobalRef(termRectLocal);
+    mTermRectConstructor = env->GetMethodID(mTermRectClass, "<init>", "(IIII)V");
+    env->DeleteLocalRef(termRectLocal);
+
+    // CursorPosition
+    jclass cursorPosLocal = env->FindClass("org/connectbot/terminal/CursorPosition");
+    mCursorPositionClass = (jclass)env->NewGlobalRef(cursorPosLocal);
+    mCursorPositionConstructor = env->GetMethodID(mCursorPositionClass, "<init>", "(II)V");
+    env->DeleteLocalRef(cursorPosLocal);
+
+    // ScreenCell
+    jclass screenCellLocal = env->FindClass("org/connectbot/terminal/ScreenCell");
+    mScreenCellClass = (jclass)env->NewGlobalRef(screenCellLocal);
+    mScreenCellConstructor = env->GetMethodID(mScreenCellClass, "<init>",
+        "(CLjava/util/List;IIIIIIZZIZZI)V");
+    env->DeleteLocalRef(screenCellLocal);
+
+    // ArrayList
+    jclass arrayListLocal = env->FindClass("java/util/ArrayList");
+    mArrayListClass = (jclass)env->NewGlobalRef(arrayListLocal);
+    mArrayListConstructor = env->GetMethodID(mArrayListClass, "<init>", "()V");
+    mArrayListAdd = env->GetMethodID(mArrayListClass, "add", "(Ljava/lang/Object;)Z");
+    env->DeleteLocalRef(arrayListLocal);
+
+    // Character
+    jclass charLocal = env->FindClass("java/lang/Character");
+    mCharacterClass = (jclass)env->NewGlobalRef(charLocal);
+    mCharacterValueOf = env->GetStaticMethodID(mCharacterClass, "valueOf", "(C)Ljava/lang/Character;");
+    env->DeleteLocalRef(charLocal);
+
+    // TerminalProperty classes
+    jclass boolLocal = env->FindClass("org/connectbot/terminal/TerminalProperty$BoolValue");
+    mTerminalPropertyBoolClass = (jclass)env->NewGlobalRef(boolLocal);
+    mTerminalPropertyBoolConstructor = env->GetMethodID(mTerminalPropertyBoolClass, "<init>", "(Z)V");
+    env->DeleteLocalRef(boolLocal);
+
+    jclass intLocal = env->FindClass("org/connectbot/terminal/TerminalProperty$IntValue");
+    mTerminalPropertyIntClass = (jclass)env->NewGlobalRef(intLocal);
+    mTerminalPropertyIntConstructor = env->GetMethodID(mTerminalPropertyIntClass, "<init>", "(I)V");
+    env->DeleteLocalRef(intLocal);
+
+    jclass stringLocal = env->FindClass("org/connectbot/terminal/TerminalProperty$StringValue");
+    mTerminalPropertyStringClass = (jclass)env->NewGlobalRef(stringLocal);
+    mTerminalPropertyStringConstructor = env->GetMethodID(mTerminalPropertyStringClass, "<init>", "(Ljava/lang/String;)V");
+    env->DeleteLocalRef(stringLocal);
+
+    jclass colorLocal = env->FindClass("org/connectbot/terminal/TerminalProperty$ColorValue");
+    mTerminalPropertyColorClass = (jclass)env->NewGlobalRef(colorLocal);
+    mTerminalPropertyColorConstructor = env->GetMethodID(mTerminalPropertyColorClass, "<init>", "(III)V");
+    env->DeleteLocalRef(colorLocal);
+
+    LOGD("All callback classes and methods cached successfully");
+
     // Create VTerm instance
     mVt = vterm_new(mRows, mCols);
     if (!mVt) {
@@ -160,6 +223,16 @@ Terminal::~Terminal() {
             env->DeleteGlobalRef(mCellRunClass);
             mCellRunClass = nullptr;
         }
+        // Clean up cached callback classes
+        if (mTermRectClass) env->DeleteGlobalRef(mTermRectClass);
+        if (mCursorPositionClass) env->DeleteGlobalRef(mCursorPositionClass);
+        if (mScreenCellClass) env->DeleteGlobalRef(mScreenCellClass);
+        if (mArrayListClass) env->DeleteGlobalRef(mArrayListClass);
+        if (mCharacterClass) env->DeleteGlobalRef(mCharacterClass);
+        if (mTerminalPropertyBoolClass) env->DeleteGlobalRef(mTerminalPropertyBoolClass);
+        if (mTerminalPropertyIntClass) env->DeleteGlobalRef(mTerminalPropertyIntClass);
+        if (mTerminalPropertyStringClass) env->DeleteGlobalRef(mTerminalPropertyStringClass);
+        if (mTerminalPropertyColorClass) env->DeleteGlobalRef(mTerminalPropertyColorClass);
     }
 }
 
@@ -379,11 +452,27 @@ int Terminal::getCellRun(JNIEnv* env, int row, int col, jobject runObject) {
     env->SetBooleanField(runObject, mDwlField, cell.attrs.dwl);
     env->SetIntField(runObject, mDhlField, cell.attrs.dhl);
 
-    // Set character array
-    jcharArray charArray = env->NewCharArray(runLength);
-    env->SetCharArrayRegion(charArray, 0, runLength, chars);
-    env->SetObjectField(runObject, mCharsField, charArray);
-    env->DeleteLocalRef(charArray);
+    // Set character array using thread-local pool to eliminate allocations
+    // If this is the first call on this thread, or array is too small, allocate/resize
+    if (tls_charArray == nullptr || tls_charArraySize < runLength) {
+        // Clean up old array if it exists
+        if (tls_charArray != nullptr) {
+            env->DeleteGlobalRef(tls_charArray);
+        }
+
+        // Allocate new array with some headroom (round up to nearest 64)
+        jsize newSize = ((runLength + 63) / 64) * 64;
+        jcharArray localArray = env->NewCharArray(newSize);
+        tls_charArray = (jcharArray)env->NewGlobalRef(localArray);
+        env->DeleteLocalRef(localArray);
+        tls_charArraySize = newSize;
+
+        LOGD("Allocated thread-local CharArray: size=%d", newSize);
+    }
+
+    // Reuse the thread-local array
+    env->SetCharArrayRegion(tls_charArray, 0, runLength, chars);
+    env->SetObjectField(runObject, mCharsField, tls_charArray);
 
     env->SetIntField(runObject, mRunLengthField, runLength);
 
@@ -460,23 +549,10 @@ int Terminal::invokeMoverect(VTermRect dest, VTermRect src) {
         return 0;
     }
 
-    // Find TermRect class
-    jclass rectClass = env->FindClass("org/connectbot/terminal/TermRect");
-    if (!rectClass) {
-        return 0;
-    }
-
-    // Get TermRect constructor (startRow, endRow, startCol, endCol)
-    jmethodID rectConstructor = env->GetMethodID(rectClass, "<init>", "(IIII)V");
-    if (!rectConstructor) {
-        env->DeleteLocalRef(rectClass);
-        return 0;
-    }
-
-    // Create dest and src TermRect objects
-    jobject destObj = env->NewObject(rectClass, rectConstructor,
+    // Create dest and src TermRect objects using cached class/constructor
+    jobject destObj = env->NewObject(mTermRectClass, mTermRectConstructor,
         dest.start_row, dest.end_row, dest.start_col, dest.end_col);
-    jobject srcObj = env->NewObject(rectClass, rectConstructor,
+    jobject srcObj = env->NewObject(mTermRectClass, mTermRectConstructor,
         src.start_row, src.end_row, src.start_col, src.end_col);
 
     // Call the moverect callback
@@ -485,7 +561,6 @@ int Terminal::invokeMoverect(VTermRect dest, VTermRect src) {
     // Clean up
     env->DeleteLocalRef(destObj);
     env->DeleteLocalRef(srcObj);
-    env->DeleteLocalRef(rectClass);
 
     return result;
 }
@@ -500,26 +575,14 @@ void Terminal::invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool v
         return;
     }
 
-    // Create CursorPosition objects
-    jclass posClass = env->FindClass("org/connectbot/terminal/CursorPosition");
-    if (!posClass) {
-        return;
-    }
-
-    jmethodID posConstructor = env->GetMethodID(posClass, "<init>", "(II)V");
-    if (!posConstructor) {
-        env->DeleteLocalRef(posClass);
-        return;
-    }
-
-    jobject posObj = env->NewObject(posClass, posConstructor, row, col);
-    jobject oldPosObj = env->NewObject(posClass, posConstructor, oldRow, oldCol);
+    // Create CursorPosition objects using cached class/constructor
+    jobject posObj = env->NewObject(mCursorPositionClass, mCursorPositionConstructor, row, col);
+    jobject oldPosObj = env->NewObject(mCursorPositionClass, mCursorPositionConstructor, oldRow, oldCol);
 
     env->CallIntMethod(mCallbacks, mMoveCursorMethod, posObj, oldPosObj, visible);
 
     env->DeleteLocalRef(posObj);
     env->DeleteLocalRef(oldPosObj);
-    env->DeleteLocalRef(posClass);
 }
 
 void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
@@ -533,42 +596,32 @@ void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
     }
 
     jobject propValue = nullptr;
-    jclass propClass = nullptr;
-    jmethodID constructor = nullptr;
 
     switch (vterm_get_prop_type(prop)) {
         case VTERM_VALUETYPE_BOOL:
-            propClass = env->FindClass("org/connectbot/terminal/TerminalProperty$BoolValue");
-            constructor = env->GetMethodID(propClass, "<init>", "(Z)V");
-            propValue = env->NewObject(propClass, constructor, val->boolean);
+            propValue = env->NewObject(mTerminalPropertyBoolClass, mTerminalPropertyBoolConstructor, val->boolean);
             break;
 
         case VTERM_VALUETYPE_INT:
-            propClass = env->FindClass("org/connectbot/terminal/TerminalProperty$IntValue");
-            constructor = env->GetMethodID(propClass, "<init>", "(I)V");
-            propValue = env->NewObject(propClass, constructor, val->number);
+            propValue = env->NewObject(mTerminalPropertyIntClass, mTerminalPropertyIntConstructor, val->number);
             break;
 
         case VTERM_VALUETYPE_STRING:
-            propClass = env->FindClass("org/connectbot/terminal/TerminalProperty$StringValue");
-            constructor = env->GetMethodID(propClass, "<init>", "(Ljava/lang/String;)V");
             if (val->string.str) {
                 // VTermStringFragment has str and len fields
                 char* utf8_str = mutf8_to_utf8(val->string.str, val->string.len, nullptr);
                 jstring str = env->NewStringUTF(utf8_str);
-                propValue = env->NewObject(propClass, constructor, str);
+                propValue = env->NewObject(mTerminalPropertyStringClass, mTerminalPropertyStringConstructor, str);
                 env->DeleteLocalRef(str);
                 free(utf8_str);
             }
             break;
 
         case VTERM_VALUETYPE_COLOR: {
-            propClass = env->FindClass("org/connectbot/terminal/TerminalProperty$ColorValue");
-            constructor = env->GetMethodID(propClass, "<init>", "(III)V");
             // Resolve color to RGB
             uint8_t r, g, b;
             resolveColor(val->color, r, g, b);
-            propValue = env->NewObject(propClass, constructor, r, g, b);
+            propValue = env->NewObject(mTerminalPropertyColorClass, mTerminalPropertyColorConstructor, r, g, b);
             break;
         }
 
@@ -580,10 +633,6 @@ void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
     if (propValue) {
         env->CallIntMethod(mCallbacks, mSetTermPropMethod, prop, propValue);
         env->DeleteLocalRef(propValue);
-    }
-
-    if (propClass) {
-        env->DeleteLocalRef(propClass);
     }
 }
 
@@ -610,31 +659,6 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) 
         return;
     }
 
-    // Find ScreenCell class
-    jclass screenCellClass = env->FindClass("org/connectbot/terminal/ScreenCell");
-    if (!screenCellClass) {
-        LOGE("Failed to find ScreenCell class");
-        return;
-    }
-
-    // Get constructor for ScreenCell
-    jmethodID screenCellConstructor = env->GetMethodID(screenCellClass, "<init>",
-        "(CLjava/util/List;IIIIIIZZIZZI)V");
-    if (!screenCellConstructor) {
-        LOGE("Failed to find ScreenCell constructor");
-        env->DeleteLocalRef(screenCellClass);
-        return;
-    }
-
-    // Get ArrayList class for combining chars
-    jclass arrayListClass = env->FindClass("java/util/ArrayList");
-    jmethodID arrayListConstructor = env->GetMethodID(arrayListClass, "<init>", "()V");
-    jmethodID arrayListAdd = env->GetMethodID(arrayListClass, "add", "(Ljava/lang/Object;)Z");
-
-    // Get Character class for boxing chars
-    jclass charClass = env->FindClass("java/lang/Character");
-    jmethodID charValueOf = env->GetStaticMethodID(charClass, "valueOf", "(C)Ljava/lang/Character;");
-
     // Build a list to hold actual cells (excluding fullwidth placeholders)
     std::vector<jobject> screenCells;
 
@@ -643,7 +667,7 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) 
 
         // Get the primary character and handle surrogate pairs
         jchar primaryChar = ' ';
-        jobject combiningList = env->NewObject(arrayListClass, arrayListConstructor);
+        jobject combiningList = env->NewObject(mArrayListClass, mArrayListConstructor);
 
         if (cell.chars[0] != 0) {
             uint32_t codepoint = cell.chars[0];
@@ -658,8 +682,8 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) 
                 jchar lowSurrogate = (jchar)(0xDC00 + (codepoint & 0x3FF));  // Low surrogate
 
                 // Add low surrogate to combining chars
-                jobject lowSurrogateObj = env->CallStaticObjectMethod(charClass, charValueOf, lowSurrogate);
-                env->CallBooleanMethod(combiningList, arrayListAdd, lowSurrogateObj);
+                jobject lowSurrogateObj = env->CallStaticObjectMethod(mCharacterClass, mCharacterValueOf, lowSurrogate);
+                env->CallBooleanMethod(combiningList, mArrayListAdd, lowSurrogateObj);
                 env->DeleteLocalRef(lowSurrogateObj);
             }
 
@@ -668,8 +692,8 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) 
                 uint32_t combiningCodepoint = cell.chars[j];
 
                 if (combiningCodepoint <= 0xFFFF) {
-                    jobject charObj = env->CallStaticObjectMethod(charClass, charValueOf, (jchar)combiningCodepoint);
-                    env->CallBooleanMethod(combiningList, arrayListAdd, charObj);
+                    jobject charObj = env->CallStaticObjectMethod(mCharacterClass, mCharacterValueOf, (jchar)combiningCodepoint);
+                    env->CallBooleanMethod(combiningList, mArrayListAdd, charObj);
                     env->DeleteLocalRef(charObj);
                 } else {
                     // Combining character is also a surrogate pair
@@ -677,12 +701,12 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) 
                     jchar highSurr = (jchar)(0xD800 + (combiningCodepoint >> 10));
                     jchar lowSurr = (jchar)(0xDC00 + (combiningCodepoint & 0x3FF));
 
-                    jobject highObj = env->CallStaticObjectMethod(charClass, charValueOf, highSurr);
-                    env->CallBooleanMethod(combiningList, arrayListAdd, highObj);
+                    jobject highObj = env->CallStaticObjectMethod(mCharacterClass, mCharacterValueOf, highSurr);
+                    env->CallBooleanMethod(combiningList, mArrayListAdd, highObj);
                     env->DeleteLocalRef(highObj);
 
-                    jobject lowObj = env->CallStaticObjectMethod(charClass, charValueOf, lowSurr);
-                    env->CallBooleanMethod(combiningList, arrayListAdd, lowObj);
+                    jobject lowObj = env->CallStaticObjectMethod(mCharacterClass, mCharacterValueOf, lowSurr);
+                    env->CallBooleanMethod(combiningList, mArrayListAdd, lowObj);
                     env->DeleteLocalRef(lowObj);
                 }
             }
@@ -694,11 +718,11 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) 
         resolveColor(cell.fg, fgRed, fgGreen, fgBlue);
         resolveColor(cell.bg, bgRed, bgGreen, bgBlue);
 
-        // Create ScreenCell object
+        // Create ScreenCell object using cached class/constructor
         // Signature: (CLjava/util/List;IIIIIIZZIZZI)V
         // Parameters: char, combiningChars, fgRed, fgGreen, fgBlue, bgRed, bgGreen, bgBlue,
         //             bold, italic, underline, reverse, strike, width
-        jobject screenCell = env->NewObject(screenCellClass, screenCellConstructor,
+        jobject screenCell = env->NewObject(mScreenCellClass, mScreenCellConstructor,
             primaryChar,                    // char
             combiningList,                  // combiningChars: List<Char>
             (jint)fgRed,                    // fgRed
@@ -727,7 +751,7 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) 
 
     // Create array with actual cell count
     int actualCells = screenCells.size();
-    jobjectArray actualCellArray = env->NewObjectArray(actualCells, screenCellClass, nullptr);
+    jobjectArray actualCellArray = env->NewObjectArray(actualCells, mScreenCellClass, nullptr);
     for (int i = 0; i < actualCells; i++) {
         env->SetObjectArrayElement(actualCellArray, i, screenCells[i]);
         env->DeleteLocalRef(screenCells[i]);
@@ -736,11 +760,8 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) 
     // Call the Java callback with actual cell count
     env->CallIntMethod(mCallbacks, mPushScrollbackMethod, actualCells, actualCellArray);
 
-    // Clean up
+    // Clean up only the array (classes are cached globally)
     env->DeleteLocalRef(actualCellArray);
-    env->DeleteLocalRef(screenCellClass);
-    env->DeleteLocalRef(arrayListClass);
-    env->DeleteLocalRef(charClass);
 }
 
 int Terminal::invokePopScrollbackLine(int cols, VTermScreenCell* cells) {

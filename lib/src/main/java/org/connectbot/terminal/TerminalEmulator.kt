@@ -101,6 +101,9 @@ class TerminalEmulator(
     // Scrollback buffer
     private val scrollback = mutableListOf<TerminalLine>()
     private val maxScrollbackLines = 10000
+    // Cached immutable copy of scrollback - only recreate when scrollback changes
+    private var scrollbackSnapshot: List<TerminalLine> = emptyList()
+    private var scrollbackDirty = false
 
     // Reusable CellRun for fetching cell data
     private val cellRun = CellRun()
@@ -347,6 +350,7 @@ class TerminalEmulator(
             if (scrollback.size > maxScrollbackLines) {
                 scrollback.removeAt(0)
             }
+            scrollbackDirty = true
             propertyChanged = true
             if (!damagePosted) {
                 handler.post { processPendingUpdates() }
@@ -511,9 +515,17 @@ class TerminalEmulator(
      * Build a complete snapshot of terminal state.
      */
     private fun buildSnapshot(): TerminalSnapshot {
+        // Only copy scrollback if it changed (avoid copying 10K references every frame!)
+        synchronized(damageLock) {
+            if (scrollbackDirty) {
+                scrollbackSnapshot = scrollback.toList()
+                scrollbackDirty = false
+            }
+        }
+
         return TerminalSnapshot(
-            lines = currentLines.toList(),  // Immutable copy
-            scrollback = synchronized(damageLock) { scrollback.toList() },  // Immutable copy
+            lines = currentLines.toList(),  // Immutable copy (24 references)
+            scrollback = scrollbackSnapshot,  // Reuse cached immutable copy
             cursorRow = cursorRow,
             cursorCol = cursorCol,
             cursorVisible = cursorVisible,

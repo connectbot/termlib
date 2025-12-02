@@ -91,7 +91,8 @@ class TerminalBuffer(
      * Update a single line by fetching cell data from the terminal.
      */
     private fun updateLine(row: Int) {
-        val cells = mutableListOf<TerminalLine.Cell>()
+        // Pre-size ArrayList to column count to avoid reallocations (typically 80-120 cells)
+        val cells = ArrayList<TerminalLine.Cell>(cols)
         var col = 0
 
         while (col < cols) {
@@ -113,9 +114,9 @@ class TerminalBuffer(
                 break
             }
 
-            // Convert CellRun colors to Compose Color
-            val fgColor = Color(cellRun.fgRed, cellRun.fgGreen, cellRun.fgBlue)
-            val bgColor = Color(cellRun.bgRed, cellRun.bgGreen, cellRun.bgBlue)
+            // Convert CellRun colors to Compose Color using cache to prevent allocations
+            val fgColor = ColorCache.get(cellRun.fgRed, cellRun.fgGreen, cellRun.fgBlue)
+            val bgColor = ColorCache.get(cellRun.bgRed, cellRun.bgGreen, cellRun.bgBlue)
 
             // Process characters in the run
             var charIndex = 0
@@ -125,7 +126,8 @@ class TerminalBuffer(
                 val char = cellRun.chars[charIndex]
                 if (char == 0.toChar()) break
 
-                val combiningChars = mutableListOf<Char>()
+                // Use shared empty list by default, only allocate when actually needed
+                var combiningChars: List<Char> = TerminalLine.EMPTY_COMBINING_CHARS
                 charIndex++
 
                 // Handle surrogate pairs (characters > U+FFFF like emoji)
@@ -133,14 +135,19 @@ class TerminalBuffer(
                     val nextChar = cellRun.chars[charIndex]
                     if (nextChar.isLowSurrogate()) {
                         // This is a surrogate pair - store low surrogate in combiningChars
-                        combiningChars.add(nextChar)
+                        // NOW allocate mutable list
+                        combiningChars = mutableListOf(nextChar)
                         charIndex++
                     }
                 }
 
                 // Collect combining characters
                 while (charIndex < cellRun.chars.size && isCombiningCharacter(cellRun.chars[charIndex])) {
-                    combiningChars.add(cellRun.chars[charIndex])
+                    // Lazily allocate on first combining char
+                    if (combiningChars === TerminalLine.EMPTY_COMBINING_CHARS) {
+                        combiningChars = mutableListOf()
+                    }
+                    (combiningChars as MutableList).add(cellRun.chars[charIndex])
                     charIndex++
                 }
 
@@ -296,8 +303,8 @@ class TerminalBuffer(
             TerminalLine.Cell(
                 char = screenCell.char,
                 combiningChars = screenCell.combiningChars.filter { it != '\u0000' },
-                fgColor = Color(screenCell.fgRed, screenCell.fgGreen, screenCell.fgBlue),
-                bgColor = Color(screenCell.bgRed, screenCell.bgGreen, screenCell.bgBlue),
+                fgColor = ColorCache.get(screenCell.fgRed, screenCell.fgGreen, screenCell.fgBlue),
+                bgColor = ColorCache.get(screenCell.bgRed, screenCell.bgGreen, screenCell.bgBlue),
                 bold = screenCell.bold,
                 italic = screenCell.italic,
                 underline = screenCell.underline,

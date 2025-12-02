@@ -116,6 +116,27 @@ private:
     jfieldID mCharsField;
     jfieldID mRunLengthField;
 
+    // Cached Java classes and methods for callbacks (avoid FindClass/GetMethodID overhead)
+    jclass mTermRectClass;
+    jmethodID mTermRectConstructor;
+    jclass mCursorPositionClass;
+    jmethodID mCursorPositionConstructor;
+    jclass mScreenCellClass;
+    jmethodID mScreenCellConstructor;
+    jclass mArrayListClass;
+    jmethodID mArrayListConstructor;
+    jmethodID mArrayListAdd;
+    jclass mCharacterClass;
+    jmethodID mCharacterValueOf;
+    jclass mTerminalPropertyBoolClass;
+    jmethodID mTerminalPropertyBoolConstructor;
+    jclass mTerminalPropertyIntClass;
+    jmethodID mTerminalPropertyIntConstructor;
+    jclass mTerminalPropertyStringClass;
+    jmethodID mTerminalPropertyStringConstructor;
+    jclass mTerminalPropertyColorClass;
+    jmethodID mTerminalPropertyColorConstructor;
+
     // Thread safety (recursive mutex for reentrant calls via callbacks)
     mutable std::recursive_mutex mLock;
 };
