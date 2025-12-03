@@ -64,6 +64,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -227,6 +228,11 @@ fun Terminal(
     // Handle resize based on available space
     BoxWithConstraints(
         modifier = modifier
+            .onSizeChanged {
+                terminalEmulator.resize(
+                    charsPerDimension(it.height, baseCharHeight),
+                    charsPerDimension(it.width, baseCharWidth))
+            }
             .then(
                 if (keyboardEnabled) {
                     Modifier
@@ -268,11 +274,9 @@ fun Terminal(
 
         // Use base dimensions for terminal sizing (not zoomed dimensions)
         val newCols =
-            if (forcedSize != null) forcedSize.second else (availableWidth / baseCharWidth).toInt()
-                .coerceAtLeast(1)
+            forcedSize?.second ?: charsPerDimension(availableWidth, baseCharWidth)
         val newRows =
-            if (forcedSize != null) forcedSize.first else (availableHeight / baseCharHeight).toInt()
-                .coerceAtLeast(1)
+            forcedSize?.first ?: charsPerDimension(availableHeight, baseCharHeight)
 
         // Resize terminal when dimensions change
         LaunchedEffect(terminalEmulator, newRows, newCols) {
@@ -1039,3 +1043,6 @@ private fun findOptimalFontSize(
     // Return the largest size that fits
     return minSizeCurrent.coerceIn(minSize, maxSize)
 }
+
+private fun charsPerDimension(pixels: Int, charPixels: Float) =
+    (pixels / charPixels).toInt().coerceAtLeast(1)
