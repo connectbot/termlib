@@ -100,7 +100,7 @@ class TerminalEmulator(
 
     // Scrollback buffer
     private val scrollback = mutableListOf<TerminalLine>()
-    private val maxScrollbackLines = 10000
+    private val maxScrollbackLines = 1000
     // Cached immutable copy of scrollback - only recreate when scrollback changes
     private var scrollbackSnapshot: List<TerminalLine> = emptyList()
     private var scrollbackDirty = false
@@ -118,7 +118,7 @@ class TerminalEmulator(
 
     init {
         // Initialize terminal with specified dimensions
-        terminalNative.resize(initialRows, initialCols, maxScrollbackLines)
+        terminalNative.resize(initialRows, initialCols)
     }
 
     // ================================================================================
@@ -142,10 +142,10 @@ class TerminalEmulator(
     /**
      * Resize the terminal.
      */
-    fun resize(newRows: Int, newCols: Int, scrollRows: Int = maxScrollbackLines) {
+    fun resize(newRows: Int, newCols: Int) {
         rows = newRows
         cols = newCols
-        terminalNative.resize(newRows, newCols, scrollRows)
+        terminalNative.resize(newRows, newCols)
 
         // Resize currentLines to match new dimensions
         currentLines = List(newRows) { row ->

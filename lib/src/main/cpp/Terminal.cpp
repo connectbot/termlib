@@ -31,10 +31,10 @@ static thread_local jcharArray tls_charArray = nullptr;
 static thread_local jsize tls_charArraySize = 0;
 
 // Terminal implementation
-Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols, int scrollRows)
-    : mRows(rows), mCols(cols), mScrollRows(scrollRows) {
+Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
+    : mRows(rows), mCols(cols) {
 
-    LOGD("Terminal constructor: rows=%d, cols=%d, scrollRows=%d", rows, cols, scrollRows);
+    LOGD("Terminal constructor: rows=%d, cols=%d", rows, cols);
 
     // Get JavaVM for callback invocations from any thread
     env->GetJavaVM(&mJavaVM);
@@ -255,12 +255,11 @@ int Terminal::writeInput(const uint8_t* data, size_t length) {
 }
 
 // Resize
-int Terminal::resize(int rows, int cols, int scrollRows) {
+int Terminal::resize(int rows, int cols) {
     std::lock_guard<std::recursive_mutex> lock(mLock);
 
     mRows = rows;
     mCols = cols;
-    mScrollRows = scrollRows;
 
     if (mVt) {
         vterm_set_size(mVt, rows, cols);
@@ -1007,27 +1006,9 @@ Java_org_connectbot_terminal_TerminalNative_nativeWriteInputArray(JNIEnv* env, j
 
 JNIEXPORT jint JNICALL
 Java_org_connectbot_terminal_TerminalNative_nativeResize(JNIEnv* /* env */, jobject /* thiz */,
-                                                         jlong ptr, jint rows, jint cols, jint scrollRows) {
+                                                         jlong ptr, jint rows, jint cols) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
-    return term->resize(rows, cols, scrollRows);
-}
-
-JNIEXPORT jint JNICALL
-Java_org_connectbot_terminal_TerminalNative_nativeGetRows(JNIEnv* /* env */, jobject /* thiz */, jlong ptr) {
-    auto* term = reinterpret_cast<Terminal*>(ptr);
-    return term->getRows();
-}
-
-JNIEXPORT jint JNICALL
-Java_org_connectbot_terminal_TerminalNative_nativeGetCols(JNIEnv* /* env */, jobject /* thiz */, jlong ptr) {
-    auto* term = reinterpret_cast<Terminal*>(ptr);
-    return term->getCols();
-}
-
-JNIEXPORT jint JNICALL
-Java_org_connectbot_terminal_TerminalNative_nativeGetScrollRows(JNIEnv* /* env */, jobject /* thiz */, jlong ptr) {
-    auto* term = reinterpret_cast<Terminal*>(ptr);
-    return term->getScrollRows();
+    return term->resize(rows, cols);
 }
 
 JNIEXPORT jboolean JNICALL

@@ -24,17 +24,14 @@
 
 class Terminal {
 public:
-    Terminal(JNIEnv* env, jobject callbacks, int rows = 24, int cols = 80, int scrollRows = 100);
+    Terminal(JNIEnv* env, jobject callbacks, int rows = 24, int cols = 80);
     ~Terminal();
 
     // Input handling - receives data from PTY/transport
     int writeInput(const uint8_t* data, size_t length);
 
     // Terminal control
-    int resize(int rows, int cols, int scrollRows);
-    int getRows() const { return mRows; }
-    int getCols() const { return mCols; }
-    int getScrollRows() const { return mScrollRows; }
+    int resize(int rows, int cols);
 
     // Keyboard input - generates escape sequences
     bool dispatchKey(int modifiers, int key);
@@ -82,7 +79,6 @@ private:
     // Terminal dimensions
     int mRows;
     int mCols;
-    int mScrollRows;
 
     // Java callback object and method IDs
     JavaVM* mJavaVM{};

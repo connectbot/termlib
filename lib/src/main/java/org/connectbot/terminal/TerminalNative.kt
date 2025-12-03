@@ -74,36 +74,11 @@ class TerminalNative(private val callbacks: TerminalCallbacks) : AutoCloseable {
      *
      * @param rows Number of rows
      * @param cols Number of columns
-     * @param scrollRows Number of scrollback rows to maintain
      * @return 0 on success
      */
-    fun resize(rows: Int, cols: Int, scrollRows: Int = 100): Int {
+    fun resize(rows: Int, cols: Int): Int {
         checkNotClosed()
-        return nativeResize(nativePtr, rows, cols, scrollRows)
-    }
-
-    /**
-     * Get current number of rows.
-     */
-    fun getRows(): Int {
-        checkNotClosed()
-        return nativeGetRows(nativePtr)
-    }
-
-    /**
-     * Get current number of columns.
-     */
-    fun getCols(): Int {
-        checkNotClosed()
-        return nativeGetCols(nativePtr)
-    }
-
-    /**
-     * Get current scrollback size.
-     */
-    fun getScrollRows(): Int {
-        checkNotClosed()
-        return nativeGetScrollRows(nativePtr)
+        return nativeResize(nativePtr, rows, cols)
     }
 
     /**
@@ -206,10 +181,7 @@ class TerminalNative(private val callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeDestroy(ptr: Long): Int
     private external fun nativeWriteInputBuffer(ptr: Long, buffer: ByteBuffer, length: Int): Int
     private external fun nativeWriteInputArray(ptr: Long, data: ByteArray, offset: Int, length: Int): Int
-    private external fun nativeResize(ptr: Long, rows: Int, cols: Int, scrollRows: Int): Int
-    private external fun nativeGetRows(ptr: Long): Int
-    private external fun nativeGetCols(ptr: Long): Int
-    private external fun nativeGetScrollRows(ptr: Long): Int
+    private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
     private external fun nativeGetCellRun(ptr: Long, row: Int, col: Int, run: CellRun): Int
