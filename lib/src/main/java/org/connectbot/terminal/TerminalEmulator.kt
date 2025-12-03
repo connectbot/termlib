@@ -60,7 +60,8 @@ class TerminalEmulator(
     private val defaultForeground: Color = Color.White,
     private val defaultBackground: Color = Color.Black,
     private val onKeyboardInput: (ByteArray) -> Unit = {},
-    private val onBell: (() -> Unit)? = null
+    private val onBell: (() -> Unit)? = null,
+    private val onResize: ((TerminalDimensions) -> Unit)? = null
 ) : TerminalCallbacks {
 
     // Handler for escaping native mutex
@@ -160,6 +161,11 @@ class TerminalEmulator(
                 handler.post { processPendingUpdates() }
                 damagePosted = true
             }
+        }
+
+        // Resize callback - post to handler to avoid blocking native thread
+        handler.post {
+            onResize?.invoke(TerminalDimensions(rows = rows, columns = cols))
         }
     }
 
@@ -618,4 +624,12 @@ private data class DamageRegion(
     val endRow: Int,
     val startCol: Int,
     val endCol: Int
+)
+
+/**
+ * Represents the size of the terminal in characters.
+ */
+data class TerminalDimensions(
+    val rows: Int,
+    val columns: Int
 )
