@@ -7,7 +7,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     id("kotlin-parcelize")
     alias(libs.plugins.spotless)
-    alias(libs.plugins.release)
     alias(libs.plugins.publish)
     alias(libs.plugins.metalava)
     alias(libs.plugins.dokka)

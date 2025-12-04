@@ -6,5 +6,5 @@ plugins {
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.spotless)
     alias(libs.plugins.kotlin.compose) apply false
-    alias(libs.plugins.release) apply false
+    alias(libs.plugins.release)
 }
