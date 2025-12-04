@@ -242,7 +242,7 @@ class TerminalEmulator(
 
     override fun damage(startRow: Int, endRow: Int, startCol: Int, endCol: Int): Int {
         synchronized(damageLock) {
-            pendingDamageRegions.add(DamageRegion(startRow, endRow, startCol, endCol))
+            addDamageRegion(startRow, endRow, startCol, endCol)
             if (!damagePosted) {
                 handler.post { processPendingUpdates() }
                 damagePosted = true
@@ -542,6 +542,49 @@ class TerminalEmulator(
     // ================================================================================
     // Helper methods
     // ================================================================================
+
+    /**
+     * Add a damage region, coalescing with existing regions where possible.
+     *
+     * This prevents unbounded growth of damage regions during rapid updates
+     * (like cacafire). Regions are coalesced if they overlap or touch on row boundaries.
+     *
+     * MUST be called with damageLock held.
+     */
+    private fun addDamageRegion(startRow: Int, endRow: Int, startCol: Int, endCol: Int) {
+        // If list is getting large, coalesce more aggressively
+        if (pendingDamageRegions.size > 100) {
+            // Just mark entire screen as damaged to avoid O(n²) coalescing
+            pendingDamageRegions.clear()
+            pendingDamageRegions.add(DamageRegion(0, rows, 0, cols))
+            return
+        }
+
+        // Try to merge with existing regions
+        var merged = false
+        for (i in pendingDamageRegions.indices) {
+            val existing = pendingDamageRegions[i]
+
+            // Check if regions overlap or touch on row boundaries
+            val rowsOverlap = !(endRow < existing.startRow || startRow > existing.endRow)
+
+            if (rowsOverlap) {
+                // Merge the regions
+                val newStartRow = minOf(startRow, existing.startRow)
+                val newEndRow = maxOf(endRow, existing.endRow)
+                val newStartCol = minOf(startCol, existing.startCol)
+                val newEndCol = maxOf(endCol, existing.endCol)
+
+                pendingDamageRegions[i] = DamageRegion(newStartRow, newEndRow, newStartCol, newEndCol)
+                merged = true
+                break
+            }
+        }
+
+        if (!merged) {
+            pendingDamageRegions.add(DamageRegion(startRow, endRow, startCol, endCol))
+        }
+    }
 
     private fun isCombiningCharacter(char: Char): Boolean {
         return UCharacter.hasBinaryProperty(char.code, UProperty.GRAPHEME_EXTEND)
