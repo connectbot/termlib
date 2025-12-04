@@ -27,7 +27,8 @@ import androidx.compose.ui.graphics.Color
 internal data class TerminalLine(
     val row: Int,
     val cells: List<Cell>,
-    val lastModified: Long = System.nanoTime()
+    val lastModified: Long = System.nanoTime(),
+    val semanticSegments: List<SemanticSegment> = emptyList()
 ) {
     /**
      * Get the text content of this line as a string.
@@ -40,6 +41,33 @@ internal data class TerminalLine(
             }
         }
     }
+
+    /**
+     * Get the semantic type at a specific column.
+     * Returns DEFAULT if no segment covers that column.
+     */
+    fun getSemanticTypeAt(col: Int): SemanticType {
+        return semanticSegments.firstOrNull { it.contains(col) }?.semanticType
+            ?: SemanticType.DEFAULT
+    }
+
+    /**
+     * Get all segments of a specific semantic type.
+     */
+    fun getSegmentsOfType(type: SemanticType): List<SemanticSegment> {
+        return semanticSegments.filter { it.semanticType == type }
+    }
+
+    /**
+     * Check if this line contains any prompt segments.
+     */
+    fun hasPrompt(): Boolean = semanticSegments.any { it.semanticType == SemanticType.PROMPT }
+
+    /**
+     * Get the prompt ID for this line (from the first segment that has one).
+     */
+    val promptId: Int
+        get() = semanticSegments.firstOrNull { it.promptId >= 0 }?.promptId ?: -1
 
     /**
      * A single cell in the terminal line with character and formatting.
@@ -73,7 +101,7 @@ internal data class TerminalLine(
                 row = row,
                 cells = List(cols) {
                     Cell(
-                        char = ' ',
+                        char = '\u0000',
                         fgColor = defaultFg,
                         bgColor = defaultBg
                     )

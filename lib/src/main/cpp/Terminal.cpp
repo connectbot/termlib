@@ -82,6 +82,10 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     if (!mKeyboardInputMethod) {
         LOGE("Failed to find onKeyboardInput method");
     }
+    mOscSequenceMethod = env->GetMethodID(callbacksClass, "onOscSequence", "(ILjava/lang/String;)I");
+    if (!mOscSequenceMethod) {
+        LOGE("Failed to find onOscSequence method");
+    }
 
     // Cache CellRun class and field IDs
     mCellRunClass = (jclass)env->NewGlobalRef(
@@ -193,13 +197,37 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     };
     vterm_screen_set_callbacks(mVts, &mScreenCallbacks, this);
 
+    // Set up OSC fallback handlers for shell integration
+    VTermState* state = vterm_obtain_state(mVt);
+    VTermStateFallbacks fallbacks = {
+        .control = nullptr,
+        .csi = nullptr,
+        .osc = termOscFallback,
+        .dcs = nullptr,
+        .apc = nullptr,
+        .pm = nullptr,
+        .sos = nullptr
+    };
+    mStateFallbacks = fallbacks;
+    vterm_state_set_unrecognised_fallbacks(state, &mStateFallbacks, this);
+
     // Configure damage merging
     vterm_screen_set_damage_merge(mVts, VTERM_DAMAGE_SCROLL);
 
-    // Reset and initialize
-    vterm_screen_reset(mVts, 1);
-
     LOGD("Terminal initialized successfully");
+}
+
+void Terminal::reset() {
+    std::lock_guard<std::recursive_mutex> lock(mLock);
+
+    if (!mVts) {
+        LOGE("reset: VTermScreen not initialized");
+        return;
+    }
+
+    // Reset the terminal screen - this will trigger damage callbacks
+    // Safe to call now that the Terminal object is fully constructed
+    vterm_screen_reset(mVts, 1);
 }
 
 Terminal::~Terminal() {
@@ -522,6 +550,16 @@ int Terminal::termSbPopline(int cols, VTermScreenCell* cells, void* user) {
 void Terminal::termOutput(const char* s, size_t len, void* user) {
     auto* term = static_cast<Terminal*>(user);
     term->invokeKeyboardOutput(s, len);
+}
+
+// OSC sequence fallback handler
+int Terminal::termOscFallback(int command, VTermStringFragment frag, void* user) {
+    auto* term = static_cast<Terminal*>(user);
+
+    // Convert VTermStringFragment to std::string
+    std::string payload(frag.str, frag.len);
+
+    return term->invokeOscSequence(command, payload);
 }
 
 // Java callback invocations
@@ -915,6 +953,32 @@ void Terminal::invokeKeyboardOutput(const char* data, size_t len) {
     env->DeleteLocalRef(array);
 }
 
+int Terminal::invokeOscSequence(int command, const std::string& payload) {
+    if (!mOscSequenceMethod) {
+        return 0;
+    }
+
+    JNIEnv* env;
+    if (mJavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) {
+        return 0;
+    }
+
+    // Convert payload to jstring
+    jstring payloadStr = env->NewStringUTF(payload.c_str());
+    if (!payloadStr) {
+        LOGE("Failed to create jstring for OSC payload");
+        return 0;
+    }
+
+    // Call the Java callback
+    jint result = env->CallIntMethod(mCallbacks, mOscSequenceMethod, command, payloadStr);
+
+    // Clean up
+    env->DeleteLocalRef(payloadStr);
+
+    return result;
+}
+
 // Helper functions
 bool Terminal::cellStyleEqual(const VTermScreenCell& a, const VTermScreenCell& b) {
     return memcmp(&a.fg, &b.fg, sizeof(VTermColor)) == 0 &&
@@ -1058,6 +1122,12 @@ Java_org_connectbot_terminal_TerminalNative_nativeSetDefaultColors(JNIEnv* /* en
                                                                    jlong ptr, jint fgColor, jint bgColor) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->setDefaultColors(static_cast<uint32_t>(fgColor), static_cast<uint32_t>(bgColor));
+}
+
+JNIEXPORT void JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeReset(JNIEnv* /* env */, jobject /* thiz */, jlong ptr) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    term->reset();
 }
 
 } // extern "C"

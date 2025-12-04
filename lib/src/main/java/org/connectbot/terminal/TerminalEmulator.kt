@@ -20,6 +20,7 @@ import android.icu.lang.UCharacter
 import android.icu.lang.UProperty
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -192,6 +193,9 @@ internal class TerminalEmulatorImpl(
     private var cursorMoved = false
     private var propertyChanged = false
 
+    // Pending semantic segments to apply during processPendingUpdates
+    private val pendingSemanticSegments = mutableListOf<PendingSemanticSegment>()
+
     // StateFlow for reactive state propagation
     private val _snapshot = MutableStateFlow(
         TerminalSnapshot.empty(initialRows, initialCols, defaultForeground, defaultBackground)
@@ -235,6 +239,9 @@ internal class TerminalEmulatorImpl(
 
     // Native terminal instance - MUST be initialized AFTER damageLock and other state
     private val terminalNative: TerminalNative = TerminalNative(this)
+
+    // Parser for OSC sequences
+    private val oscParser = OscParser()
 
     init {
         // Initialize terminal with specified dimensions
@@ -498,6 +505,64 @@ internal class TerminalEmulatorImpl(
         return 0
     }
 
+    override fun onOscSequence(command: Int, payload: String): Int {
+        val actions = synchronized(damageLock) {
+            oscParser.parse(command, payload, cursorRow, cursorCol, cols)
+        }
+
+        synchronized(damageLock) {
+            for (action in actions) {
+                when (action) {
+                    is OscParser.Action.AddSegment -> {
+                        addSemanticSegment(
+                            action.row,
+                            action.startCol,
+                            action.endCol,
+                            action.type,
+                            action.metadata,
+                            action.promptId
+                        )
+                    }
+                    is OscParser.Action.SetCursorShape -> {
+                        cursorShape = action.shape
+                        propertyChanged = true
+                        if (!damagePosted) {
+                            handler.post { processPendingUpdates() }
+                            damagePosted = true
+                        }
+                    }
+                }
+            }
+        }
+        return 1
+    }
+
+    /**
+     * Queue a semantic segment to be applied during the next processPendingUpdates.
+     * This ensures segments are applied when the actual text content is available.
+     */
+    private fun addSemanticSegment(
+        row: Int,
+        startCol: Int,
+        endCol: Int,
+        semanticType: SemanticType,
+        metadata: String?,
+        promptId: Int
+    ) {
+        synchronized(damageLock) {
+            pendingSemanticSegments.add(
+                PendingSemanticSegment(
+                    row = row,
+                    startCol = startCol,
+                    endCol = endCol,
+                    semanticType = semanticType,
+                    metadata = metadata,
+                    promptId = promptId
+                )
+            )
+        }
+    }
+
     // ================================================================================
     // Internal snapshot building
     // ================================================================================
@@ -506,7 +571,8 @@ internal class TerminalEmulatorImpl(
      * Process pending updates and emit new snapshot.
      * This runs on the Handler thread, NOT in the JNI callback.
      */
-    private fun processPendingUpdates() {
+    @VisibleForTesting
+    fun processPendingUpdates() {
         // Collect pending changes
         val damageRegions: List<DamageRegion>
         val needsUpdate: Boolean
@@ -531,9 +597,51 @@ internal class TerminalEmulatorImpl(
             }
         }
 
+        // Apply pending semantic segments now that text content is available
+        val segmentsToApply: List<PendingSemanticSegment>
+        synchronized(damageLock) {
+            segmentsToApply = pendingSemanticSegments.toList()
+            pendingSemanticSegments.clear()
+        }
+
+        for (segment in segmentsToApply) {
+            applySemanticSegment(segment)
+        }
+
         // Build and emit new snapshot
         val newSnapshot = buildSnapshot()
         _snapshot.value = newSnapshot
+    }
+
+    /**
+     * Apply a semantic segment to a line.
+     * This is called during processPendingUpdates when the actual text is available.
+     */
+    private fun applySemanticSegment(segment: PendingSemanticSegment) {
+        val row = segment.row
+
+        // Ensure row is valid
+        if (row < 0 || row >= currentLines.size) return
+
+        val line = currentLines[row]
+
+        // Create new segment
+        val newSegment = SemanticSegment(
+            startCol = segment.startCol,
+            endCol = segment.endCol,
+            semanticType = segment.semanticType,
+            metadata = segment.metadata,
+            promptId = segment.promptId
+        )
+
+        // Add to existing segments (sorted by startCol)
+        val updatedSegments = (line.semanticSegments + newSegment)
+            .sortedBy { it.startCol }
+
+        // Update the line with new segments
+        currentLines = currentLines.toMutableList().apply {
+            this[row] = line.copy(semanticSegments = updatedSegments)
+        }
     }
 
     /**
@@ -630,7 +738,7 @@ internal class TerminalEmulatorImpl(
             col += cellsInRun
         }
 
-        // Update cached line
+        // Update cached line (segments will be added later in processPendingUpdates)
         currentLines = currentLines.toMutableList().apply {
             this[row] = TerminalLine(row, cells)
         }
@@ -736,6 +844,20 @@ private data class DamageRegion(
     val endRow: Int,
     val startCol: Int,
     val endCol: Int
+)
+
+/**
+ * Represents a semantic segment waiting to be applied to a line.
+ * Segments are queued during OSC processing and applied during processPendingUpdates
+ * when the actual text content is available.
+ */
+private data class PendingSemanticSegment(
+    val row: Int,
+    val startCol: Int,
+    val endCol: Int,
+    val semanticType: SemanticType,
+    val metadata: String?,
+    val promptId: Int
 )
 
 /**

@@ -97,6 +97,16 @@ internal interface TerminalCallbacks {
      * @return 0 on success
      */
     fun onKeyboardInput(data: ByteArray): Int
+
+    /**
+     * Called when an OSC (Operating System Command) sequence is received.
+     * Used for shell integration (OSC 133) and iTerm2-style annotations (OSC 1337).
+     *
+     * @param command The OSC command number (e.g., 133, 1337)
+     * @param payload The payload string (e.g., "A" for OSC 133;A, "AddAnnotation=..." for OSC 1337)
+     * @return 1 if handled, 0 otherwise
+     */
+    fun onOscSequence(command: Int, payload: String): Int
 }
 
 /**

@@ -35,14 +35,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,7 +60,9 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -74,10 +74,13 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -186,6 +189,14 @@ fun Terminal(
                 keyboardType == android.content.res.Configuration.KEYBOARD_12KEY
     }
 
+    // IME text field state (hidden BasicTextField for capturing IME input)
+    var imeTextFieldValue by remember { mutableStateOf(TextFieldValue("")) }
+    val imeFocusRequester = remember { FocusRequester() }
+
+    // Review Mode state for accessibility
+    var isReviewMode by remember(terminalEmulator) { mutableStateOf(false) }
+    val reviewFocusRequester = remember { FocusRequester() }
+
     // Manage focus and IME visibility
     // Determine if IME should be shown:
     // 1. keyboardEnabled is true (master switch)
@@ -219,6 +230,28 @@ fun Terminal(
                 view.hideIme()
                 android.util.Log.d("Terminal", "IME hide completed")
                 onImeVisibilityChanged(false)
+            }
+        }
+    }
+
+    // Manage focus based on Review Mode
+    LaunchedEffect(isReviewMode) {
+        if (isReviewMode) {
+            // Entering Review Mode: hide keyboard, focus on accessibility overlay
+            keyboardController?.hide()
+            delay(100) // Allow UI to settle
+            try {
+                reviewFocusRequester.requestFocus()
+            } catch (e: IllegalStateException) {
+                // Focus requester not attached yet, ignore
+            }
+        } else {
+            // Exiting Review Mode: return focus to input field if keyboard enabled
+            if (keyboardEnabled && shouldShowIme) {
+                delay(100)
+                imeFocusRequester.requestFocus()
+                delay(50)
+                keyboardController?.show()
             }
         }
     }
@@ -300,7 +333,28 @@ fun Terminal(
                 if (keyboardEnabled) {
                     Modifier
                         .focusable()
-                        .onKeyEvent { keyboardHandler.onKeyEvent(it) }
+                        .onPreviewKeyEvent { event ->
+                            // In Review Mode, let accessibility system handle navigation keys
+                            if (isReviewMode) {
+                                // Allow arrow keys, Page Up/Down to navigate accessibility tree
+                                when (event.key) {
+                                    Key.DirectionUp,
+                                    Key.DirectionDown,
+                                    Key.DirectionLeft,
+                                    Key.DirectionRight,
+                                    Key.PageUp,
+                                    Key.PageDown -> false // Don't consume - let system handle
+                                    else -> {
+                                        // Any other key exits Review Mode and goes to shell
+                                        isReviewMode = false
+                                        keyboardHandler.onKeyEvent(event)
+                                    }
+                                }
+                            } else {
+                                // Input Mode: send all keys to shell
+                                keyboardHandler.onKeyEvent(event)
+                            }
+                        }
                 } else {
                     Modifier
                 }
@@ -373,7 +427,7 @@ fun Terminal(
         // Draw terminal content with context menu overlay
         Box(modifier = Modifier.fillMaxSize()) {
             Box(
-                modifier = if (forcedSize != null && !isZooming && zoomScale == 1f) {
+                modifier = (if (forcedSize != null && !isZooming && zoomScale == 1f) {
                     // Add border outside the terminal content (only when not zooming)
                     Modifier
                         .size(
@@ -386,19 +440,7 @@ fun Terminal(
                         )
                 } else {
                     Modifier.fillMaxSize()
-                }
-            ) {
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            translationX = zoomOffset.x * zoomScale
-                            translationY = zoomOffset.y * zoomScale
-                            scaleX = zoomScale
-                            scaleY = zoomScale
-                            transformOrigin = zoomOrigin
-                        }
-                        .pointerInput(terminalEmulator, baseCharHeight) {
+                }).pointerInput(terminalEmulator, baseCharHeight) {
                             val touchSlopSquared =
                                 viewConfiguration.touchSlop * viewConfiguration.touchSlop
                             coroutineScope {
@@ -650,6 +692,20 @@ fun Terminal(
                                 }
                             }
                         }
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clearAndSetSemantics {
+                            // Hide Canvas from accessibility tree - AccessibilityOverlay provides semantic structure
+                        }
+                        .graphicsLayer {
+                            translationX = zoomOffset.x * zoomScale
+                            translationY = zoomOffset.y * zoomScale
+                            scaleX = zoomScale
+                            scaleY = zoomScale
+                            transformOrigin = zoomOrigin
+                        }
                 ) {
                     // Fill background
                     drawRect(
@@ -710,6 +766,27 @@ fun Terminal(
                             )
                         }
                     }
+                }
+
+                // Accessibility overlay - invisible semantic layer for screen readers
+                AccessibilityOverlay(
+                    screenState = screenState,
+                    charHeight = baseCharHeight,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .focusRequester(reviewFocusRequester)
+                        .focusable(),
+                    onToggleReviewMode = { isReviewMode = !isReviewMode },
+                    isReviewMode = isReviewMode
+                )
+
+                // Live Output Region - only active in Input Mode
+                if (!isReviewMode && keyboardEnabled) {
+                    LiveOutputRegion(
+                        screenState = screenState,
+                        enabled = true,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
         }

@@ -44,6 +44,9 @@ public:
     int setPaletteColors(const uint32_t* colors, int count);
     int setDefaultColors(uint32_t fgColor, uint32_t bgColor);
 
+    // Initialize the terminal screen (must be called after construction)
+    void reset();
+
 private:
     // libvterm screen callbacks (called by libvterm)
     static int termDamage(VTermRect rect, void* user);
@@ -57,6 +60,9 @@ private:
     // libvterm output callback (keyboard generates this)
     static void termOutput(const char* s, size_t len, void* user);
 
+    // libvterm state fallback for OSC sequences
+    static int termOscFallback(int command, VTermStringFragment frag, void* user);
+
     // Java callback invocation helpers
     void invokeDamage(int startRow, int endRow, int startCol, int endCol);
     int invokeMoverect(VTermRect dest, VTermRect src);
@@ -66,6 +72,7 @@ private:
     void invokePushScrollbackLine(int cols, const VTermScreenCell* cells);
     int invokePopScrollbackLine(int cols, VTermScreenCell* cells);
     void invokeKeyboardOutput(const char* data, size_t len);
+    int invokeOscSequence(int command, const std::string& payload);
 
     // Helper functions
     static bool cellStyleEqual(const VTermScreenCell& a, const VTermScreenCell& b);
@@ -75,6 +82,7 @@ private:
     VTerm* mVt;
     VTermScreen* mVts;
     VTermScreenCallbacks mScreenCallbacks{};
+    VTermStateFallbacks mStateFallbacks{};
 
     // Terminal dimensions
     int mRows;
@@ -91,6 +99,7 @@ private:
     jmethodID mPushScrollbackMethod;
     jmethodID mPopScrollbackMethod;
     jmethodID mKeyboardInputMethod;
+    jmethodID mOscSequenceMethod;
 
     // Cached Java class and field IDs for CellRun
     jclass mCellRunClass;

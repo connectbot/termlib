@@ -32,7 +32,7 @@ import java.nio.ByteBuffer
  * - Callbacks MUST NOT call back into Terminal methods (will deadlock)
  * - Safe to call from multiple threads (serialized by native mutex)
  */
-internal class TerminalNative(private val callbacks: TerminalCallbacks) : AutoCloseable {
+internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private var nativePtr: Long = 0
 
     init {
@@ -40,6 +40,9 @@ internal class TerminalNative(private val callbacks: TerminalCallbacks) : AutoCl
         if (nativePtr == 0L) {
             throw RuntimeException("Failed to initialize native terminal")
         }
+        // Reset the terminal after both native and Kotlin objects are fully initialized
+        // This ensures callbacks won't be invoked during construction
+        nativeReset(nativePtr)
     }
 
     /**
@@ -179,6 +182,7 @@ internal class TerminalNative(private val callbacks: TerminalCallbacks) : AutoCl
     // Native method declarations
     private external fun nativeInit(callbacks: TerminalCallbacks): Long
     private external fun nativeDestroy(ptr: Long): Int
+    private external fun nativeReset(ptr: Long)
     private external fun nativeWriteInputBuffer(ptr: Long, buffer: ByteBuffer, length: Int): Int
     private external fun nativeWriteInputArray(ptr: Long, data: ByteArray, offset: Int, length: Int): Int
     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
@@ -190,7 +194,11 @@ internal class TerminalNative(private val callbacks: TerminalCallbacks) : AutoCl
 
     companion object {
         init {
-            System.loadLibrary("jni_cb_term")
+            try {
+                System.loadLibrary("jni_cb_term")
+            } catch (e: Exception) {
+                System.err.println("Failed to load JNI library: ${e.message}")
+            }
         }
     }
 }
