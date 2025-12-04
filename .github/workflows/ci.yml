@@ -138,7 +138,7 @@ jobs:
         run: |
           echo "${{ secrets.MAVEN_GPG_PRIVATE_KEY }}" > ~/.gradle/secring.gpg.b64
           base64 -d ~/.gradle/secring.gpg.b64 > ~/.gradle/secring.gpg
-          ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository -PsonatypeUsername=${SONATYPE_USERNAME} -PsonatypePassword=${SONATYPE_PASSWORD} -Psigning.keyId=${GPG_KEYID} -Psigning.secretKeyRingFile=$(echo ~/.gradle/secring.gpg) -Psigning.password=${GPG_PASSWORD} --no-configuration-cache
+          ./gradlew publishToMavenCentral -PmavenCentralUsername=${SONATYPE_USERNAME} -PmavenCentralPassword=${SONATYPE_PASSWORD} -Psigning.keyId=${GPG_KEYID} -Psigning.secretKeyRingFile=$(echo ~/.gradle/secring.gpg) -Psigning.password=${GPG_PASSWORD} --no-configuration-cache
           rm -f ~/.gradle/secring.gpg.b64 ~/.gradle/secring.gpg
         env:
           GPG_KEYID: ${{ secrets.MAVEN_GPG_KEYID }}
