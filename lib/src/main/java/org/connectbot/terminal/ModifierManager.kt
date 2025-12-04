@@ -16,34 +16,12 @@
  */
 package org.connectbot.terminal
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-
 /**
- * Manages sticky modifier key state for terminal keyboard input.
+ * Manages modifier key state for terminal keyboard input. This can be used to combine some
+ * external state about the Ctrl, Alt, and Shift keys. For instance, combining a keyboard with an
+ * on-screen button.
  *
- * Provides a 3-state toggle system for Ctrl, Alt, and Shift modifiers:
- * - OFF: Modifier not active
- * - TRANSIENT: One-shot modifier (clears after next key press)
- * - LOCKED: Sticky modifier (stays active until explicitly toggled off)
- *
- * This enables on-screen keyboard buttons that can be tapped to activate
- * modifiers temporarily or locked on for multiple key presses.
- *
- * Example usage:
- * ```kotlin
- * val modifierManager = ModifierManager().apply {
- *     setStickyModifiers(ctrl = true, alt = true, shift = true)
- * }
- * Terminal(…, modifierManager = modifierManager)
- *
- * // User taps Ctrl button in UI
- * modifierManager.metaPress(ModifierManager.CTRL_ON, forceSticky = true)
- *
- * // User presses 'C' key which internally calls
- * keyboardHandler.onKeyEvent(event)  // Sends Ctrl+C, clears transient Ctrl
- * ```
+ * @see TerminalEmulatorFactory.create
  */
 interface ModifierManager {
     /**

@@ -1,4 +1,3 @@
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -138,6 +137,8 @@ dependencies {
 val gitHubUrl = "https://github.com/connectbot/termlib"
 
 dokka {
+    moduleName.set("ConnectBot Terminal")
+
     dokkaSourceSets.named("main") {
         sourceLink {
             includes.from("README.md")
