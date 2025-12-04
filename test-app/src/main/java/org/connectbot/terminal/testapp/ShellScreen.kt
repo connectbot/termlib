@@ -18,8 +18,6 @@ package org.connectbot.terminal.testapp
 
 import android.graphics.Typeface
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,10 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import org.connectbot.terminal.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.connectbot.terminal.Terminal
+import org.connectbot.terminal.TerminalEmulator
+import org.connectbot.terminal.TerminalEmulatorFactory
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -288,7 +288,7 @@ fun ShellScreen() {
                         onCheckedChange = { keyboardEnabled = it }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Keyboard,
+                            imageVector = CustomIcons.Keyboard,
                             contentDescription = "Toggle Keyboard Input",
                             tint = if (keyboardEnabled)
                                 MaterialTheme.colorScheme.primary
