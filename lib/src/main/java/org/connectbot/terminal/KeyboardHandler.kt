@@ -321,7 +321,7 @@ internal class KeyboardHandler(
  * VTerm key codes from libvterm.
  * These correspond to VTermKey enum in vterm.h
  */
-internal object VTermKey {
+object VTermKey {
     const val NONE = 0
     const val ENTER = 1
     const val TAB = 2

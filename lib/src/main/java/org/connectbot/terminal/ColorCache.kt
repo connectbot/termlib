@@ -26,7 +26,7 @@ import androidx.compose.ui.graphics.Color
  * - Without cache: ~3,840 Color allocations per frame (60fps = ~230K/sec)
  * - With cache: ~0 allocations per frame after warmup
  */
-object ColorCache {
+internal object ColorCache {
     // Pre-computed 256-color xterm palette
     private val paletteCache = Array(256) { i ->
         when {

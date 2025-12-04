@@ -46,5 +46,55 @@ package org.connectbot.terminal {
     method @androidx.compose.runtime.Composable public static void Terminal(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional androidx.compose.ui.Modifier modifier, optional android.graphics.Typeface typeface, optional long initialFontSize, optional long minFontSize, optional long maxFontSize, optional long backgroundColor, optional long foregroundColor, optional boolean keyboardEnabled, optional androidx.compose.ui.focus.FocusRequester focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.Pair<java.lang.Integer,java.lang.Integer>? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager);
   }
 
+  public final class VTermKey {
+    field public static final int BACKSPACE = 3; // 0x3
+    field public static final int DEL = 10; // 0xa
+    field public static final int DOWN = 6; // 0x6
+    field public static final int END = 12; // 0xc
+    field public static final int ENTER = 1; // 0x1
+    field public static final int ESCAPE = 4; // 0x4
+    field public static final int FUNCTION_0 = 15; // 0xf
+    field public static final int FUNCTION_1 = 16; // 0x10
+    field public static final int FUNCTION_10 = 25; // 0x19
+    field public static final int FUNCTION_11 = 26; // 0x1a
+    field public static final int FUNCTION_12 = 27; // 0x1b
+    field public static final int FUNCTION_2 = 17; // 0x11
+    field public static final int FUNCTION_3 = 18; // 0x12
+    field public static final int FUNCTION_4 = 19; // 0x13
+    field public static final int FUNCTION_5 = 20; // 0x14
+    field public static final int FUNCTION_6 = 21; // 0x15
+    field public static final int FUNCTION_7 = 22; // 0x16
+    field public static final int FUNCTION_8 = 23; // 0x17
+    field public static final int FUNCTION_9 = 24; // 0x18
+    field public static final int HOME = 11; // 0xb
+    field public static final int INS = 9; // 0x9
+    field public static final org.connectbot.terminal.VTermKey INSTANCE;
+    field public static final int KP_0 = 28; // 0x1c
+    field public static final int KP_1 = 29; // 0x1d
+    field public static final int KP_2 = 30; // 0x1e
+    field public static final int KP_3 = 31; // 0x1f
+    field public static final int KP_4 = 32; // 0x20
+    field public static final int KP_5 = 33; // 0x21
+    field public static final int KP_6 = 34; // 0x22
+    field public static final int KP_7 = 35; // 0x23
+    field public static final int KP_8 = 36; // 0x24
+    field public static final int KP_9 = 37; // 0x25
+    field public static final int KP_COMMA = 40; // 0x28
+    field public static final int KP_DIVIDE = 43; // 0x2b
+    field public static final int KP_ENTER = 44; // 0x2c
+    field public static final int KP_EQUAL = 45; // 0x2d
+    field public static final int KP_MINUS = 41; // 0x29
+    field public static final int KP_MULT = 38; // 0x26
+    field public static final int KP_PERIOD = 42; // 0x2a
+    field public static final int KP_PLUS = 39; // 0x27
+    field public static final int LEFT = 7; // 0x7
+    field public static final int NONE = 0; // 0x0
+    field public static final int PAGEDOWN = 14; // 0xe
+    field public static final int PAGEUP = 13; // 0xd
+    field public static final int RIGHT = 8; // 0x8
+    field public static final int TAB = 2; // 0x2
+    field public static final int UP = 5; // 0x5
+  }
+
 }
 
