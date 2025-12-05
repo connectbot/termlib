@@ -35,8 +35,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -77,10 +76,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -190,10 +185,6 @@ fun Terminal(
                 keyboardType == android.content.res.Configuration.KEYBOARD_12KEY
     }
 
-    // IME text field state (hidden BasicTextField for capturing IME input)
-    var imeTextFieldValue by remember { mutableStateOf(TextFieldValue("")) }
-    val imeFocusRequester = remember { FocusRequester() }
-
     // Determine if IME should be shown
     // IME is shown when:
     // 1. keyboardEnabled is true (master switch)
@@ -213,9 +204,9 @@ fun Terminal(
 
         if (shouldShowIme) {
             // Need to show IME - request focus and show keyboard
-            // Use a small delay to ensure the BasicTextField is ready
+            // Use a small delay to ensure the AndroidView is ready
             delay(100)
-            imeFocusRequester.requestFocus()
+            focusRequester.requestFocus()
             delay(50)
             keyboardController?.show()
         } else {
@@ -300,7 +291,6 @@ fun Terminal(
             .then(
                 if (keyboardEnabled) {
                     Modifier
-                        .focusRequester(focusRequester)
                         .focusable()
                         .onKeyEvent { keyboardHandler.onKeyEvent(it) }
                 } else {
@@ -631,6 +621,10 @@ fun Terminal(
                                             if (selectionManager.mode != SelectionMode.NONE) {
                                                 selectionManager.clearSelection()
                                             } else {
+                                                // Request focus when terminal is tapped to show keyboard
+                                                if (keyboardEnabled) {
+                                                    focusRequester.requestFocus()
+                                                }
                                                 onTerminalTap()
                                             }
                                         }
@@ -752,29 +746,24 @@ fun Terminal(
             }
         }
 
-        // Hidden BasicTextField for IME (software keyboard) input
+        // Hidden AndroidView with custom InputConnection for IME (software keyboard) input
+        // This provides proper backspace, enter key, and keyboard type handling
         if (keyboardEnabled) {
-            BasicTextField(
-                value = imeTextFieldValue,
-                onValueChange = { newValue ->
-                    if (newValue.text.isNotEmpty()) {
-                        val input = newValue.text
-                        val bytes = input.toByteArray(Charsets.UTF_8)
-                        keyboardHandler.onTextInput(bytes)
-                        imeTextFieldValue = TextFieldValue("")
-                    } else {
-                        imeTextFieldValue = newValue
+            AndroidView(
+                factory = { context ->
+                    ImeInputView(context, keyboardHandler).apply {
+                        // Set up key event handling
+                        setOnKeyListener { _, keyCode, event ->
+                            keyboardHandler.onKeyEvent(
+                                androidx.compose.ui.input.key.KeyEvent(event)
+                            )
+                        }
                     }
                 },
                 modifier = Modifier
                     .size(1.dp)
-                    .focusRequester(imeFocusRequester),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Ascii,
-                    imeAction = ImeAction.None,
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = false
-                )
+                    .focusRequester(focusRequester)
+                    .focusable()
             )
         }
     }
