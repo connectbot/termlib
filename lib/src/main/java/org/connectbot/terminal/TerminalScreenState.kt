@@ -40,8 +40,15 @@ import androidx.compose.runtime.setValue
  */
 @Stable
 internal class TerminalScreenState(
-    val snapshot: TerminalSnapshot
+    initialSnapshot: TerminalSnapshot
 ) {
+    /**
+     * The current immutable terminal snapshot.
+     * Updated via updateSnapshot() to preserve scroll position across snapshot changes.
+     */
+    var snapshot by mutableStateOf(initialSnapshot)
+        private set
+
     /**
      * Current scroll position in the scrollback buffer.
      * 0 = bottom (current screen), >0 = scrolled back in history
@@ -131,6 +138,16 @@ internal class TerminalScreenState(
      * Check if currently scrolled to the bottom.
      */
     fun isAtBottom(): Boolean = scrollbackPosition == 0
+
+    /**
+     * Update the snapshot while preserving UI state (scroll position).
+     * This allows the terminal content to update without resetting the scroll position.
+     *
+     * @param newSnapshot The new snapshot to use
+     */
+    internal fun updateSnapshot(newSnapshot: TerminalSnapshot) {
+        snapshot = newSnapshot
+    }
 }
 
 /**
@@ -150,7 +167,13 @@ internal fun rememberTerminalScreenState(
         terminalEmulator.snapshot
     }.collectAsState()
 
-    return remember(snapshot) {
+    // Create state instance once per emulator, but update its snapshot when it changes
+    val state = remember(terminalEmulator) {
         TerminalScreenState(snapshot)
     }
+
+    // Update the snapshot without recreating the state object (preserves scrollbackPosition)
+    state.updateSnapshot(snapshot)
+
+    return state
 }
