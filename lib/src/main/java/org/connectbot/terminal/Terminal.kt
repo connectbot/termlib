@@ -122,6 +122,7 @@ private const val CURSOR_BLINK_RATE_MS = 500L
  *                         Only applies when keyboardEnabled=true. Hardware keyboard always works when keyboardEnabled=true.
  * @param focusRequester Focus requester for keyboard input (if enabled)
  * @param onTerminalTap Callback for a simple tap event on the terminal (when no selection is active)
+ * @param onImeVisibilityChanged Callback invoked when IME visibility changes (true = shown, false = hidden)
  * @param forcedSize Force terminal to specific dimensions (rows, cols). When set, font size is calculated to fit.
  */
 @Composable
@@ -138,6 +139,7 @@ fun Terminal(
     showSoftKeyboard: Boolean = true,
     focusRequester: FocusRequester = remember { FocusRequester() },
     onTerminalTap: () -> Unit = {},
+    onImeVisibilityChanged: (Boolean) -> Unit = {},
     forcedSize: Pair<Int, Int>? = null,
     modifierManager: ModifierManager? = null
 ) {
@@ -212,10 +214,12 @@ fun Terminal(
                 delay(100)  // Wait for view to be ready
                 view.showIme()
                 android.util.Log.d("Terminal", "IME show completed")
+                onImeVisibilityChanged(true)
             } else {
                 android.util.Log.d("Terminal", "Hiding IME via InputMethodManager")
                 view.hideIme()
                 android.util.Log.d("Terminal", "IME hide completed")
+                onImeVisibilityChanged(false)
             }
         }
     }
