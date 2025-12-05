@@ -154,7 +154,7 @@ dokka {
 }
 
 mavenPublishing {
-    publishToMavenCentral(automaticRelease = true)
+    publishToMavenCentral(automaticRelease = true, validateDeployment = false)
     signAllPublications()
 
     coordinates(groupId = "org.connectbot", artifactId = "termlib")
