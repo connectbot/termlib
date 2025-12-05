@@ -454,10 +454,12 @@ fun Terminal(
                                     }
 
                                     // 2. Start long press detection for selection
+                                    // Only start selection if no selection is already active
                                     var longPressDetected = false
                                     val longPressJob = launch {
                                         delay(viewConfiguration.longPressTimeoutMillis)
-                                        if (gestureType == GestureType.Undetermined) {
+                                        if (gestureType == GestureType.Undetermined &&
+                                            selectionManager.mode == SelectionMode.NONE) {
                                             longPressDetected = true
                                             gestureType = GestureType.Selection
 
