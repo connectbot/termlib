@@ -185,33 +185,38 @@ fun Terminal(
                 keyboardType == android.content.res.Configuration.KEYBOARD_12KEY
     }
 
-    // Determine if IME should be shown
-    // IME is shown when:
+    // Manage focus and IME visibility
+    // Determine if IME should be shown:
     // 1. keyboardEnabled is true (master switch)
     // 2. showSoftKeyboard is true (user wants IME visible)
-    // Note: We don't check hasHardwareKeyboard because hardware keyboard users may still
-    // want IME for special input methods (Chinese, Japanese, emoji, etc.)
     val shouldShowIme = keyboardEnabled && showSoftKeyboard
 
-    // Manage focus and IME visibility
-    // Using SideEffect + LaunchedEffect combo for reliable keyboard control
-    LaunchedEffect(keyboardEnabled, shouldShowIme) {
-        if (!keyboardEnabled) {
-            // Keyboard disabled entirely - hide IME
-            keyboardController?.hide()
-            return@LaunchedEffect
-        }
+    // Keep reference to ImeInputView for controlling IME
+    var imeInputView by remember { mutableStateOf<ImeInputView?>(null) }
 
-        if (shouldShowIme) {
-            // Need to show IME - request focus and show keyboard
-            // Use a small delay to ensure the AndroidView is ready
-            delay(100)
-            focusRequester.requestFocus()
-            delay(50)
-            keyboardController?.show()
-        } else {
-            // Need to hide IME - just hide, don't clear focus (hardware keyboard needs it)
-            keyboardController?.hide()
+    // Cleanup IME when component is disposed
+    DisposableEffect(imeInputView) {
+        onDispose {
+            android.util.Log.d("Terminal", "Disposing Terminal - hiding IME")
+            imeInputView?.hideIme()
+        }
+    }
+
+    // React to IME state changes
+    LaunchedEffect(shouldShowIme, imeInputView) {
+        android.util.Log.d("Terminal", "IME state changed: shouldShowIme=$shouldShowIme (imeInputView=$imeInputView)")
+
+        imeInputView?.let { view ->
+            if (shouldShowIme) {
+                android.util.Log.d("Terminal", "Showing IME via InputMethodManager")
+                delay(100)  // Wait for view to be ready
+                view.showIme()
+                android.util.Log.d("Terminal", "IME show completed")
+            } else {
+                android.util.Log.d("Terminal", "Hiding IME via InputMethodManager")
+                view.hideIme()
+                android.util.Log.d("Terminal", "IME hide completed")
+            }
         }
     }
 
@@ -748,6 +753,7 @@ fun Terminal(
 
         // Hidden AndroidView with custom InputConnection for IME (software keyboard) input
         // This provides proper backspace, enter key, and keyboard type handling
+        // Must have non-zero size for Android to accept IME focus
         if (keyboardEnabled) {
             AndroidView(
                 factory = { context ->
@@ -758,12 +764,14 @@ fun Terminal(
                                 androidx.compose.ui.input.key.KeyEvent(event)
                             )
                         }
+                        // Store reference for IME control
+                        imeInputView = this
                     }
                 },
                 modifier = Modifier
                     .size(1.dp)
-                    .focusRequester(focusRequester)
                     .focusable()
+                    .focusRequester(focusRequester)
             )
         }
     }

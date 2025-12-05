@@ -22,6 +22,7 @@ import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputMethodManager
 
 /**
  * A minimal invisible View that provides proper IME input handling for terminal emulation.
@@ -31,6 +32,7 @@ import android.view.inputmethod.InputConnection
  * - Handles enter/return keys properly via sendKeyEvent
  * - Configures the keyboard as password-type to show number rows
  * - Disables text suggestions and autocorrect
+ * - Manages IME visibility using InputMethodManager for reliable show/hide
  *
  * Based on the ConnectBot v1.9.13 TerminalView implementation.
  */
@@ -39,9 +41,35 @@ internal class ImeInputView(
     private val keyboardHandler: KeyboardHandler
 ) : View(context) {
 
+    private val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+
     init {
         isFocusable = true
         isFocusableInTouchMode = true
+    }
+
+    /**
+     * Show the IME forcefully. This is more reliable than SoftwareKeyboardController.
+     */
+    @Suppress("DEPRECATION")
+    fun showIme() {
+        if (requestFocus()) {
+            inputMethodManager.showSoftInput(this, InputMethodManager.SHOW_FORCED)
+        }
+    }
+
+    /**
+     * Hide the IME.
+     */
+    fun hideIme() {
+        inputMethodManager.hideSoftInputFromWindow(windowToken, 0)
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // Always hide IME when view is detached to prevent SHOW_FORCED from keeping keyboard
+        // open after the app/activity is destroyed
+        hideIme()
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
