@@ -238,15 +238,14 @@ internal class TerminalEmulatorImpl(
     }
 
     // Native terminal instance - MUST be initialized AFTER damageLock and other state
-    private val terminalNative: TerminalNative = TerminalNative(this)
+    private val terminalNative by lazy {
+        TerminalNative(this).apply {
+            resize(initialRows, initialCols)
+        }
+    }
 
     // Parser for OSC sequences
     private val oscParser = OscParser()
-
-    init {
-        // Initialize terminal with specified dimensions
-        terminalNative.resize(initialRows, initialCols)
-    }
 
     // ================================================================================
     // Public API

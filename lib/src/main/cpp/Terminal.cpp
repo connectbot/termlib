@@ -214,20 +214,9 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     // Configure damage merging
     vterm_screen_set_damage_merge(mVts, VTERM_DAMAGE_SCROLL);
 
-    LOGD("Terminal initialized successfully");
-}
-
-void Terminal::reset() {
-    std::lock_guard<std::recursive_mutex> lock(mLock);
-
-    if (!mVts) {
-        LOGE("reset: VTermScreen not initialized");
-        return;
-    }
-
-    // Reset the terminal screen - this will trigger damage callbacks
-    // Safe to call now that the Terminal object is fully constructed
     vterm_screen_reset(mVts, 1);
+
+    LOGD("Terminal initialized successfully");
 }
 
 Terminal::~Terminal() {
@@ -1122,12 +1111,6 @@ Java_org_connectbot_terminal_TerminalNative_nativeSetDefaultColors(JNIEnv* /* en
                                                                    jlong ptr, jint fgColor, jint bgColor) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->setDefaultColors(static_cast<uint32_t>(fgColor), static_cast<uint32_t>(bgColor));
-}
-
-JNIEXPORT void JNICALL
-Java_org_connectbot_terminal_TerminalNative_nativeReset(JNIEnv* /* env */, jobject /* thiz */, jlong ptr) {
-    auto* term = reinterpret_cast<Terminal*>(ptr);
-    term->reset();
 }
 
 } // extern "C"

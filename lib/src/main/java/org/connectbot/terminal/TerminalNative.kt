@@ -40,9 +40,6 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
         if (nativePtr == 0L) {
             throw RuntimeException("Failed to initialize native terminal")
         }
-        // Reset the terminal after both native and Kotlin objects are fully initialized
-        // This ensures callbacks won't be invoked during construction
-        nativeReset(nativePtr)
     }
 
     /**
@@ -182,7 +179,6 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     // Native method declarations
     private external fun nativeInit(callbacks: TerminalCallbacks): Long
     private external fun nativeDestroy(ptr: Long): Int
-    private external fun nativeReset(ptr: Long)
     private external fun nativeWriteInputBuffer(ptr: Long, buffer: ByteBuffer, length: Int): Int
     private external fun nativeWriteInputArray(ptr: Long, data: ByteArray, offset: Int, length: Int): Int
     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
