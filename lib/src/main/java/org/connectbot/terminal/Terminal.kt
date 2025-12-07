@@ -874,7 +874,7 @@ fun TerminalWithAccessibility(
                     FloatingActionButton(
                         onClick = {
                             val selectedText =
-                                selectionManager.getSelectedText(screenState.snapshot)
+                                selectionManager.getSelectedText(screenState.snapshot, screenState.scrollbackPosition)
                             clipboardManager.setText(AnnotatedString(selectedText))
                             selectionManager.clearSelection()
                         },

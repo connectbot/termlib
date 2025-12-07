@@ -124,7 +124,7 @@ internal class SelectionManager {
         }
     }
 
-    fun getSelectedText(snapshot: TerminalSnapshot): String {
+    fun getSelectedText(snapshot: TerminalSnapshot, scrollbackPosition: Int = 0): String {
         val range = selectionRange ?: return ""
 
         val minRow = minOf(range.startRow, range.endRow)
@@ -132,7 +132,17 @@ internal class SelectionManager {
 
         return buildString {
             for (row in minRow..maxRow) {
-                val line = snapshot.lines.getOrNull(row) ?: continue
+                // Get line from the appropriate source based on scrollback position
+                val line = if (scrollbackPosition > 0) {
+                    // Viewing scrollback: get from scrollback (stored newest-first, so reverse index)
+                    val scrollbackIndex = snapshot.scrollback.size - scrollbackPosition + row
+                    snapshot.scrollback.getOrNull(scrollbackIndex)
+                } else {
+                    // Viewing current screen: get from visible lines
+                    snapshot.lines.getOrNull(row)
+                }
+
+                if (line == null) continue
 
                 when (mode) {
                     SelectionMode.LINE -> {
