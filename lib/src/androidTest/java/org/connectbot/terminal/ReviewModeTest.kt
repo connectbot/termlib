@@ -45,9 +45,10 @@ class ReviewModeTest {
             delay(100)
 
             composeTestRule.setContent {
-                Terminal(
+                TerminalWithAccessibility(
                     terminalEmulator = emulator,
-                    keyboardEnabled = true
+                    keyboardEnabled = true,
+                    forceAccessibilityEnabled = true
                 )
             }
 
@@ -74,9 +75,10 @@ class ReviewModeTest {
             )
 
             composeTestRule.setContent {
-                Terminal(
+                TerminalWithAccessibility(
                     terminalEmulator = emulator,
-                    keyboardEnabled = true
+                    keyboardEnabled = true,
+                    forceAccessibilityEnabled = true
                 )
             }
 
@@ -102,9 +104,10 @@ class ReviewModeTest {
             )
 
             composeTestRule.setContent {
-                Terminal(
+                TerminalWithAccessibility(
                     terminalEmulator = emulator,
-                    keyboardEnabled = true
+                    keyboardEnabled = true,
+                    forceAccessibilityEnabled = true
                 )
             }
 
@@ -128,9 +131,10 @@ class ReviewModeTest {
             }
 
             composeTestRule.setContent {
-                Terminal(
+                TerminalWithAccessibility(
                     terminalEmulator = emulator,
-                    keyboardEnabled = true
+                    keyboardEnabled = true,
+                    forceAccessibilityEnabled = true
                 )
             }
 

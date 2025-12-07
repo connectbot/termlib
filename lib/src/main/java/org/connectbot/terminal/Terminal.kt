@@ -18,6 +18,7 @@ package org.connectbot.terminal
 
 import android.graphics.Typeface
 import android.text.TextPaint
+import androidx.annotation.VisibleForTesting
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.splineBasedDecay
 import androidx.compose.foundation.Canvas
@@ -145,6 +146,50 @@ fun Terminal(
     forcedSize: Pair<Int, Int>? = null,
     modifierManager: ModifierManager? = null
 ) {
+    TerminalWithAccessibility(
+        terminalEmulator = terminalEmulator,
+        modifier = modifier,
+        typeface = typeface,
+        initialFontSize = initialFontSize,
+        minFontSize = minFontSize,
+        maxFontSize = maxFontSize,
+        backgroundColor = backgroundColor,
+        foregroundColor = foregroundColor,
+        keyboardEnabled = keyboardEnabled,
+        showSoftKeyboard = showSoftKeyboard,
+        focusRequester = focusRequester,
+        onTerminalTap = onTerminalTap,
+        onImeVisibilityChanged = onImeVisibilityChanged,
+        forcedSize = forcedSize,
+        modifierManager = modifierManager
+    )
+}
+
+/**
+ * Used for testing accessibility.
+ *
+ * @see Terminal
+ */
+@VisibleForTesting
+@Composable
+fun TerminalWithAccessibility(
+    terminalEmulator: TerminalEmulator,
+    modifier: Modifier = Modifier,
+    typeface: Typeface = Typeface.MONOSPACE,
+    initialFontSize: TextUnit = 11.sp,
+    minFontSize: TextUnit = 6.sp,
+    maxFontSize: TextUnit = 30.sp,
+    backgroundColor: Color = Color.Black,
+    foregroundColor: Color = Color.White,
+    keyboardEnabled: Boolean = false,
+    showSoftKeyboard: Boolean = true,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    onTerminalTap: () -> Unit = {},
+    onImeVisibilityChanged: (Boolean) -> Unit = {},
+    forcedSize: Pair<Int, Int>? = null,
+    modifierManager: ModifierManager? = null,
+    forceAccessibilityEnabled: Boolean? = null
+) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
             modifier = Modifier.fillMaxSize()
@@ -159,6 +204,10 @@ fun Terminal(
     val density = LocalDensity.current
     val clipboardManager = LocalClipboardManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    // Track accessibility state - only enable accessibility features when needed
+    val systemAccessibilityEnabled by rememberAccessibilityState()
+    val accessibilityEnabled = forceAccessibilityEnabled ?: systemAccessibilityEnabled
 
     // Observe terminal state via StateFlow
     val screenState = rememberTerminalScreenState(terminalEmulator)
@@ -768,25 +817,25 @@ fun Terminal(
                     }
                 }
 
-                // Accessibility overlay - invisible semantic layer for screen readers
-                AccessibilityOverlay(
-                    screenState = screenState,
-                    charHeight = baseCharHeight,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .focusRequester(reviewFocusRequester)
-                        .focusable(),
-                    onToggleReviewMode = { isReviewMode = !isReviewMode },
-                    isReviewMode = isReviewMode
-                )
-
-                // Live Output Region - only active in Input Mode
-                if (!isReviewMode && keyboardEnabled) {
-                    LiveOutputRegion(
+                if (accessibilityEnabled) {
+                    AccessibilityOverlay(
                         screenState = screenState,
-                        enabled = true,
-                        modifier = Modifier.fillMaxSize()
+                        charHeight = baseCharHeight,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .focusRequester(reviewFocusRequester)
+                            .focusable(),
+                        onToggleReviewMode = { isReviewMode = !isReviewMode },
+                        isReviewMode = isReviewMode
                     )
+
+                    if (!isReviewMode && keyboardEnabled) {
+                        LiveOutputRegion(
+                            screenState = screenState,
+                            enabled = true,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
         }

@@ -44,7 +44,10 @@ class AccessibilityOverlayTest {
             (emulator as TerminalEmulatorImpl).processPendingUpdates()
 
             composeTestRule.setContent {
-                Terminal(terminalEmulator = emulator)
+                TerminalWithAccessibility(
+                    terminalEmulator = emulator,
+                    forceAccessibilityEnabled = true
+                )
             }
 
             // Verify lines are accessible
@@ -67,7 +70,10 @@ class AccessibilityOverlayTest {
             (emulator as TerminalEmulatorImpl).processPendingUpdates()
 
             composeTestRule.setContent {
-                Terminal(terminalEmulator = emulator)
+                TerminalWithAccessibility(
+                    terminalEmulator = emulator,
+                    forceAccessibilityEnabled = true
+                )
             }
 
             // Should not crash with empty lines
@@ -87,7 +93,10 @@ class AccessibilityOverlayTest {
             (emulator as TerminalEmulatorImpl).processPendingUpdates()
 
             composeTestRule.setContent {
-                Terminal(terminalEmulator = emulator)
+                TerminalWithAccessibility(
+                    terminalEmulator = emulator,
+                    forceAccessibilityEnabled = true
+                )
             }
 
             // Plain text should be accessible
@@ -111,7 +120,10 @@ class AccessibilityOverlayTest {
             (emulator as TerminalEmulatorImpl).processPendingUpdates()
 
             composeTestRule.setContent {
-                Terminal(terminalEmulator = emulator)
+                TerminalWithAccessibility(
+                    terminalEmulator = emulator,
+                    forceAccessibilityEnabled = true
+                )
             }
 
             // All lines should be accessible
