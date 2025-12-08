@@ -132,10 +132,11 @@ internal fun AccessibilityOverlay(
                             })
 
                             // Toggle Review Mode
-                            add(CustomAccessibilityAction("Toggle Review Mode") {
-                                onToggleReviewMode()
-                                true
-                            })
+                            // TODO(Terminal): Figure out how to make Review Mode work better
+//                            add(CustomAccessibilityAction("Toggle Review Mode") {
+//                                onToggleReviewMode()
+//                                true
+//                            })
 
                             // Jump to Next Prompt
                             add(CustomAccessibilityAction("Jump to Next Prompt") {
