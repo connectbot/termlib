@@ -20,7 +20,70 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-internal enum class SelectionMode {
+/**
+ * Interface for controlling text selection in the terminal.
+ * This allows external components (UI chrome, keyboard handlers, accessibility) to control selection.
+ */
+interface SelectionController {
+    /**
+     * Check if selection mode is currently active.
+     */
+    val isSelectionActive: Boolean
+
+    /**
+     * Start selection mode at the current cursor position or center of screen.
+     * @param mode The selection mode to use (BLOCK or LINE)
+     */
+    fun startSelection(mode: SelectionMode = SelectionMode.BLOCK)
+
+    /**
+     * Toggle selection mode on/off. If off, turns it on. If on, turns it off.
+     */
+    fun toggleSelection()
+
+    /**
+     * Move the selection cursor up by one row.
+     */
+    fun moveSelectionUp()
+
+    /**
+     * Move the selection cursor down by one row.
+     */
+    fun moveSelectionDown()
+
+    /**
+     * Move the selection cursor left by one column.
+     */
+    fun moveSelectionLeft()
+
+    /**
+     * Move the selection cursor right by one column.
+     */
+    fun moveSelectionRight()
+
+    /**
+     * Toggle between BLOCK and LINE selection modes.
+     */
+    fun toggleSelectionMode()
+
+    /**
+     * Finish the selection (stop extending it, but keep it active for copying).
+     */
+    fun finishSelection()
+
+    /**
+     * Copy the selected text to clipboard and clear the selection.
+     * @return The selected text, or empty string if no selection
+     */
+    fun copySelection(): String
+
+    /**
+     * Clear the selection without copying.
+     */
+    fun clearSelection()
+}
+
+enum class SelectionMode {
     NONE,
     BLOCK,
     LINE
@@ -95,6 +158,62 @@ internal class SelectionManager {
     fun updateSelectionEnd(row: Int, col: Int) {
         val range = selectionRange ?: return
         selectionRange = range.copy(endRow = row, endCol = col)
+    }
+
+    fun moveSelectionUp(maxRow: Int) {
+        val range = selectionRange ?: return
+        if (isSelecting) {
+            // During selection, move the end point up
+            val newRow = (range.endRow - 1).coerceAtLeast(0)
+            selectionRange = range.copy(endRow = newRow)
+        } else {
+            // After selection is finished, move both start and end up
+            val newStartRow = (range.startRow - 1).coerceAtLeast(0)
+            val newEndRow = (range.endRow - 1).coerceAtLeast(0)
+            selectionRange = range.copy(startRow = newStartRow, endRow = newEndRow)
+        }
+    }
+
+    fun moveSelectionDown(maxRow: Int) {
+        val range = selectionRange ?: return
+        if (isSelecting) {
+            // During selection, move the end point down
+            val newRow = (range.endRow + 1).coerceAtMost(maxRow - 1)
+            selectionRange = range.copy(endRow = newRow)
+        } else {
+            // After selection is finished, move both start and end down
+            val newStartRow = (range.startRow + 1).coerceAtMost(maxRow - 1)
+            val newEndRow = (range.endRow + 1).coerceAtMost(maxRow - 1)
+            selectionRange = range.copy(startRow = newStartRow, endRow = newEndRow)
+        }
+    }
+
+    fun moveSelectionLeft(maxCol: Int) {
+        val range = selectionRange ?: return
+        if (isSelecting) {
+            // During selection, move the end point left
+            val newCol = (range.endCol - 1).coerceAtLeast(0)
+            selectionRange = range.copy(endCol = newCol)
+        } else {
+            // After selection is finished, move both start and end left
+            val newStartCol = (range.startCol - 1).coerceAtLeast(0)
+            val newEndCol = (range.endCol - 1).coerceAtLeast(0)
+            selectionRange = range.copy(startCol = newStartCol, endCol = newEndCol)
+        }
+    }
+
+    fun moveSelectionRight(maxCol: Int) {
+        val range = selectionRange ?: return
+        if (isSelecting) {
+            // During selection, move the end point right
+            val newCol = (range.endCol + 1).coerceAtMost(maxCol - 1)
+            selectionRange = range.copy(endCol = newCol)
+        } else {
+            // After selection is finished, move both start and end right
+            val newStartCol = (range.startCol + 1).coerceAtMost(maxCol - 1)
+            val newEndCol = (range.endCol + 1).coerceAtMost(maxCol - 1)
+            selectionRange = range.copy(startCol = newStartCol, endCol = newEndCol)
+        }
     }
 
     fun endSelection() {

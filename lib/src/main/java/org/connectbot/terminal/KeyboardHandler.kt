@@ -37,10 +37,14 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
  *                        If provided, sticky modifiers from UI buttons will be combined
  *                        with hardware keyboard modifiers. If null, only hardware
  *                        keyboard modifiers are used.
+ * @param selectionController Optional selection controller for keyboard-based selection.
+ *                            When provided and selection is active, arrow keys will move
+ *                            the selection instead of sending to terminal.
  */
 internal class KeyboardHandler(
     private val terminalEmulator: TerminalEmulator,
-    var modifierManager: ModifierManager? = null
+    var modifierManager: ModifierManager? = null,
+    var selectionController: SelectionController? = null
 ) {
 
     /**
@@ -56,6 +60,44 @@ internal class KeyboardHandler(
         val ctrl = event.isCtrlPressed
         val alt = event.isAltPressed
         val shift = event.isShiftPressed
+
+        // If selection is active, intercept arrow keys for selection movement
+        val selection = selectionController
+        if (selection != null && selection.isSelectionActive) {
+            when (key) {
+                Key.DirectionUp -> {
+                    selection.moveSelectionUp()
+                    return true
+                }
+                Key.DirectionDown -> {
+                    selection.moveSelectionDown()
+                    return true
+                }
+                Key.DirectionLeft -> {
+                    selection.moveSelectionLeft()
+                    return true
+                }
+                Key.DirectionRight -> {
+                    selection.moveSelectionRight()
+                    return true
+                }
+                Key.Enter -> {
+                    // Finish selection (stop extending, but keep selected for copying)
+                    selection.finishSelection()
+                    return true
+                }
+                Key.Escape -> {
+                    // Cancel selection
+                    selection.clearSelection()
+                    return true
+                }
+                // Any other key clears selection and goes to terminal
+                else -> {
+                    selection.clearSelection()
+                    // Fall through to normal key handling
+                }
+            }
+        }
 
         // Build modifier mask for libvterm (combine sticky + hardware modifiers)
         val modifiers = buildModifierMask(ctrl, alt, shift)

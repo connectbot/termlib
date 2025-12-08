@@ -247,6 +247,7 @@ private const val FONT_SIZE_SEARCH_EPSILON = 0.1f
  * @param onTerminalTap Callback for a simple tap event on the terminal (when no selection is active)
  * @param onImeVisibilityChanged Callback invoked when IME visibility changes (true = shown, false = hidden)
  * @param forcedSize Force terminal to specific dimensions (rows, cols). When set, font size is calculated to fit.
+ * @param onSelectionControllerAvailable Optional callback providing access to the SelectionController for controlling selection mode
  */
 @Composable
 fun Terminal(
@@ -264,7 +265,8 @@ fun Terminal(
     onTerminalTap: () -> Unit = {},
     onImeVisibilityChanged: (Boolean) -> Unit = {},
     forcedSize: Pair<Int, Int>? = null,
-    modifierManager: ModifierManager? = null
+    modifierManager: ModifierManager? = null,
+    onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null
 ) {
     TerminalWithAccessibility(
         terminalEmulator = terminalEmulator,
@@ -281,7 +283,8 @@ fun Terminal(
         onTerminalTap = onTerminalTap,
         onImeVisibilityChanged = onImeVisibilityChanged,
         forcedSize = forcedSize,
-        modifierManager = modifierManager
+        modifierManager = modifierManager,
+        onSelectionControllerAvailable = onSelectionControllerAvailable
     )
 }
 
@@ -308,7 +311,8 @@ fun TerminalWithAccessibility(
     onImeVisibilityChanged: (Boolean) -> Unit = {},
     forcedSize: Pair<Int, Int>? = null,
     modifierManager: ModifierManager? = null,
-    forceAccessibilityEnabled: Boolean? = null
+    forceAccessibilityEnabled: Boolean? = null,
+    onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -332,6 +336,7 @@ fun TerminalWithAccessibility(
     // Observe terminal state via StateFlow
     val screenState = rememberTerminalScreenState(terminalEmulator)
 
+    // Keyboard handler (will be updated with selectionController after it's created)
     val keyboardHandler = remember(terminalEmulator) {
         KeyboardHandler(terminalEmulator, modifierManager)
     }
@@ -469,6 +474,74 @@ fun TerminalWithAccessibility(
     // Selection manager
     val selectionManager = remember(terminalEmulator) {
         SelectionManager()
+    }
+
+    // Selection controller - expose API for external control
+    val selectionController = remember(terminalEmulator, selectionManager) {
+        object : SelectionController {
+            override val isSelectionActive: Boolean
+                get() = selectionManager.mode != SelectionMode.NONE
+
+            override fun startSelection(mode: SelectionMode) {
+                if (selectionManager.mode == SelectionMode.NONE) {
+                    // Start at cursor position or center of screen
+                    val row = screenState.snapshot.cursorRow.coerceIn(0, screenState.snapshot.rows - 1)
+                    val col = screenState.snapshot.cursorCol.coerceIn(0, screenState.snapshot.cols - 1)
+                    selectionManager.startSelection(row, col, mode)
+                }
+            }
+
+            override fun toggleSelection() {
+                if (selectionManager.mode == SelectionMode.NONE) {
+                    startSelection()
+                } else {
+                    clearSelection()
+                }
+            }
+
+            override fun moveSelectionUp() {
+                selectionManager.moveSelectionUp(screenState.snapshot.rows)
+            }
+
+            override fun moveSelectionDown() {
+                selectionManager.moveSelectionDown(screenState.snapshot.rows)
+            }
+
+            override fun moveSelectionLeft() {
+                selectionManager.moveSelectionLeft(screenState.snapshot.cols)
+            }
+
+            override fun moveSelectionRight() {
+                selectionManager.moveSelectionRight(screenState.snapshot.cols)
+            }
+
+            override fun toggleSelectionMode() {
+                selectionManager.toggleMode(screenState.snapshot.cols)
+            }
+
+            override fun finishSelection() {
+                selectionManager.endSelection()
+            }
+
+            override fun copySelection(): String {
+                val text = selectionManager.getSelectedText(screenState.snapshot, screenState.scrollbackPosition)
+                if (text.isNotEmpty()) {
+                    clipboardManager.setText(AnnotatedString(text))
+                    selectionManager.clearSelection()
+                }
+                return text
+            }
+
+            override fun clearSelection() {
+                selectionManager.clearSelection()
+            }
+        }
+    }
+
+    // Provide selection controller to caller and keyboard handler
+    LaunchedEffect(selectionController) {
+        keyboardHandler.selectionController = selectionController
+        onSelectionControllerAvailable?.invoke(selectionController)
     }
 
     // Coroutine scope for animations

@@ -36,7 +36,7 @@ import androidx.compose.ui.platform.LocalContext
  * @return State<Boolean> that tracks whether accessibility is enabled
  */
 @Composable
-fun rememberAccessibilityState(): State<Boolean> {
+internal fun rememberAccessibilityState(): State<Boolean> {
     val context = LocalContext.current
 
     val accessibilityManager = remember {

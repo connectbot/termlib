@@ -22,7 +22,7 @@ package org.connectbot.terminal
  * These types enable accessible navigation features like "jump to next prompt"
  * and provide context for screen readers.
  */
-enum class SemanticType {
+internal enum class SemanticType {
     /** Default content with no special semantic meaning */
     DEFAULT,
 
@@ -56,7 +56,7 @@ enum class SemanticType {
  * @param metadata Optional metadata (e.g., exit code for COMMAND_FINISHED)
  * @param promptId Groups segments that belong to the same command execution
  */
-data class SemanticSegment(
+internal data class SemanticSegment(
     val startCol: Int,
     val endCol: Int,
     val semanticType: SemanticType,
