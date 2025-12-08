@@ -18,6 +18,7 @@ package org.connectbot.terminal
 
 import android.graphics.Typeface
 import android.text.TextPaint
+import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.splineBasedDecay
@@ -77,7 +78,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -230,16 +230,7 @@ fun TerminalWithAccessibility(
     // Cursor blink state
     var cursorBlinkVisible by remember(terminalEmulator) { mutableStateOf(true) }
 
-    // Hardware keyboard detection
-    val configuration = LocalConfiguration.current
-    val hasHardwareKeyboard = remember(configuration) {
-        val keyboardType = configuration.keyboard
-        keyboardType == android.content.res.Configuration.KEYBOARD_QWERTY ||
-                keyboardType == android.content.res.Configuration.KEYBOARD_12KEY
-    }
-
     // IME text field state (hidden BasicTextField for capturing IME input)
-    var imeTextFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     val imeFocusRequester = remember { FocusRequester() }
 
     // Review Mode state for accessibility
@@ -258,26 +249,26 @@ fun TerminalWithAccessibility(
     // Cleanup IME when component is disposed
     DisposableEffect(imeInputView) {
         onDispose {
-            android.util.Log.d("Terminal", "Disposing Terminal - hiding IME")
+            Log.d("Terminal", "Disposing Terminal - hiding IME")
             imeInputView?.hideIme()
         }
     }
 
     // React to IME state changes
     LaunchedEffect(shouldShowIme, imeInputView) {
-        android.util.Log.d("Terminal", "IME state changed: shouldShowIme=$shouldShowIme (imeInputView=$imeInputView)")
+        Log.d("Terminal", "IME state changed: shouldShowIme=$shouldShowIme (imeInputView=$imeInputView)")
 
         imeInputView?.let { view ->
             if (shouldShowIme) {
-                android.util.Log.d("Terminal", "Showing IME via InputMethodManager")
+                Log.d("Terminal", "Showing IME via InputMethodManager")
                 delay(100)  // Wait for view to be ready
                 view.showIme()
-                android.util.Log.d("Terminal", "IME show completed")
+                Log.d("Terminal", "IME show completed")
                 onImeVisibilityChanged(true)
             } else {
-                android.util.Log.d("Terminal", "Hiding IME via InputMethodManager")
+                Log.d("Terminal", "Hiding IME via InputMethodManager")
                 view.hideIme()
-                android.util.Log.d("Terminal", "IME hide completed")
+                Log.d("Terminal", "IME hide completed")
                 onImeVisibilityChanged(false)
             }
         }
@@ -291,7 +282,7 @@ fun TerminalWithAccessibility(
             delay(100) // Allow UI to settle
             try {
                 reviewFocusRequester.requestFocus()
-            } catch (e: IllegalStateException) {
+            } catch (_: IllegalStateException) {
                 // Focus requester not attached yet, ignore
             }
         } else {
@@ -348,11 +339,6 @@ fun TerminalWithAccessibility(
     val baseCharBaseline = remember(textPaint) {
         -textPaint.fontMetrics.ascent
     }
-
-    // Actual dimensions with zoom applied
-    val charWidth = baseCharWidth * zoomScale
-    val charHeight = baseCharHeight * zoomScale
-    val charBaseline = baseCharBaseline * zoomScale
 
     // Scroll animation state
     val scrollOffset = remember(terminalEmulator) { Animatable(0f) }
@@ -896,7 +882,7 @@ fun TerminalWithAccessibility(
                 factory = { context ->
                     ImeInputView(context, keyboardHandler).apply {
                         // Set up key event handling
-                        setOnKeyListener { _, keyCode, event ->
+                        setOnKeyListener { _, _, event ->
                             keyboardHandler.onKeyEvent(
                                 androidx.compose.ui.input.key.KeyEvent(event)
                             )
@@ -1069,9 +1055,8 @@ private fun MagnifyingGlass(
             // Apply magnification and translate to center the touch point
             translate(-centerOffset.x * magnifierScale, -centerOffset.y * magnifierScale) {
                 scale(magnifierScale, magnifierScale) {
-                    // Calculate which rows and columns to draw
+                    // Calculate which rows to draw
                     val centerRow = (position.y / baseCharHeight).toInt().coerceIn(0, screenState.snapshot.rows - 1)
-                    val centerCol = (position.x / baseCharWidth).toInt().coerceIn(0, screenState.snapshot.cols - 1)
 
                     // Draw a few rows around the touch point
                     val rowRange = 3
