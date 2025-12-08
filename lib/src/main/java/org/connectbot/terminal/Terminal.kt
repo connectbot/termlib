@@ -103,6 +103,126 @@ private enum class GestureType {
 private const val CURSOR_BLINK_RATE_MS = 500L
 
 /**
+ * Amount of time to wait for second touch to detect multitouch gesture in milliseconds.
+ */
+private const val WAIT_FOR_SECOND_TOUCH_MS = 40L
+
+/**
+ * Text selection magnifier loupe size in dp.
+ */
+private const val MAGNIFIER_SIZE_DP = 100
+
+/**
+ * How much to scale up the text in the magnifier loupe.
+ */
+private const val MAGNIFIER_SCALE = 2.5f
+
+/**
+ * Delay in milliseconds before showing the IME (Input Method Editor).
+ */
+private const val IME_SHOW_DELAY_MS = 100L
+
+/**
+ * Delay in milliseconds to allow UI to settle before requesting focus.
+ */
+private const val UI_SETTLE_DELAY_MS = 100L
+
+/**
+ * Delay in milliseconds before showing the soft keyboard.
+ */
+private const val KEYBOARD_SHOW_DELAY_MS = 50L
+
+/**
+ * Border width for the terminal display in dp.
+ */
+private val TERMINAL_BORDER_WIDTH = 2.dp
+
+/**
+ * Minimum zoom scale for pinch-to-zoom gesture.
+ */
+private const val MIN_ZOOM_SCALE = 0.5f
+
+/**
+ * Maximum zoom scale for pinch-to-zoom gesture.
+ */
+private const val MAX_ZOOM_SCALE = 3f
+
+/**
+ * Size of the copy button when selection is active in dp.
+ */
+private val COPY_BUTTON_SIZE = 48.dp
+
+/**
+ * Vertical offset for the copy button above the selection in dp.
+ */
+private val COPY_BUTTON_OFFSET = 48.dp
+
+/**
+ * Background color for selected text (blue highlight).
+ */
+private val SELECTION_HIGHLIGHT_COLOR = Color(0xFF4A90E2)
+
+/**
+ * Touch radius in pixels for detecting selection handle touches.
+ */
+private const val HANDLE_HIT_RADIUS = 50f
+
+/**
+ * Vertical offset in dp to position the magnifier above the finger.
+ */
+private val MAGNIFIER_VERTICAL_OFFSET = 40.dp
+
+/**
+ * Center offset multiplier for magnifier positioning.
+ */
+private const val MAGNIFIER_CENTER_OFFSET_MULTIPLIER = 1.2f
+
+/**
+ * Border width for the magnifier loupe in dp.
+ */
+private val MAGNIFIER_BORDER_WIDTH = 2.dp
+
+/**
+ * Background alpha for the magnifier loupe (0.0 = transparent, 1.0 = opaque).
+ */
+private const val MAGNIFIER_BACKGROUND_ALPHA = 0.9f
+
+/**
+ * Number of rows to display on each side of the touch point in the magnifier.
+ */
+private const val MAGNIFIER_ROW_RANGE = 3
+
+/**
+ * Width of selection handles (teardrop shape) in dp.
+ */
+private val SELECTION_HANDLE_WIDTH = 24.dp
+
+/**
+ * Alpha value for the block cursor.
+ */
+private const val CURSOR_BLOCK_ALPHA = 0.7f
+
+/**
+ * Alpha value for the underline and bar cursors.
+ */
+private const val CURSOR_LINE_ALPHA = 0.9f
+
+/**
+ * Percentage of cell height for underline cursor (0.0 to 1.0).
+ */
+private const val CURSOR_UNDERLINE_HEIGHT_RATIO = 0.15f
+
+/**
+ * Percentage of cell width for bar cursor (0.0 to 1.0).
+ */
+private const val CURSOR_BAR_WIDTH_RATIO = 0.15f
+
+/**
+ * Convergence threshold for binary search when finding optimal font size.
+ */
+private const val FONT_SIZE_SEARCH_EPSILON = 0.1f
+
+/**
  * Terminal - A Jetpack Compose terminal screen component.
  *
  * This component:
@@ -261,7 +381,7 @@ fun TerminalWithAccessibility(
         imeInputView?.let { view ->
             if (shouldShowIme) {
                 Log.d("Terminal", "Showing IME via InputMethodManager")
-                delay(100)  // Wait for view to be ready
+                delay(IME_SHOW_DELAY_MS)
                 view.showIme()
                 Log.d("Terminal", "IME show completed")
                 onImeVisibilityChanged(true)
@@ -279,7 +399,7 @@ fun TerminalWithAccessibility(
         if (isReviewMode) {
             // Entering Review Mode: hide keyboard, focus on accessibility overlay
             keyboardController?.hide()
-            delay(100) // Allow UI to settle
+            delay(UI_SETTLE_DELAY_MS)
             try {
                 reviewFocusRequester.requestFocus()
             } catch (_: IllegalStateException) {
@@ -288,9 +408,9 @@ fun TerminalWithAccessibility(
         } else {
             // Exiting Review Mode: return focus to input field if keyboard enabled
             if (keyboardEnabled && shouldShowIme) {
-                delay(100)
+                delay(UI_SETTLE_DELAY_MS)
                 imeFocusRequester.requestFocus()
-                delay(50)
+                delay(KEYBOARD_SHOW_DELAY_MS)
                 keyboardController?.show()
             }
         }
@@ -470,7 +590,7 @@ fun TerminalWithAccessibility(
                             height = with(density) { terminalHeightPx.toDp() }
                         )
                         .border(
-                            width = 2.dp,
+                            width = TERMINAL_BORDER_WIDTH,
                             color = Color(0xFF4CAF50).copy(alpha = 0.6f)
                         )
                 } else {
@@ -556,7 +676,9 @@ fun TerminalWithAccessibility(
                                     }
 
                                     // 3. Check for multi-touch (zoom)
-                                    val secondPointer = withTimeoutOrNull(40) {
+                                    val secondPointer = withTimeoutOrNull(
+                                        WAIT_FOR_SECOND_TOUCH_MS
+                                    ) {
                                         awaitPointerEvent().changes.firstOrNull { it.id != down.id && it.pressed }
                                     }
 
@@ -584,7 +706,7 @@ fun TerminalWithAccessibility(
 
                                                 val oldScale = zoomScale
                                                 val newScale =
-                                                    (oldScale * gestureZoom).coerceIn(0.5f, 3f)
+                                                    (oldScale * gestureZoom).coerceIn(MIN_ZOOM_SCALE, MAX_ZOOM_SCALE)
 
                                                 zoomOffset += gesturePan
                                                 zoomScale = newScale
@@ -848,7 +970,7 @@ fun TerminalWithAccessibility(
                 // Position copy button above the selection
                 val endPosition = range.getEndPosition()
                 val buttonX = endPosition.second * baseCharWidth
-                val buttonY = endPosition.first * baseCharHeight - with(density) { 48.dp.toPx() }
+                val buttonY = endPosition.first * baseCharHeight - with(density) { COPY_BUTTON_OFFSET.toPx() }
 
                 Box(
                     modifier = Modifier
@@ -864,7 +986,7 @@ fun TerminalWithAccessibility(
                             clipboardManager.setText(AnnotatedString(selectedText))
                             selectionManager.clearSelection()
                         },
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(COPY_BUTTON_SIZE),
                         containerColor = Color.White,
                         contentColor = Color.Black
                     ) {
@@ -929,7 +1051,7 @@ private fun DrawScope.drawLine(
         val bgColor = if (cell.reverse) cell.fgColor else cell.bgColor
 
         // Draw background (with selection highlight)
-        val finalBgColor = if (isSelected) Color(0xFF4A90E2) else bgColor
+        val finalBgColor = if (isSelected) SELECTION_HIGHLIGHT_COLOR else bgColor
         if (finalBgColor != defaultBg || isSelected) {
             drawRect(
                 color = finalBgColor,
@@ -974,7 +1096,7 @@ private fun isTouchingHandle(
     range: SelectionRange,
     charWidth: Float,
     charHeight: Float,
-    hitRadius: Float = 50f
+    hitRadius: Float = HANDLE_HIT_RADIUS
 ): Pair<Boolean, Boolean> {
     val startPos = Offset(
         range.startCol * charWidth + charWidth / 2,
@@ -1009,13 +1131,13 @@ private fun MagnifyingGlass(
     foregroundColor: Color,
     selectionManager: SelectionManager
 ) {
-    val magnifierSize = 100.dp
-    val magnifierScale = 2.5f
+    val magnifierSize = MAGNIFIER_SIZE_DP.dp
+    val magnifierScale = MAGNIFIER_SCALE
     val density = LocalDensity.current
     val magnifierSizePx = with(density) { magnifierSize.toPx() }
 
     // Position magnifying glass well above the finger (so it's visible)
-    val verticalOffset = with(density) { 40.dp.toPx() }
+    val verticalOffset = with(density) { MAGNIFIER_VERTICAL_OFFSET.toPx() }
     val magnifierPos = Offset(
         x = (position.x - magnifierSizePx / 2).coerceIn(0f, Float.MAX_VALUE),
         y = (position.y - verticalOffset - magnifierSizePx).coerceAtLeast(0f)
@@ -1023,8 +1145,8 @@ private fun MagnifyingGlass(
 
     // The actual touch point that should be centered in the magnifier
     val centerOffset = Offset(
-        x = position.x - (magnifierSizePx / magnifierScale) * 1.2f,
-        y = position.y - (magnifierSizePx / magnifierScale) * 1.2f,
+        x = position.x - (magnifierSizePx / magnifierScale) * MAGNIFIER_CENTER_OFFSET_MULTIPLIER,
+        y = position.y - (magnifierSizePx / magnifierScale) * MAGNIFIER_CENTER_OFFSET_MULTIPLIER,
     )
 
     Box(
@@ -1035,12 +1157,12 @@ private fun MagnifyingGlass(
             )
             .size(magnifierSize)
             .border(
-                width = 2.dp,
+                width = MAGNIFIER_BORDER_WIDTH,
                 color = Color.Gray,
                 shape = CircleShape
             )
             .background(
-                color = Color.White.copy(alpha = 0.9f),
+                color = Color.White.copy(alpha = MAGNIFIER_BACKGROUND_ALPHA),
                 shape = CircleShape
             )
             .clip(CircleShape)
@@ -1059,8 +1181,7 @@ private fun MagnifyingGlass(
                     val centerRow = (position.y / baseCharHeight).toInt().coerceIn(0, screenState.snapshot.rows - 1)
 
                     // Draw a few rows around the touch point
-                    val rowRange = 3
-                    for (rowOffset in -rowRange..rowRange) {
+                    for (rowOffset in -MAGNIFIER_ROW_RANGE..MAGNIFIER_ROW_RANGE) {
                         val row = (centerRow + rowOffset).coerceIn(0, screenState.snapshot.rows - 1)
                         val line = screenState.getVisibleLine(row)
                         drawLine(
@@ -1092,8 +1213,7 @@ private fun DrawScope.drawSelectionHandle(
     pointingDown: Boolean,
     color: Color = Color.White,
 ) {
-    val handleWidth = 24.dp
-    val handleWidthPx = handleWidth.toPx()
+    val handleWidthPx = SELECTION_HANDLE_WIDTH.toPx()
 
     // Position handle at the character position
     val charX = col * charWidth
@@ -1144,29 +1264,29 @@ private fun DrawScope.drawCursor(
                 color = foregroundColor,
                 topLeft = Offset(x, y),
                 size = Size(charWidth, charHeight),
-                alpha = 0.7f
+                alpha = CURSOR_BLOCK_ALPHA
             )
         }
 
         CursorShape.UNDERLINE -> {
             // Underline cursor - line at bottom of cell
-            val underlineHeight = charHeight * 0.15f  // 15% of cell height
+            val underlineHeight = charHeight * CURSOR_UNDERLINE_HEIGHT_RATIO
             drawRect(
                 color = foregroundColor,
                 topLeft = Offset(x, y + charHeight - underlineHeight),
                 size = Size(charWidth, underlineHeight),
-                alpha = 0.9f
+                alpha = CURSOR_LINE_ALPHA
             )
         }
 
         CursorShape.BAR_LEFT -> {
             // Bar cursor - vertical line at left of cell
-            val barWidth = charWidth * 0.15f  // 15% of cell width
+            val barWidth = charWidth * CURSOR_BAR_WIDTH_RATIO
             drawRect(
                 color = foregroundColor,
                 topLeft = Offset(x, y),
                 size = Size(barWidth, charHeight),
-                alpha = 0.9f
+                alpha = CURSOR_LINE_ALPHA
             )
         }
     }
@@ -1232,10 +1352,9 @@ private fun findOptimalFontSize(
 ): Float {
     var minSizeCurrent = minSize
     var maxSizeCurrent = maxSize
-    val epsilon = 0.1f // Convergence threshold
 
     // Binary search for optimal font size
-    while (maxSizeCurrent - minSizeCurrent > epsilon) {
+    while (maxSizeCurrent - minSizeCurrent > FONT_SIZE_SEARCH_EPSILON) {
         val midSize = (minSizeCurrent + maxSizeCurrent) / 2f
         val (width, height) = calculateDimensions(
             rows = targetRows,
