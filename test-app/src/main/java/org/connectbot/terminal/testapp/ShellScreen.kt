@@ -33,6 +33,10 @@ import kotlinx.coroutines.withContext
 import org.connectbot.terminal.Terminal
 import org.connectbot.terminal.TerminalEmulator
 import org.connectbot.terminal.TerminalEmulatorFactory
+import org.connectbot.terminal.fonts.FontLoadingState
+import org.connectbot.terminal.fonts.TerminalFont
+import org.connectbot.terminal.fonts.rememberTerminalFontProvider
+import org.connectbot.terminal.fonts.rememberTerminalFontState
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -97,15 +101,39 @@ fun ShellScreen() {
     var showSizeDialog by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
 
-    // Font selection
-    val availableFonts = remember {
+    // Font selection - Downloadable fonts from Google Fonts
+    var selectedFont by remember { mutableStateOf<TerminalFont?>(TerminalFont.JETBRAINS_MONO) }
+
+    // Built-in fonts as fallback options
+    val builtInFonts = remember {
         mapOf(
-            "Monospace" to Typeface.MONOSPACE,
-            "0xProto" to Typeface.createFromAsset(context.assets, "fonts/0xProtoNerdFontMono-Regular.ttf")
+            "System Monospace" to Typeface.MONOSPACE,
+            "0xProto (Bundled)" to Typeface.createFromAsset(context.assets, "fonts/0xProtoNerdFontMono-Regular.ttf")
         )
     }
-    var selectedFont by remember { mutableStateOf("0xProto Regular") }
-    var showFontMenu by remember { mutableStateOf(false) }
+    var selectedBuiltInFont by remember { mutableStateOf<String?>(null) }
+
+    // Font provider for downloadable fonts
+    val fontProvider = rememberTerminalFontProvider()
+    val isProviderAvailable = remember { fontProvider.isProviderAvailable() }
+
+    // Load the selected downloadable font
+    val downloadableFontState = selectedFont?.let { font ->
+        rememberTerminalFontState(font)
+    }
+
+    // Determine the actual typeface to use
+    val currentTypeface = remember(selectedFont, selectedBuiltInFont, downloadableFontState) {
+        when {
+            selectedBuiltInFont != null -> builtInFonts[selectedBuiltInFont] ?: Typeface.MONOSPACE
+            downloadableFontState is FontLoadingState.Loaded -> downloadableFontState.typeface
+            downloadableFontState is FontLoadingState.Error -> downloadableFontState.fallback
+            else -> Typeface.MONOSPACE
+        }
+    }
+
+    // Font loading indicator
+    val isFontLoading = downloadableFontState is FontLoadingState.Loading
 
     // Create separate TerminalEmulator for each session (simulating multiple connections)
     val sessions = remember {
@@ -253,23 +281,72 @@ fun ShellScreen() {
                     expanded = showSettingsMenu,
                     onDismissRequest = { showSettingsMenu = false }
                 ) {
-                    // Font selector submenu
+                    // Font selector - Downloadable fonts section
                     Text(
-                        text = "Font: $selectedFont",
+                        text = "Downloadable Fonts" + if (!isProviderAvailable) " (Unavailable)" else "",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    availableFonts.keys.forEach { fontName ->
+
+                    // Show current font and loading state
+                    if (isFontLoading) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Loading ${selectedFont?.displayName}...",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
+                    // Downloadable font options
+                    TerminalFont.entries.forEach { font ->
+                        val isSelected = selectedFont == font && selectedBuiltInFont == null
                         DropdownMenuItem(
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (fontName == selectedFont) Text("✓ ") else Text("   ")
+                                    Text(if (isSelected) "✓ " else "   ")
+                                    Text(font.displayName)
+                                }
+                            },
+                            onClick = {
+                                selectedFont = font
+                                selectedBuiltInFont = null
+                            },
+                            enabled = isProviderAvailable
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    // Built-in fonts section
+                    Text(
+                        text = "Built-in Fonts",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    builtInFonts.keys.forEach { fontName ->
+                        val isSelected = selectedBuiltInFont == fontName
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (isSelected) "✓ " else "   ")
                                     Text(fontName)
                                 }
                             },
                             onClick = {
-                                selectedFont = fontName
+                                selectedBuiltInFont = fontName
+                                selectedFont = null
                             }
                         )
                     }
@@ -397,7 +474,7 @@ fun ShellScreen() {
                 Terminal(
                     terminalEmulator = currentTerminal,
                     modifier = Modifier.fillMaxSize(),
-                    typeface = availableFonts[selectedFont] ?: Typeface.MONOSPACE,
+                    typeface = currentTypeface,
                     backgroundColor = Color.Black,
                     foregroundColor = Color(0xFFD0D0D0), // Light gray for better readability
                     keyboardEnabled = keyboardEnabled,

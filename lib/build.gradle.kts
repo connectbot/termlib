@@ -124,6 +124,9 @@ dependencies {
     implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.compose.foundation)
 
+    // Google Fonts for downloadable programming fonts
+    implementation(libs.androidx.compose.ui.text.google.fonts)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
