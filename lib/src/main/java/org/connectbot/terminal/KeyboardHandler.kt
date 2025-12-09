@@ -110,16 +110,6 @@ internal class KeyboardHandler(
             return true
         }
 
-        // Check for control character shortcuts
-        if (ctrl || modifierManager?.isCtrlActive() == true) {
-            val controlChar = getControlCharacter(key)
-            if (controlChar != null) {
-                terminalEmulator.dispatchCharacter(modifiers, controlChar)
-                modifierManager?.clearTransients()
-                return true
-            }
-        }
-
         // Handle regular printable characters
         val char = getCharacterFromKey(key, shift || modifierManager?.isShiftActive() == true)
         if (char != null) {
@@ -137,14 +127,6 @@ internal class KeyboardHandler(
      */
     fun onCharacterInput(char: Char, ctrl: Boolean = false, alt: Boolean = false): Boolean {
         val modifiers = buildModifierMask(ctrl, alt, false)
-
-        // For control characters (Ctrl+letter), convert to control code
-        if ((ctrl || modifierManager?.isCtrlActive() == true) && char.isLetter()) {
-            val controlCode = (char.uppercaseChar().code - 'A'.code + 1).toChar()
-            terminalEmulator.dispatchCharacter(modifiers, controlCode)
-            modifierManager?.clearTransients()
-            return true
-        }
 
         terminalEmulator.dispatchCharacter(modifiers, char)
         modifierManager?.clearTransients()
@@ -329,50 +311,6 @@ internal class KeyboardHandler(
         }
     }
 
-    /**
-     * Get control character for Ctrl+key combinations.
-     */
-    private fun getControlCharacter(key: Key): Char? {
-        return when (key) {
-            // Ctrl+A through Ctrl+Z map to ASCII 1-26
-            Key.A -> '\u0001'
-            Key.B -> '\u0002'
-            Key.C -> '\u0003'  // ETX (often used as SIGINT)
-            Key.D -> '\u0004'  // EOT (end of transmission)
-            Key.E -> '\u0005'
-            Key.F -> '\u0006'
-            Key.G -> '\u0007'  // BEL (bell)
-            Key.H -> '\u0008'  // BS (backspace)
-            Key.I -> '\u0009'  // HT (tab)
-            Key.J -> '\u000A'  // LF (line feed)
-            Key.K -> '\u000B'  // VT (vertical tab)
-            Key.L -> '\u000C'  // FF (form feed)
-            Key.M -> '\u000D'  // CR (carriage return)
-            Key.N -> '\u000E'
-            Key.O -> '\u000F'
-            Key.P -> '\u0010'
-            Key.Q -> '\u0011'
-            Key.R -> '\u0012'
-            Key.S -> '\u0013'
-            Key.T -> '\u0014'
-            Key.U -> '\u0015'
-            Key.V -> '\u0016'
-            Key.W -> '\u0017'
-            Key.X -> '\u0018'
-            Key.Y -> '\u0019'
-            Key.Z -> '\u001A'  // SUB
-
-            // Special control characters
-            Key.LeftBracket -> '\u001B'   // ESC (Ctrl+[)
-            Key.Backslash -> '\u001C'     // FS (Ctrl+\)
-            Key.RightBracket -> '\u001D'  // GS (Ctrl+])
-            Key.Six -> '\u001E'           // RS (Ctrl+6 or Ctrl+^)
-            Key.Minus -> '\u001F'         // US (Ctrl+- or Ctrl+_)
-            Key.Spacebar -> '\u0000'      // NUL (Ctrl+Space)
-
-            else -> null
-        }
-    }
 }
 
 /**
