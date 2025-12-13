@@ -18,7 +18,8 @@ package org.connectbot.terminal
 
 /**
  * Parser for OSC (Operating System Command) sequences.
- * Handles shell integration (OSC 133) and iTerm2 extensions (OSC 1337).
+ * Handles clipboard operations (OSC 52), shell integration (OSC 133),
+ * and iTerm2 extensions (OSC 1337).
  */
 internal class OscParser {
     // Track current prompt ID for grouping command blocks
@@ -38,6 +39,17 @@ internal class OscParser {
         ) : Action()
 
         data class SetCursorShape(val shape: CursorShape) : Action()
+
+        /**
+         * Action to copy data to the system clipboard via OSC 52.
+         *
+         * @param selection The clipboard selection target (e.g., "c" for clipboard, "p" for primary)
+         * @param data The decoded data to copy to the clipboard
+         */
+        data class ClipboardCopy(
+            val selection: String,
+            val data: String
+        ) : Action()
     }
 
     /**
@@ -57,10 +69,42 @@ internal class OscParser {
         cols: Int
     ): List<Action> {
         return when (command) {
+            52 -> handleOsc52(payload)
             133 -> handleOsc133(payload, cursorRow, cursorCol)
             1337 -> handleOsc1337(payload, cursorRow, cursorCol, cols)
             else -> emptyList()
         }
+    }
+
+    /**
+     * Handle OSC 52 clipboard sequence.
+     *
+     * Format: OSC 52 ; Pc ; Pd ST
+     * - Pc: clipboard selection target (c=clipboard, p=primary, s=select, etc.)
+     * - Pd: base64-encoded data to copy, or "?" to query clipboard (not supported)
+     *
+     * For security, reading clipboard (Pd = "?") is not supported.
+     */
+    private fun handleOsc52(payload: String): List<Action> {
+        // Payload format: "selection;base64data"
+        val separatorIndex = payload.indexOf(';')
+        if (separatorIndex < 0) return emptyList()
+
+        val selection = payload.substring(0, separatorIndex)
+        val base64Data = payload.substring(separatorIndex + 1)
+
+        // Do not support clipboard read requests (security concern)
+        if (base64Data == "?") return emptyList()
+
+        // Decode base64 data
+        val decodedData = try {
+            String(java.util.Base64.getDecoder().decode(base64Data), Charsets.UTF_8)
+        } catch (e: IllegalArgumentException) {
+            // Invalid base64 data
+            return emptyList()
+        }
+
+        return listOf(Action.ClipboardCopy(selection, decodedData))
     }
 
     private fun handleOsc133(payload: String, cursorRow: Int, cursorCol: Int): List<Action> {

@@ -119,6 +119,8 @@ class TerminalEmulatorFactory {
          * @param onKeyboardInput Callback for keyboard output (to write to PTY)
          * @param onBell Optional callback for terminal bell
          * @param onResize Optional callback for terminal resize
+         * @param onClipboardCopy Optional callback for OSC 52 clipboard copy operations.
+         *                        The callback receives the decoded text to copy.
          */
         fun create(
             looper: Looper = Looper.getMainLooper(),
@@ -128,7 +130,8 @@ class TerminalEmulatorFactory {
             defaultBackground: Color = Color.Black,
             onKeyboardInput: (ByteArray) -> Unit = {},
             onBell: (() -> Unit)? = null,
-            onResize: ((TerminalDimensions) -> Unit)? = null
+            onResize: ((TerminalDimensions) -> Unit)? = null,
+            onClipboardCopy: ((String) -> Unit)? = null
         ): TerminalEmulator {
             return TerminalEmulatorImpl(
                 looper = looper,
@@ -138,7 +141,8 @@ class TerminalEmulatorFactory {
                 defaultBackground = defaultBackground,
                 onKeyboardInput = onKeyboardInput,
                 onBell = onBell,
-                onResize = onResize
+                onResize = onResize,
+                onClipboardCopy = onClipboardCopy
             )
         }
     }
@@ -171,6 +175,7 @@ class TerminalEmulatorFactory {
  * @param onKeyboardInput Callback for keyboard output (to write to PTY)
  * @param onBell Optional callback for terminal bell
  * @param onResize Optional callback for terminal resize
+ * @param onClipboardCopy Optional callback for OSC 52 clipboard copy operations
  */
 internal class TerminalEmulatorImpl(
     private val looper: Looper = Looper.getMainLooper(),
@@ -180,7 +185,8 @@ internal class TerminalEmulatorImpl(
     private val defaultBackground: Color = Color.Black,
     private val onKeyboardInput: (ByteArray) -> Unit = {},
     private val onBell: (() -> Unit)? = null,
-    private val onResize: ((TerminalDimensions) -> Unit)? = null
+    private val onResize: ((TerminalDimensions) -> Unit)? = null,
+    private val onClipboardCopy: ((String) -> Unit)? = null
 ) : TerminalEmulator, TerminalCallbacks {
 
     // Handler for escaping native mutex
@@ -528,6 +534,12 @@ internal class TerminalEmulatorImpl(
                         if (!damagePosted) {
                             handler.post { processPendingUpdates() }
                             damagePosted = true
+                        }
+                    }
+                    is OscParser.Action.ClipboardCopy -> {
+                        // Post clipboard copy to handler thread to avoid blocking native callback
+                        handler.post {
+                            onClipboardCopy?.invoke(action.data)
                         }
                     }
                 }

@@ -92,4 +92,109 @@ class OscParserTest {
         actions = parser.parse(1337, "SetCursorShape=2", row, 0, cols)
         assertEquals(OscParser.Action.SetCursorShape(CursorShape.UNDERLINE), actions[0])
     }
+
+    @Test
+    fun testOsc52ClipboardCopy() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // "Hello World" in base64 is "SGVsbG8gV29ybGQ="
+        val actions = parser.parse(52, "c;SGVsbG8gV29ybGQ=", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.ClipboardCopy
+        assertEquals("c", action.selection)
+        assertEquals("Hello World", action.data)
+    }
+
+    @Test
+    fun testOsc52ClipboardCopyWithPrimarySelection() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Test with 'p' (primary) selection
+        // "Test" in base64 is "VGVzdA=="
+        val actions = parser.parse(52, "p;VGVzdA==", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.ClipboardCopy
+        assertEquals("p", action.selection)
+        assertEquals("Test", action.data)
+    }
+
+    @Test
+    fun testOsc52ClipboardCopyEmptySelection() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Empty selection (just ';') is valid - means "c" (clipboard)
+        // "data" in base64 is "ZGF0YQ=="
+        val actions = parser.parse(52, ";ZGF0YQ==", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.ClipboardCopy
+        assertEquals("", action.selection)
+        assertEquals("data", action.data)
+    }
+
+    @Test
+    fun testOsc52ClipboardReadRequestIgnored() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Read request (? as data) should be ignored for security
+        val actions = parser.parse(52, "c;?", row, 0, cols)
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun testOsc52InvalidBase64() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Invalid base64 data
+        val actions = parser.parse(52, "c;!!invalid!!", row, 0, cols)
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun testOsc52MissingSeparator() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Missing semicolon separator
+        val actions = parser.parse(52, "cSGVsbG8=", row, 0, cols)
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun testOsc52UnicodeContent() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Unicode text "日本語" in base64 is "5pel5pys6Kqe"
+        val actions = parser.parse(52, "c;5pel5pys6Kqe", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.ClipboardCopy
+        assertEquals("c", action.selection)
+        assertEquals("日本語", action.data)
+    }
+
+    @Test
+    fun testOsc52EmptyData() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Empty base64 data decodes to empty string
+        val actions = parser.parse(52, "c;", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.ClipboardCopy
+        assertEquals("c", action.selection)
+        assertEquals("", action.data)
+    }
 }
