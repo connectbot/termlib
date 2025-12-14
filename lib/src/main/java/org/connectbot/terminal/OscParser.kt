@@ -98,7 +98,7 @@ internal class OscParser {
 
         // Decode base64 data
         val decodedData = try {
-            String(java.util.Base64.getDecoder().decode(base64Data), Charsets.UTF_8)
+            kotlin.io.encoding.Base64.Default.decode(base64Data).toString(Charsets.UTF_8)
         } catch (e: IllegalArgumentException) {
             // Invalid base64 data
             return emptyList()
