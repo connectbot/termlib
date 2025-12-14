@@ -181,8 +181,8 @@ internal class TerminalEmulatorImpl(
     private val looper: Looper = Looper.getMainLooper(),
     initialRows: Int = 24,
     initialCols: Int = 80,
-    private val defaultForeground: Color = Color.White,
-    private val defaultBackground: Color = Color.Black,
+    defaultForeground: Color = Color.White,
+    defaultBackground: Color = Color.Black,
     private val onKeyboardInput: (ByteArray) -> Unit = {},
     private val onBell: (() -> Unit)? = null,
     private val onResize: ((TerminalDimensions) -> Unit)? = null,
@@ -191,6 +191,10 @@ internal class TerminalEmulatorImpl(
 
     // Handler for escaping native mutex
     private val handler = Handler(looper)
+
+    // Default colors (can be updated via setDefaultColors)
+    private var currentDefaultForeground: Color = defaultForeground
+    private var currentDefaultBackground: Color = defaultBackground
 
     // Damage accumulation (thread-safe) - MUST be initialized before terminalNative
     private val damageLock = Object()
@@ -204,7 +208,7 @@ internal class TerminalEmulatorImpl(
 
     // StateFlow for reactive state propagation
     private val _snapshot = MutableStateFlow(
-        TerminalSnapshot.empty(initialRows, initialCols, defaultForeground, defaultBackground)
+        TerminalSnapshot.empty(initialRows, initialCols, currentDefaultForeground, currentDefaultBackground)
     )
     internal val snapshot: StateFlow<TerminalSnapshot> = _snapshot.asStateFlow()
 
@@ -240,7 +244,7 @@ internal class TerminalEmulatorImpl(
 
     // Current screen lines cache
     private var currentLines = List(initialRows) { row ->
-        TerminalLine.empty(row, initialCols, defaultForeground, defaultBackground)
+        TerminalLine.empty(row, initialCols, currentDefaultForeground, currentDefaultBackground)
     }
 
     // Native terminal instance - MUST be initialized AFTER damageLock and other state
@@ -279,20 +283,21 @@ internal class TerminalEmulatorImpl(
         cols = newCols
         terminalNative.resize(newRows, newCols)
 
+        // Capture current default colors (thread-safe)
+        val currentDefaultFg: Color
+        val currentDefaultBg: Color
+        synchronized(damageLock) {
+            currentDefaultFg = currentDefaultForeground
+            currentDefaultBg = currentDefaultBackground
+        }
+
         // Resize currentLines to match new dimensions
         currentLines = List(newRows) { row ->
-            TerminalLine.empty(row, newCols, defaultForeground, defaultBackground)
+            TerminalLine.empty(row, newCols, currentDefaultFg, currentDefaultBg)
         }
 
         // Rebuild all lines after resize
-        synchronized(damageLock) {
-            pendingDamageRegions.clear()
-            pendingDamageRegions.add(DamageRegion(0, newRows, 0, newCols))
-            if (!damagePosted) {
-                handler.post { processPendingUpdates() }
-                damagePosted = true
-            }
-        }
+        invalidateDisplay()
 
         // Resize callback - post to handler to avoid blocking native thread
         handler.post {
@@ -332,7 +337,9 @@ internal class TerminalEmulatorImpl(
         require(ansiColors.size >= 16) {
             "ANSI palette must contain 16 colors"
         }
-        return terminalNative.setPaletteColors(ansiColors, 16)
+        val result = terminalNative.setPaletteColors(ansiColors, 16)
+        invalidateDisplay()
+        return result
     }
 
     /**
@@ -347,7 +354,13 @@ internal class TerminalEmulatorImpl(
      * @return 0 on success, -1 on error
      */
     override fun setDefaultColors(foreground: Int, background: Int): Int {
-        return terminalNative.setDefaultColors(foreground, background)
+        synchronized(damageLock) {
+            currentDefaultForeground = Color(foreground)
+            currentDefaultBackground = Color(background)
+        }
+        val result = terminalNative.setDefaultColors(foreground, background)
+        invalidateDisplay()
+        return result
     }
 
     /**
@@ -664,6 +677,14 @@ internal class TerminalEmulatorImpl(
             return
         }
 
+        // Capture current default colors (thread-safe)
+        val currentDefaultFg: Color
+        val currentDefaultBg: Color
+        synchronized(damageLock) {
+            currentDefaultFg = currentDefaultForeground
+            currentDefaultBg = currentDefaultBackground
+        }
+
         val cells = mutableListOf<TerminalLine.Cell>()
         var col = 0
 
@@ -677,8 +698,8 @@ internal class TerminalEmulatorImpl(
                     cells.add(
                         TerminalLine.Cell(
                             char = ' ',
-                            fgColor = defaultForeground,
-                            bgColor = defaultBackground
+                            fgColor = currentDefaultFg,
+                            bgColor = currentDefaultBg
                         )
                     )
                     col++
@@ -786,6 +807,21 @@ internal class TerminalEmulatorImpl(
     // ================================================================================
     // Helper methods
     // ================================================================================
+
+    /**
+     * Trigger a full display redraw.
+     * Used when global display properties change (colors, etc.).
+     */
+    private fun invalidateDisplay() {
+        synchronized(damageLock) {
+            pendingDamageRegions.clear()
+            pendingDamageRegions.add(DamageRegion(0, rows, 0, cols))
+            if (!damagePosted) {
+                handler.post { processPendingUpdates() }
+                damagePosted = true
+            }
+        }
+    }
 
     /**
      * Add a damage region, coalescing with existing regions where possible.

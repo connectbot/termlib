@@ -24,6 +24,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -96,6 +97,42 @@ fun ShellScreen() {
     var customCols by remember { mutableStateOf(80) }
     var showSizeDialog by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
+
+    // Color schemes
+    data class ColorScheme(
+        val name: String,
+        val foreground: Color,
+        val background: Color,
+        val ansiColors: IntArray
+    )
+
+    val colorSchemes = remember {
+        listOf(
+            ColorScheme(
+                name = "Default",
+                foreground = Color.White,
+                background = Color.Black,
+                ansiColors = intArrayOf(
+                    0xFF000000.toInt(), 0xFFCD0000.toInt(), 0xFF00CD00.toInt(), 0xFFCDCD00.toInt(),
+                    0xFF0000EE.toInt(), 0xFFCD00CD.toInt(), 0xFF00CDCD.toInt(), 0xFFE5E5E5.toInt(),
+                    0xFF7F7F7F.toInt(), 0xFFFF0000.toInt(), 0xFF00FF00.toInt(), 0xFFFFFF00.toInt(),
+                    0xFF5C5CFF.toInt(), 0xFFFF00FF.toInt(), 0xFF00FFFF.toInt(), 0xFFFFFFFF.toInt()
+                )
+            ),
+            ColorScheme(
+                name = "Solarized Light",
+                foreground = Color(0xFF657B83),
+                background = Color(0xFFFDF6E3),
+                ansiColors = intArrayOf(
+                    0xFF073642.toInt(), 0xFFDC322F.toInt(), 0xFF859900.toInt(), 0xFFB58900.toInt(),
+                    0xFF268BD2.toInt(), 0xFFD33682.toInt(), 0xFF2AA198.toInt(), 0xFFEEE8D5.toInt(),
+                    0xFF002B36.toInt(), 0xFFCB4B16.toInt(), 0xFF586E75.toInt(), 0xFF657B83.toInt(),
+                    0xFF839496.toInt(), 0xFF6C71C4.toInt(), 0xFF93A1A1.toInt(), 0xFFFDF6E3.toInt()
+                )
+            )
+        )
+    }
+    var selectedColorScheme by remember { mutableStateOf(0) }
 
     // Font selection
     val availableFonts = remember {
@@ -253,6 +290,37 @@ fun ShellScreen() {
                     expanded = showSettingsMenu,
                     onDismissRequest = { showSettingsMenu = false }
                 ) {
+                    // Color scheme selector
+                    Text(
+                        text = "Color Scheme",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    colorSchemes.forEachIndexed { index, scheme ->
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (index == selectedColorScheme) Text("✓ ") else Text("   ")
+                                    Text(scheme.name)
+                                }
+                            },
+                            onClick = {
+                                selectedColorScheme = index
+                                // Apply color scheme to all terminal sessions
+                                sessions.forEach { session ->
+                                    session.emulator.applyColorScheme(
+                                        ansiColors = scheme.ansiColors,
+                                        defaultForeground = scheme.foreground.toArgb(),
+                                        defaultBackground = scheme.background.toArgb()
+                                    )
+                                }
+                            }
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
                     // Font selector submenu
                     Text(
                         text = "Font: $selectedFont",
@@ -398,8 +466,8 @@ fun ShellScreen() {
                     terminalEmulator = currentTerminal,
                     modifier = Modifier.fillMaxSize(),
                     typeface = availableFonts[selectedFont] ?: Typeface.MONOSPACE,
-                    backgroundColor = Color.Black,
-                    foregroundColor = Color(0xFFD0D0D0), // Light gray for better readability
+                    backgroundColor = colorSchemes[selectedColorScheme].background,
+                    foregroundColor = colorSchemes[selectedColorScheme].foreground,
                     keyboardEnabled = keyboardEnabled,
                     showSoftKeyboard = showSoftKeyboard,
                     forcedSize = if (useForcedSize) Pair(customRows, customCols) else null

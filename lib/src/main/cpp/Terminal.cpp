@@ -316,9 +316,6 @@ int Terminal::setPaletteColors(const uint32_t* colors, int count) {
         vterm_state_set_palette_color(state, i, &vtColor);
     }
 
-    // Trigger full redraw after palette change
-    invokeDamage(0, mRows, 0, mCols);
-
     return colorCount;
 }
 
@@ -330,9 +327,9 @@ int Terminal::setDefaultColors(uint32_t fgColor, uint32_t bgColor) {
         return -1;
     }
 
-    VTermState* state = vterm_obtain_state(mVt);
-    if (!state) {
-        LOGE("setDefaultColors: Failed to obtain VTermState");
+    VTermScreen* screen = vterm_obtain_screen(mVt);
+    if (!screen) {
+        LOGE("setDefaultColors: Failed to obtain VTermScreen");
         return -1;
     }
 
@@ -350,10 +347,7 @@ int Terminal::setDefaultColors(uint32_t fgColor, uint32_t bgColor) {
                    (bgColor >> 8) & 0xFF,   // Green
                    bgColor & 0xFF);         // Blue
 
-    vterm_state_set_default_colors(state, &vtFg, &vtBg);
-
-    // Trigger full redraw
-    invokeDamage(0, mRows, 0, mCols);
+    vterm_screen_set_default_colors(screen, &vtFg, &vtBg);
 
     return 0;
 }
