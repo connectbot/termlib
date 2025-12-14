@@ -60,7 +60,7 @@ package org.connectbot.terminal {
   }
 
   public static final class TerminalEmulatorFactory.Companion {
-    method public org.connectbot.terminal.TerminalEmulator create(optional android.os.Looper looper, optional int initialRows, optional int initialCols, optional long defaultForeground, optional long defaultBackground, optional kotlin.jvm.functions.Function1<? super byte[],kotlin.Unit> onKeyboardInput, optional kotlin.jvm.functions.Function0<kotlin.Unit>? onBell, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.TerminalDimensions,kotlin.Unit>? onResize);
+    method public org.connectbot.terminal.TerminalEmulator create(optional android.os.Looper looper, optional int initialRows, optional int initialCols, optional long defaultForeground, optional long defaultBackground, optional kotlin.jvm.functions.Function1<? super byte[],kotlin.Unit> onKeyboardInput, optional kotlin.jvm.functions.Function0<kotlin.Unit>? onBell, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.TerminalDimensions,kotlin.Unit>? onResize, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit>? onClipboardCopy);
   }
 
   public final class TerminalKt {
