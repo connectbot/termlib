@@ -35,7 +35,7 @@ internal class CellRun {
 
     // Text attributes
     var bold: Boolean = false
-    var underline: Int = 0  // 0=none, 1=single, 2=double
+    var underline: Int = 0  // 0=none, 1=single, 2=double, 3=curly
     var italic: Boolean = false
     var blink: Boolean = false
     var reverse: Boolean = false

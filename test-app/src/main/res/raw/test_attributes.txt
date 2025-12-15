@@ -3,6 +3,8 @@ Text Attributes Test:
 [1mBold text[0m
 [3mItalic text[0m
 [4mUnderlined text[0m
+[4:2mDouble underline text[0m
+[4:3mUndercurl[0m
 [9mStrikethrough text[0m
 [1m[3m[4mBold + Italic + Underline[0m
 

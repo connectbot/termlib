@@ -79,7 +79,7 @@ internal data class TerminalLine(
         val bgColor: Color,
         val bold: Boolean = false,
         val italic: Boolean = false,
-        val underline: Int = 0,  // 0=none, 1=single, 2=double
+        val underline: Int = 0,  // 0=none, 1=single, 2=double, 3=curly
         val blink: Boolean = false,
         val reverse: Boolean = false,
         val strike: Boolean = false,

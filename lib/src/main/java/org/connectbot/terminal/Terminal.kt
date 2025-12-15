@@ -16,6 +16,8 @@
  */
 package org.connectbot.terminal
 
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.text.TextPaint
 import android.util.Log
@@ -221,6 +223,21 @@ private const val CURSOR_BAR_WIDTH_RATIO = 0.15f
  * Convergence threshold for binary search when finding optimal font size.
  */
 private const val FONT_SIZE_SEARCH_EPSILON = 0.1f
+
+/**
+ * Number of wavelengths per character width for the curly underline pattern.
+ */
+private const val CURLY_UNDERLINE_CYCLES_PER_CHAR = 2f
+
+/**
+ * Amplitude (height) of the curly underline pattern in pixels.
+ */
+private const val CURLY_UNDERLINE_AMPLITUDE = 1.5f
+
+/**
+ * Spacing between the two lines in a double underline in pixels.
+ */
+private const val DOUBLE_UNDERLINE_SPACING = 2f
 
 /**
  * Terminal - A Jetpack Compose terminal screen component.
@@ -1144,7 +1161,7 @@ private fun DrawScope.drawLine(
             textPaint.color = fgColor.toArgb()
             textPaint.isFakeBoldText = cell.bold
             textPaint.textSkewX = if (cell.italic) -0.25f else 0f
-            textPaint.isUnderlineText = cell.underline > 0
+            textPaint.isUnderlineText = cell.underline == 1
             textPaint.isStrikeThruText = cell.strike
 
             // Draw text
@@ -1154,10 +1171,118 @@ private fun DrawScope.drawLine(
                 y + charBaseline,
                 textPaint
             )
+
+            // Draw double underline if needed
+            if (cell.underline == 2) {
+                drawDoubleUnderline(
+                    x = x,
+                    y = y + charBaseline,
+                    width = cellWidth,
+                    color = fgColor
+                )
+            }
+
+            // Draw curly underline if needed
+            if (cell.underline == 3) {
+                drawCurlyUnderline(
+                    x = x,
+                    y = y + charBaseline,
+                    width = cellWidth,
+                    charWidth = charWidth,
+                    color = fgColor
+                )
+            }
         }
 
         x += cellWidth
     }
+}
+
+/**
+ * Draw a double underline (two parallel lines).
+ *
+ * @param x Start x position
+ * @param y Baseline y position
+ * @param width Width to draw the underline
+ * @param color Color of the underline
+ */
+private fun DrawScope.drawDoubleUnderline(
+    x: Float,
+    y: Float,
+    width: Float,
+    color: Color
+) {
+    val paint = Paint().apply {
+        this.color = color.toArgb()
+        style = Paint.Style.STROKE
+        strokeWidth = 1f
+        isAntiAlias = true
+    }
+
+    val baseY = y + 2f
+    val canvas = drawContext.canvas.nativeCanvas
+
+    // Draw first line
+    canvas.drawLine(x, baseY, x + width, baseY, paint)
+
+    // Draw second line below the first
+    canvas.drawLine(x, baseY + DOUBLE_UNDERLINE_SPACING, x + width, baseY + DOUBLE_UNDERLINE_SPACING, paint)
+}
+
+/**
+ * Draw a curly/zigzag underline pattern (like spell-check underlines).
+ * The pattern repeats seamlessly across characters by aligning with the character grid.
+ * Each character starts at the same phase (top of wave) ensuring perfect continuity.
+ *
+ * @param x Start x position
+ * @param y Baseline y position
+ * @param width Width to draw the underline
+ * @param charWidth Base character width (used to calculate wavelength)
+ * @param color Color of the underline
+ */
+private fun DrawScope.drawCurlyUnderline(
+    x: Float,
+    y: Float,
+    width: Float,
+    charWidth: Float,
+    color: Color
+) {
+    val path = Path()
+    val wavelength = charWidth / CURLY_UNDERLINE_CYCLES_PER_CHAR
+    val amplitude = CURLY_UNDERLINE_AMPLITUDE
+    val halfWave = wavelength / 2
+
+    val baseY = y + 3f
+
+    // Start at the top of the wave (phase = 0)
+    path.moveTo(x, baseY - amplitude)
+
+    // Draw zigzag pattern across the width
+    var currentX = x
+    var goingDown = true // Start by going down from the top
+
+    while (currentX < x + width) {
+        currentX += halfWave
+        if (currentX > x + width) {
+            currentX = x + width
+        }
+
+        val nextY = if (goingDown) baseY + amplitude else baseY - amplitude
+        path.lineTo(currentX, nextY)
+
+        goingDown = !goingDown
+    }
+
+    // Draw the path
+    drawContext.canvas.nativeCanvas.drawPath(
+        path,
+        Paint().apply {
+            this.color = color.toArgb()
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+            isAntiAlias = true
+        }
+    )
 }
 
 /**
