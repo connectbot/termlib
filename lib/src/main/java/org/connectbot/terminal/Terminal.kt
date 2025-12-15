@@ -34,7 +34,6 @@ import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -72,6 +71,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
@@ -565,9 +565,19 @@ fun TerminalWithAccessibility(
     val coroutineScope = rememberCoroutineScope()
     val viewConfiguration = LocalViewConfiguration.current
 
-    // Handle resize based on available space
-    BoxWithConstraints(
+    var availableWidth by remember { mutableStateOf(0) }
+    var availableHeight by remember { mutableStateOf(0) }
+
+    Box(
         modifier = modifier
+            .layout { measurable, constraints ->
+                availableWidth = constraints.maxWidth
+                availableHeight = constraints.maxHeight
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) {
+                    placeable.place(0, 0)
+                }
+            }
             .onSizeChanged {
                 terminalEmulator.resize(
                     charsPerDimension(it.height, baseCharHeight),
@@ -605,8 +615,6 @@ fun TerminalWithAccessibility(
                 }
             )
     ) {
-        val availableWidth = constraints.maxWidth
-        val availableHeight = constraints.maxHeight
 
         // Calculate font size if forcedSize is specified
         if (forcedSize != null) {
@@ -670,370 +678,372 @@ fun TerminalWithAccessibility(
         val terminalHeightPx = newRows * baseCharHeight
 
         // Draw terminal content with context menu overlay
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = (if (forcedSize != null && !isZooming && zoomScale == 1f) {
-                    // Add border outside the terminal content (only when not zooming)
-                    Modifier
-                        .size(
-                            width = with(density) { terminalWidthPx.toDp() },
-                            height = with(density) { terminalHeightPx.toDp() }
-                        )
-                        .border(
-                            width = TERMINAL_BORDER_WIDTH,
-                            color = Color(0xFF4CAF50).copy(alpha = 0.6f)
-                        )
-                } else {
-                    Modifier.fillMaxSize()
-                }).pointerInput(terminalEmulator, baseCharHeight) {
-                            val touchSlopSquared =
-                                viewConfiguration.touchSlop * viewConfiguration.touchSlop
-                            coroutineScope {
-                                awaitEachGesture {
-                                    var gestureType: GestureType = GestureType.Undetermined
-                                    val down = awaitFirstDown(requireUnconsumed = false)
+        Box(
+            modifier = (if (forcedSize != null && !isZooming && zoomScale == 1f) {
+                // Add border outside the terminal content (only when not zooming)
+                Modifier
+                    .size(
+                        width = with(density) { terminalWidthPx.toDp() },
+                        height = with(density) { terminalHeightPx.toDp() }
+                    )
+                    .border(
+                        width = TERMINAL_BORDER_WIDTH,
+                        color = Color(0xFF4CAF50).copy(alpha = 0.6f)
+                    )
+            } else {
+                Modifier.fillMaxSize()
+            }).pointerInput(terminalEmulator, baseCharHeight) {
+                val touchSlopSquared =
+                    viewConfiguration.touchSlop * viewConfiguration.touchSlop
+                coroutineScope {
+                    awaitEachGesture {
+                        var gestureType: GestureType = GestureType.Undetermined
+                        val down = awaitFirstDown(requireUnconsumed = false)
 
-                                    // 1. Check if touching a selection handle first
-                                    if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
-                                        val range = selectionManager.selectionRange
-                                        if (range != null) {
-                                            val (touchingStart, touchingEnd) = isTouchingHandle(
-                                                down.position,
-                                                range,
-                                                baseCharWidth,
-                                                baseCharHeight
-                                            )
-                                            if (touchingStart || touchingEnd) {
-                                                gestureType = GestureType.HandleDrag
-                                                // Handle drag
-                                                showMagnifier = true
-                                                magnifierPosition = down.position
+                        // 1. Check if touching a selection handle first
+                        if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
+                            val range = selectionManager.selectionRange
+                            if (range != null) {
+                                val (touchingStart, touchingEnd) = isTouchingHandle(
+                                    down.position,
+                                    range,
+                                    baseCharWidth,
+                                    baseCharHeight
+                                )
+                                if (touchingStart || touchingEnd) {
+                                    gestureType = GestureType.HandleDrag
+                                    // Handle drag
+                                    showMagnifier = true
+                                    magnifierPosition = down.position
 
-                                                drag(down.id) { change ->
-                                                    val newCol =
-                                                        (change.position.x / baseCharWidth).toInt()
-                                                            .coerceIn(0, screenState.snapshot.cols - 1)
-                                                    val newRow =
-                                                        (change.position.y / baseCharHeight).toInt()
-                                                            .coerceIn(0, screenState.snapshot.rows - 1)
-
-                                                    if (touchingStart) {
-                                                        selectionManager.updateSelectionStart(
-                                                            newRow,
-                                                            newCol
-                                                        )
-                                                    } else {
-                                                        selectionManager.updateSelectionEnd(
-                                                            newRow,
-                                                            newCol
-                                                        )
-                                                    }
-
-                                                    magnifierPosition = change.position
-                                                    change.consume()
-                                                }
-
-                                                showMagnifier = false
-                                                // Don't auto-show menu again after dragging handle
-                                                return@awaitEachGesture
-                                            }
-                                        }
-                                    }
-
-                                    // 2. Start long press detection for selection
-                                    // Only start selection if no selection is already active
-                                    var longPressDetected = false
-                                    val longPressJob = launch {
-                                        delay(viewConfiguration.longPressTimeoutMillis)
-                                        if (gestureType == GestureType.Undetermined &&
-                                            selectionManager.mode == SelectionMode.NONE) {
-                                            longPressDetected = true
-                                            gestureType = GestureType.Selection
-
-                                            // Start selection
-                                            val col = (down.position.x / baseCharWidth).toInt()
+                                    drag(down.id) { change ->
+                                        val newCol =
+                                            (change.position.x / baseCharWidth).toInt()
                                                 .coerceIn(0, screenState.snapshot.cols - 1)
-                                            val row = (down.position.y / baseCharHeight).toInt()
+                                        val newRow =
+                                            (change.position.y / baseCharHeight).toInt()
                                                 .coerceIn(0, screenState.snapshot.rows - 1)
-                                            selectionManager.startSelection(
-                                                row,
-                                                col,
-                                                SelectionMode.BLOCK
+
+                                        if (touchingStart) {
+                                            selectionManager.updateSelectionStart(
+                                                newRow,
+                                                newCol
                                             )
-                                            showMagnifier = true
-                                            magnifierPosition = down.position
-                                        }
-                                    }
-
-                                    // 3. Check for multi-touch (zoom)
-                                    val secondPointer = withTimeoutOrNull(
-                                        WAIT_FOR_SECOND_TOUCH_MS
-                                    ) {
-                                        awaitPointerEvent().changes.firstOrNull { it.id != down.id && it.pressed }
-                                    }
-
-                                    if (secondPointer != null) {
-                                        longPressJob.cancel()
-                                        gestureType = GestureType.Zoom
-
-                                        // Handle zoom using Compose's built-in gesture calculations
-                                        isZooming = true
-
-                                        val centerX = (down.position.x + secondPointer.position.x) / 2f
-                                        val centerY = (down.position.y + secondPointer.position.y) / 2f
-                                        zoomOrigin = TransformOrigin(
-                                            pivotFractionX = centerX / size.width,
-                                            pivotFractionY = centerY / size.height
-                                        )
-
-                                        while (true) {
-                                            val event = awaitPointerEvent()
-                                            if (event.changes.all { !it.pressed }) break
-
-                                            if (event.changes.size > 1) {
-                                                val gestureZoom = event.calculateZoom()
-                                                val gesturePan = event.calculatePan()
-
-                                                val oldScale = zoomScale
-                                                val newScale =
-                                                    (oldScale * gestureZoom).coerceIn(MIN_ZOOM_SCALE, MAX_ZOOM_SCALE)
-
-                                                zoomOffset += gesturePan
-                                                zoomScale = newScale
-
-                                                event.changes.forEach { it.consume() }
-                                            }
+                                        } else {
+                                            selectionManager.updateSelectionEnd(
+                                                newRow,
+                                                newCol
+                                            )
                                         }
 
-                                        // Gesture ended - reset
-                                        isZooming = false
-                                        zoomScale = 1f
-                                        zoomOffset = Offset.Zero
-
-                                        return@awaitEachGesture
-                                    }
-
-                                    // 4. Track velocity for scroll fling
-                                    val velocityTracker = VelocityTracker()
-                                    velocityTracker.addPosition(down.uptimeMillis, down.position)
-
-                                    // 5. Event loop for single-touch gestures
-                                    while (true) {
-                                        val event: PointerEvent =
-                                            awaitPointerEvent(PointerEventPass.Main)
-                                        if (event.changes.all { !it.pressed }) break
-
-                                        val change = event.changes.first()
-                                        velocityTracker.addPosition(
-                                            change.uptimeMillis,
-                                            change.position
-                                        )
-                                        val dragAmount = change.positionChange()
-
-                                        // Determine gesture if still undetermined
-                                        if (gestureType == GestureType.Undetermined && !longPressDetected) {
-                                            if (dragAmount.getDistanceSquared() > touchSlopSquared) {
-                                                longPressJob.cancel()
-                                                gestureType = GestureType.Scroll
-                                                // Clear any active selection when scrolling starts
-                                                if (selectionManager.mode != SelectionMode.NONE) {
-                                                    selectionManager.clearSelection()
-                                                }
-                                            }
-                                        }
-
-                                        // Handle based on gesture type
-                                        when (gestureType) {
-                                            GestureType.Selection -> {
-                                                if (selectionManager.isSelecting) {
-                                                    val dragCol =
-                                                        (change.position.x / baseCharWidth).toInt()
-                                                            .coerceIn(0, screenState.snapshot.cols - 1)
-                                                    val dragRow =
-                                                        (change.position.y / baseCharHeight).toInt()
-                                                            .coerceIn(0, screenState.snapshot.rows - 1)
-                                                    selectionManager.updateSelection(
-                                                        dragRow,
-                                                        dragCol
-                                                    )
-                                                    magnifierPosition = change.position
-                                                }
-                                            }
-
-                                            GestureType.Scroll -> {
-                                                // Update scroll offset
-                                                // Drag down (positive dragAmount.y) = view older content (increase scrollbackPosition)
-                                                // Drag up (negative dragAmount.y) = view newer content (decrease scrollbackPosition)
-                                                val newOffset = (scrollOffset.value + dragAmount.y)
-                                                    .coerceIn(0f, maxScroll)
-                                                coroutineScope.launch {
-                                                    scrollOffset.snapTo(newOffset)
-                                                }
-
-                                                // Update terminal buffer scrollback position
-                                                val scrolledLines =
-                                                    (newOffset / baseCharHeight).toInt()
-                                                screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
-                                            }
-
-                                            else -> {}
-                                        }
-
+                                        magnifierPosition = change.position
                                         change.consume()
                                     }
 
-                                    // 6. Gesture ended - cleanup
-                                    longPressJob.cancel()
-
-                                    when (gestureType) {
-                                        GestureType.Scroll -> {
-                                            // Apply fling animation
-                                            val velocity = velocityTracker.calculateVelocity()
-                                            coroutineScope.launch {
-                                                var targetValue = scrollOffset.targetValue
-                                                scrollOffset.animateDecay(
-                                                    initialVelocity = velocity.y,
-                                                    animationSpec = splineBasedDecay(density)
-                                                ) {
-                                                    targetValue = value
-                                                    // Update terminal buffer during animation
-                                                    val scrolledLines =
-                                                        (value / baseCharHeight).toInt()
-                                                    screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
-                                                }
-
-                                                // Clamp final position if needed
-                                                if (targetValue < 0f) {
-                                                    scrollOffset.snapTo(0f)
-                                                    screenState.scrollToBottom()
-                                                } else if (targetValue > maxScroll) {
-                                                    scrollOffset.snapTo(maxScroll)
-                                                    screenState.scrollToTop()
-                                                }
-                                            }
-                                        }
-
-                                        GestureType.Selection -> {
-                                            showMagnifier = false
-                                            if (selectionManager.isSelecting) {
-                                                selectionManager.endSelection()
-                                            }
-                                        }
-
-                                        GestureType.Undetermined -> {
-                                            // This is a tap. If a selection is active, clear it.
-                                            // Otherwise, forward the tap.
-                                            if (selectionManager.mode != SelectionMode.NONE) {
-                                                selectionManager.clearSelection()
-                                            } else {
-                                                // Request focus when terminal is tapped to show keyboard
-                                                if (keyboardEnabled) {
-                                                    focusRequester.requestFocus()
-                                                }
-                                                onTerminalTap()
-                                            }
-                                        }
-
-                                        else -> {}
-                                    }
+                                    showMagnifier = false
+                                    // Don't auto-show menu again after dragging handle
+                                    return@awaitEachGesture
                                 }
                             }
                         }
-            ) {
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clearAndSetSemantics {
-                            // Hide Canvas from accessibility tree - AccessibilityOverlay provides semantic structure
+
+                        // 2. Start long press detection for selection
+                        // Only start selection if no selection is already active
+                        var longPressDetected = false
+                        val longPressJob = launch {
+                            delay(viewConfiguration.longPressTimeoutMillis)
+                            if (gestureType == GestureType.Undetermined &&
+                                selectionManager.mode == SelectionMode.NONE
+                            ) {
+                                longPressDetected = true
+                                gestureType = GestureType.Selection
+
+                                // Start selection
+                                val col = (down.position.x / baseCharWidth).toInt()
+                                    .coerceIn(0, screenState.snapshot.cols - 1)
+                                val row = (down.position.y / baseCharHeight).toInt()
+                                    .coerceIn(0, screenState.snapshot.rows - 1)
+                                selectionManager.startSelection(
+                                    row,
+                                    col,
+                                    SelectionMode.BLOCK
+                                )
+                                showMagnifier = true
+                                magnifierPosition = down.position
+                            }
                         }
-                        .graphicsLayer {
-                            translationX = zoomOffset.x * zoomScale
-                            translationY = zoomOffset.y * zoomScale
-                            scaleX = zoomScale
-                            scaleY = zoomScale
-                            transformOrigin = zoomOrigin
+
+                        // 3. Check for multi-touch (zoom)
+                        val secondPointer = withTimeoutOrNull(
+                            WAIT_FOR_SECOND_TOUCH_MS
+                        ) {
+                            awaitPointerEvent().changes.firstOrNull { it.id != down.id && it.pressed }
                         }
-                ) {
-                    // Fill background
-                    drawRect(
-                        color = backgroundColor,
-                        size = size
-                    )
 
-                    // Draw each line (zoom/pan applied via graphicsLayer)
-                    for (row in 0 until screenState.snapshot.rows) {
-                        val line = screenState.getVisibleLine(row)
-                        drawLine(
-                            line = line,
-                            row = row,
-                            charWidth = baseCharWidth,
-                            charHeight = baseCharHeight,
-                            charBaseline = baseCharBaseline,
-                            textPaint = textPaint,
-                            defaultFg = foregroundColor,
-                            defaultBg = backgroundColor,
-                            selectionManager = selectionManager
-                        )
-                    }
+                        if (secondPointer != null) {
+                            longPressJob.cancel()
+                            gestureType = GestureType.Zoom
 
-                    // Draw cursor (only when viewing current screen, not scrollback)
-                    if (screenState.snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
-                        drawCursor(
-                            row = screenState.snapshot.cursorRow,
-                            col = screenState.snapshot.cursorCol,
-                            charWidth = baseCharWidth,
-                            charHeight = baseCharHeight,
-                            foregroundColor = foregroundColor,
-                            cursorShape = screenState.snapshot.cursorShape
-                        )
-                    }
+                            // Handle zoom using Compose's built-in gesture calculations
+                            isZooming = true
 
-                    // Draw selection handles
-                    if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
-                        val range = selectionManager.selectionRange
-                        if (range != null) {
-                            // Start handle
-                            val startPosition = range.getStartPosition()
-                            drawSelectionHandle(
-                                row = startPosition.first,
-                                col = startPosition.second,
-                                charWidth = baseCharWidth,
-                                charHeight = baseCharHeight,
-                                pointingDown = false,
+                            val centerX = (down.position.x + secondPointer.position.x) / 2f
+                            val centerY = (down.position.y + secondPointer.position.y) / 2f
+                            zoomOrigin = TransformOrigin(
+                                pivotFractionX = centerX / size.width,
+                                pivotFractionY = centerY / size.height
                             )
 
-                            // End handle
-                            val endPosition = range.getEndPosition()
-                            drawSelectionHandle(
-                                row = endPosition.first,
-                                col = endPosition.second,
-                                charWidth = baseCharWidth,
-                                charHeight = baseCharHeight,
-                                pointingDown = true,
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.all { !it.pressed }) break
+
+                                if (event.changes.size > 1) {
+                                    val gestureZoom = event.calculateZoom()
+                                    val gesturePan = event.calculatePan()
+
+                                    val oldScale = zoomScale
+                                    val newScale =
+                                        (oldScale * gestureZoom).coerceIn(
+                                            MIN_ZOOM_SCALE,
+                                            MAX_ZOOM_SCALE
+                                        )
+
+                                    zoomOffset += gesturePan
+                                    zoomScale = newScale
+
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+
+                            // Gesture ended - reset
+                            isZooming = false
+                            zoomScale = 1f
+                            zoomOffset = Offset.Zero
+
+                            return@awaitEachGesture
+                        }
+
+                        // 4. Track velocity for scroll fling
+                        val velocityTracker = VelocityTracker()
+                        velocityTracker.addPosition(down.uptimeMillis, down.position)
+
+                        // 5. Event loop for single-touch gestures
+                        while (true) {
+                            val event: PointerEvent =
+                                awaitPointerEvent(PointerEventPass.Main)
+                            if (event.changes.all { !it.pressed }) break
+
+                            val change = event.changes.first()
+                            velocityTracker.addPosition(
+                                change.uptimeMillis,
+                                change.position
                             )
+                            val dragAmount = change.positionChange()
+
+                            // Determine gesture if still undetermined
+                            if (gestureType == GestureType.Undetermined && !longPressDetected) {
+                                if (dragAmount.getDistanceSquared() > touchSlopSquared) {
+                                    longPressJob.cancel()
+                                    gestureType = GestureType.Scroll
+                                    // Clear any active selection when scrolling starts
+                                    if (selectionManager.mode != SelectionMode.NONE) {
+                                        selectionManager.clearSelection()
+                                    }
+                                }
+                            }
+
+                            // Handle based on gesture type
+                            when (gestureType) {
+                                GestureType.Selection -> {
+                                    if (selectionManager.isSelecting) {
+                                        val dragCol =
+                                            (change.position.x / baseCharWidth).toInt()
+                                                .coerceIn(0, screenState.snapshot.cols - 1)
+                                        val dragRow =
+                                            (change.position.y / baseCharHeight).toInt()
+                                                .coerceIn(0, screenState.snapshot.rows - 1)
+                                        selectionManager.updateSelection(
+                                            dragRow,
+                                            dragCol
+                                        )
+                                        magnifierPosition = change.position
+                                    }
+                                }
+
+                                GestureType.Scroll -> {
+                                    // Update scroll offset
+                                    // Drag down (positive dragAmount.y) = view older content (increase scrollbackPosition)
+                                    // Drag up (negative dragAmount.y) = view newer content (decrease scrollbackPosition)
+                                    val newOffset = (scrollOffset.value + dragAmount.y)
+                                        .coerceIn(0f, maxScroll)
+                                    coroutineScope.launch {
+                                        scrollOffset.snapTo(newOffset)
+                                    }
+
+                                    // Update terminal buffer scrollback position
+                                    val scrolledLines =
+                                        (newOffset / baseCharHeight).toInt()
+                                    screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                }
+
+                                else -> {}
+                            }
+
+                            change.consume()
+                        }
+
+                        // 6. Gesture ended - cleanup
+                        longPressJob.cancel()
+
+                        when (gestureType) {
+                            GestureType.Scroll -> {
+                                // Apply fling animation
+                                val velocity = velocityTracker.calculateVelocity()
+                                coroutineScope.launch {
+                                    var targetValue = scrollOffset.targetValue
+                                    scrollOffset.animateDecay(
+                                        initialVelocity = velocity.y,
+                                        animationSpec = splineBasedDecay(density)
+                                    ) {
+                                        targetValue = value
+                                        // Update terminal buffer during animation
+                                        val scrolledLines =
+                                            (value / baseCharHeight).toInt()
+                                        screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                    }
+
+                                    // Clamp final position if needed
+                                    if (targetValue < 0f) {
+                                        scrollOffset.snapTo(0f)
+                                        screenState.scrollToBottom()
+                                    } else if (targetValue > maxScroll) {
+                                        scrollOffset.snapTo(maxScroll)
+                                        screenState.scrollToTop()
+                                    }
+                                }
+                            }
+
+                            GestureType.Selection -> {
+                                showMagnifier = false
+                                if (selectionManager.isSelecting) {
+                                    selectionManager.endSelection()
+                                }
+                            }
+
+                            GestureType.Undetermined -> {
+                                // This is a tap. If a selection is active, clear it.
+                                // Otherwise, forward the tap.
+                                if (selectionManager.mode != SelectionMode.NONE) {
+                                    selectionManager.clearSelection()
+                                } else {
+                                    // Request focus when terminal is tapped to show keyboard
+                                    if (keyboardEnabled) {
+                                        focusRequester.requestFocus()
+                                    }
+                                    onTerminalTap()
+                                }
+                            }
+
+                            else -> {}
                         }
                     }
                 }
+            }
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clearAndSetSemantics {
+                        // Hide Canvas from accessibility tree - AccessibilityOverlay provides semantic structure
+                    }
+                    .graphicsLayer {
+                        translationX = zoomOffset.x * zoomScale
+                        translationY = zoomOffset.y * zoomScale
+                        scaleX = zoomScale
+                        scaleY = zoomScale
+                        transformOrigin = zoomOrigin
+                    }
+            ) {
+                // Fill background
+                drawRect(
+                    color = backgroundColor,
+                    size = size
+                )
 
-                if (accessibilityEnabled) {
-                    AccessibilityOverlay(
-                        screenState = screenState,
+                // Draw each line (zoom/pan applied via graphicsLayer)
+                for (row in 0 until screenState.snapshot.rows) {
+                    val line = screenState.getVisibleLine(row)
+                    drawLine(
+                        line = line,
+                        row = row,
+                        charWidth = baseCharWidth,
                         charHeight = baseCharHeight,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .focusRequester(reviewFocusRequester)
-                            .focusable(),
-                        onToggleReviewMode = { isReviewMode = !isReviewMode },
-                        isReviewMode = isReviewMode
+                        charBaseline = baseCharBaseline,
+                        textPaint = textPaint,
+                        defaultFg = foregroundColor,
+                        defaultBg = backgroundColor,
+                        selectionManager = selectionManager
                     )
+                }
 
-                    if (!isReviewMode && keyboardEnabled) {
-                        LiveOutputRegion(
-                            screenState = screenState,
-                            enabled = true,
-                            modifier = Modifier.fillMaxSize()
+                // Draw cursor (only when viewing current screen, not scrollback)
+                if (screenState.snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
+                    drawCursor(
+                        row = screenState.snapshot.cursorRow,
+                        col = screenState.snapshot.cursorCol,
+                        charWidth = baseCharWidth,
+                        charHeight = baseCharHeight,
+                        foregroundColor = foregroundColor,
+                        cursorShape = screenState.snapshot.cursorShape
+                    )
+                }
+
+                // Draw selection handles
+                if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
+                    val range = selectionManager.selectionRange
+                    if (range != null) {
+                        // Start handle
+                        val startPosition = range.getStartPosition()
+                        drawSelectionHandle(
+                            row = startPosition.first,
+                            col = startPosition.second,
+                            charWidth = baseCharWidth,
+                            charHeight = baseCharHeight,
+                            pointingDown = false,
+                        )
+
+                        // End handle
+                        val endPosition = range.getEndPosition()
+                        drawSelectionHandle(
+                            row = endPosition.first,
+                            col = endPosition.second,
+                            charWidth = baseCharWidth,
+                            charHeight = baseCharHeight,
+                            pointingDown = true,
                         )
                     }
+                }
+            }
+
+            if (accessibilityEnabled) {
+                AccessibilityOverlay(
+                    screenState = screenState,
+                    charHeight = baseCharHeight,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .focusRequester(reviewFocusRequester)
+                        .focusable(),
+                    onToggleReviewMode = { isReviewMode = !isReviewMode },
+                    isReviewMode = isReviewMode
+                )
+
+                if (!isReviewMode && keyboardEnabled) {
+                    LiveOutputRegion(
+                        screenState = screenState,
+                        enabled = true,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
         }
