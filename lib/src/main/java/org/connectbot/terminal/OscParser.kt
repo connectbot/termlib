@@ -86,24 +86,34 @@ internal class OscParser {
      * - Pd: base64-encoded data to copy, or "?" to query clipboard (not supported)
      *
      * For security, reading clipboard (Pd = "?") is not supported.
+     *
+     * Note: When coming from libvterm's selection callback, the data is already
+     * base64-decoded. We handle both cases by trying base64 decode first, and
+     * falling back to using the raw data if decoding fails.
      */
     private fun handleOsc52(payload: String): List<Action> {
-        // Payload format: "selection;base64data"
+        // Payload format: "selection;data" (data may be base64-encoded or pre-decoded)
         val separatorIndex = payload.indexOf(';')
         if (separatorIndex < 0) return emptyList()
 
         val selection = payload.substring(0, separatorIndex)
-        val base64Data = payload.substring(separatorIndex + 1)
+        val data = payload.substring(separatorIndex + 1)
 
         // Do not support clipboard read requests (security concern)
-        if (base64Data == "?") return emptyList()
+        if (data == "?") return emptyList()
 
-        // Decode base64 data
+        // Empty data is allowed (means empty clipboard copy)
+        if (data.isEmpty()) {
+            return listOf(Action.ClipboardCopy(selection, ""))
+        }
+
+        // Try to decode as base64 first. If it fails, the data is likely
+        // already decoded (coming from libvterm's selection callback).
         val decodedData = try {
-            Base64.Default.decode(base64Data).toString(Charsets.UTF_8)
+            Base64.Default.decode(data).toString(Charsets.UTF_8)
         } catch (e: IllegalArgumentException) {
-            // Invalid base64 data
-            return emptyList()
+            // Not valid base64 - assume data is already decoded
+            data
         }
 
         return listOf(Action.ClipboardCopy(selection, decodedData))

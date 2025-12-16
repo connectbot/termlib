@@ -60,6 +60,10 @@ private:
     // libvterm state fallback for OSC sequences
     static int termOscFallback(int command, VTermStringFragment frag, void* user);
 
+    // libvterm selection callbacks for OSC 52 clipboard
+    static int termSelectionSet(VTermSelectionMask mask, VTermStringFragment frag, void* user);
+    static int termSelectionQuery(VTermSelectionMask mask, void* user);
+
     // Java callback invocation helpers
     void invokeDamage(int startRow, int endRow, int startCol, int endCol);
     int invokeMoverect(VTermRect dest, VTermRect src);
@@ -80,6 +84,12 @@ private:
     VTermScreen* mVts;
     VTermScreenCallbacks mScreenCallbacks{};
     VTermStateFallbacks mStateFallbacks{};
+    VTermSelectionCallbacks mSelectionCallbacks{};
+
+    // Selection buffer for OSC 52 clipboard (libvterm uses this for base64 decoding)
+    static constexpr size_t SELECTION_BUFFER_SIZE = 8192;
+    char mSelectionBuffer[SELECTION_BUFFER_SIZE]{};
+    std::string mSelectionData;  // Accumulates decoded clipboard data across fragments
 
     // Terminal dimensions
     int mRows;

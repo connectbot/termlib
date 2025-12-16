@@ -149,14 +149,18 @@ class OscParserTest {
     }
 
     @Test
-    fun testOsc52InvalidBase64() {
+    fun testOsc52InvalidBase64TreatedAsRawData() {
         val parser = OscParser()
         val row = 0
         val cols = 80
 
-        // Invalid base64 data
+        // Invalid base64 data is treated as raw/pre-decoded data
+        // (libvterm's selection callback provides pre-decoded data)
         val actions = parser.parse(52, "c;!!invalid!!", row, 0, cols)
-        assertTrue(actions.isEmpty())
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.ClipboardCopy
+        assertEquals("c", action.selection)
+        assertEquals("!!invalid!!", action.data)
     }
 
     @Test

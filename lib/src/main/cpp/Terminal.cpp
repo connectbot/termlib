@@ -211,6 +211,16 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     mStateFallbacks = fallbacks;
     vterm_state_set_unrecognised_fallbacks(state, &mStateFallbacks, this);
 
+    // Set up selection callbacks for OSC 52 clipboard support
+    // Note: libvterm handles base64 decoding internally
+    mSelectionCallbacks = {
+        .set = termSelectionSet,
+        .query = termSelectionQuery
+    };
+    vterm_state_set_selection_callbacks(state, &mSelectionCallbacks, this,
+        mSelectionBuffer, SELECTION_BUFFER_SIZE);
+    LOGD("Selection callbacks registered for OSC 52 clipboard support");
+
     // Configure damage merging
     vterm_screen_set_damage_merge(mVts, VTERM_DAMAGE_SCROLL);
 
@@ -543,6 +553,42 @@ int Terminal::termOscFallback(int command, VTermStringFragment frag, void* user)
     std::string payload(frag.str, frag.len);
 
     return term->invokeOscSequence(command, payload);
+}
+
+// OSC 52 selection set callback - receives base64-decoded clipboard data from libvterm
+int Terminal::termSelectionSet(VTermSelectionMask mask, VTermStringFragment frag, void* user) {
+    auto* term = static_cast<Terminal*>(user);
+
+    LOGD("termSelectionSet: mask=%04X, len=%d, initial=%d, final=%d",
+         mask, static_cast<int>(frag.len), frag.initial, frag.final);
+
+    // Accumulate data across fragments
+    if (frag.initial) {
+        term->mSelectionData.clear();
+    }
+
+    if (frag.len > 0) {
+        term->mSelectionData.append(frag.str, frag.len);
+    }
+
+    // When we have the final fragment, send to Java via OSC sequence callback
+    if (frag.final && !term->mSelectionData.empty()) {
+        LOGD("termSelectionSet: final data length=%d", static_cast<int>(term->mSelectionData.size()));
+        // Use OSC 52 command number and pass the decoded data as payload
+        // Format: selection;data - but since libvterm already decoded base64, we pass raw data
+        std::string payload = "c;" + term->mSelectionData;  // 'c' for clipboard
+        term->invokeOscSequence(52, payload);
+        term->mSelectionData.clear();
+    }
+
+    return 1;
+}
+
+// OSC 52 selection query callback - we don't support clipboard read for security
+int Terminal::termSelectionQuery(VTermSelectionMask mask, void* user) {
+    LOGD("termSelectionQuery: mask=%04X (ignored for security)", mask);
+    // Return 0 to indicate we don't support clipboard read
+    return 0;
 }
 
 // Java callback invocations
