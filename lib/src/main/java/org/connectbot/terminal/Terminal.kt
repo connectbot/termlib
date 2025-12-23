@@ -563,6 +563,16 @@ fun TerminalWithAccessibility(
 
     // Coroutine scope for animations
     val coroutineScope = rememberCoroutineScope()
+
+    // Setup keyboard input callback to reset scroll position
+    LaunchedEffect(screenState, scrollOffset) {
+        keyboardHandler.onInputProcessed = {
+            screenState.scrollToBottom()
+            coroutineScope.launch {
+                scrollOffset.snapTo(0f)
+            }
+        }
+    }
     val viewConfiguration = LocalViewConfiguration.current
 
     var availableWidth by remember { mutableStateOf(0) }
