@@ -40,11 +40,14 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
  * @param selectionController Optional selection controller for keyboard-based selection.
  *                            When provided and selection is active, arrow keys will move
  *                            the selection instead of sending to terminal.
+ * @param onInputProcessed Optional callback invoked after input is successfully processed
+ *                         and sent to terminal. Use this to reset scroll position to bottom.
  */
 internal class KeyboardHandler(
     private val terminalEmulator: TerminalEmulator,
     var modifierManager: ModifierManager? = null,
-    var selectionController: SelectionController? = null
+    var selectionController: SelectionController? = null,
+    var onInputProcessed: (() -> Unit)? = null
 ) {
 
     /**
@@ -107,6 +110,7 @@ internal class KeyboardHandler(
         if (vtermKey != null) {
             terminalEmulator.dispatchKey(modifiers, vtermKey)
             modifierManager?.clearTransients()
+            onInputProcessed?.invoke()
             return true
         }
 
@@ -115,6 +119,7 @@ internal class KeyboardHandler(
         if (char != null) {
             terminalEmulator.dispatchCharacter(modifiers, char)
             modifierManager?.clearTransients()
+            onInputProcessed?.invoke()
             return true
         }
 
@@ -130,6 +135,7 @@ internal class KeyboardHandler(
 
         terminalEmulator.dispatchCharacter(modifiers, char)
         modifierManager?.clearTransients()
+        onInputProcessed?.invoke()
         return true
     }
 
@@ -147,6 +153,7 @@ internal class KeyboardHandler(
             terminalEmulator.dispatchCharacter(modifiers, char)
         }
         modifierManager?.clearTransients()
+        onInputProcessed?.invoke()
     }
 
     /**
