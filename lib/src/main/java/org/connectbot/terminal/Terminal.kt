@@ -580,19 +580,10 @@ fun TerminalWithAccessibility(
 
     Box(
         modifier = modifier
-            .layout { measurable, constraints ->
-                availableWidth = constraints.maxWidth
-                availableHeight = constraints.maxHeight
-                val placeable = measurable.measure(constraints)
-                layout(placeable.width, placeable.height) {
-                    placeable.place(0, 0)
-                }
-            }
+            .fillMaxSize()
             .onSizeChanged {
-                terminalEmulator.resize(
-                    charsPerDimension(it.height, baseCharHeight),
-                    charsPerDimension(it.width, baseCharWidth)
-                )
+                availableWidth = it.width
+                availableHeight = it.height
             }
             .then(
                 if (keyboardEnabled) {
@@ -630,6 +621,10 @@ fun TerminalWithAccessibility(
         if (forcedSize != null) {
             val (forcedRows, forcedCols) = forcedSize
             LaunchedEffect(availableWidth, availableHeight, forcedRows, forcedCols) {
+                if (availableWidth == 0 || availableHeight == 0) {
+                    return@LaunchedEffect
+                }
+
                 val optimalSize = findOptimalFontSize(
                     targetRows = forcedRows,
                     targetCols = forcedCols,
@@ -651,19 +646,29 @@ fun TerminalWithAccessibility(
             }
         }
 
-        // Use base dimensions for terminal sizing (not zoomed dimensions)
-        val newCols =
-            forcedSize?.second ?: charsPerDimension(availableWidth, baseCharWidth)
-        val newRows =
-            forcedSize?.first ?: charsPerDimension(availableHeight, baseCharHeight)
-
         // Resize terminal when dimensions change
-        LaunchedEffect(terminalEmulator, newRows, newCols) {
+        LaunchedEffect(terminalEmulator, availableWidth, availableHeight, forcedSize, baseCharWidth, baseCharHeight) {
+            if (availableWidth == 0 || availableHeight == 0) {
+                return@LaunchedEffect
+            }
+
+            // Use base dimensions for terminal sizing (not zoomed dimensions)
+            val newCols =
+                forcedSize?.second ?: charsPerDimension(availableWidth, baseCharWidth)
+            val newRows =
+                forcedSize?.first ?: charsPerDimension(availableHeight, baseCharHeight)
+
             val dimensions = terminalEmulator.dimensions
             if (newRows != dimensions.rows || newCols != dimensions.columns) {
                 terminalEmulator.resize(newRows, newCols)
             }
         }
+
+        // Use base dimensions for terminal sizing (not zoomed dimensions)
+        val newCols =
+            forcedSize?.second ?: charsPerDimension(availableWidth, baseCharWidth)
+        val newRows =
+            forcedSize?.first ?: charsPerDimension(availableHeight, baseCharHeight)
 
         // Auto-scroll to bottom when new content arrives (if not manually scrolled)
         val wasAtBottom = screenState.scrollbackPosition == 0
