@@ -28,7 +28,16 @@ internal data class TerminalLine(
     val row: Int,
     val cells: List<Cell>,
     val lastModified: Long = System.nanoTime(),
-    val semanticSegments: List<SemanticSegment> = emptyList()
+    val semanticSegments: List<SemanticSegment> = emptyList(),
+    /**
+     * True if this line ended with a soft wrap (visual line break due to terminal width),
+     * false if it ended with a hard break (actual newline character).
+     *
+     * This is used when copying text to avoid inserting spurious newlines in wrapped
+     * long commands. For example, a command like "echo foo bar baz..." that wraps to
+     * multiple lines should be copied as a single line without embedded newlines.
+     */
+    val softWrapped: Boolean = false
 ) {
     /**
      * Get the text content of this line as a string.
@@ -115,7 +124,8 @@ internal data class TerminalLine(
                         fgColor = defaultFg,
                         bgColor = defaultBg
                     )
-                }
+                },
+                softWrapped = false
             )
         }
     }

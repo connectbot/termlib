@@ -514,7 +514,7 @@ internal class TerminalEmulatorImpl(
         return 0
     }
 
-    override fun pushScrollbackLine(cols: Int, cells: Array<ScreenCell>): Int {
+    override fun pushScrollbackLine(cols: Int, cells: Array<ScreenCell>, softWrapped: Boolean): Int {
         // Convert ScreenCell array to TerminalLine
         val cellList = cells.take(cols).map { screenCell ->
             TerminalLine.Cell(
@@ -540,7 +540,7 @@ internal class TerminalEmulatorImpl(
                 emptyList()
             }
 
-            val line = TerminalLine(row = -1, cells = cellList, semanticSegments = line0Segments)
+            val line = TerminalLine(row = -1, cells = cellList, softWrapped = softWrapped, semanticSegments = line0Segments)
 
             scrollback.add(line)
             if (scrollback.size > maxScrollbackLines) {
@@ -858,12 +858,21 @@ internal class TerminalEmulatorImpl(
             col += cellsInRun
         }
 
+        // Check if this line is soft-wrapped (the next line is a continuation).
+        // A line is soft-wrapped if the next row has continuation=true.
+        val softWrapped = if (row + 1 < rows) {
+            terminalNative.getLineContinuation(row + 1)
+        } else {
+            // Last visible row - we can't know if it's wrapped until it scrolls
+            false
+        }
+
         // Update cached line, preserving any existing semantic segments
         // Must synchronize to ensure visibility of segments added by addSemanticSegment
         synchronized(damageLock) {
             currentLines = currentLines.toMutableList().apply {
                 val existingSegments = this[row].semanticSegments
-                this[row] = TerminalLine(row, cells, semanticSegments = existingSegments)
+                this[row] = TerminalLine(row, cells, softWrapped = softWrapped, semanticSegments = existingSegments)
             }
         }
     }

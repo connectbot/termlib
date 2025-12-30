@@ -76,9 +76,13 @@ internal interface TerminalCallbacks {
      *
      * @param cols Number of columns in the line
      * @param cells Array of screen cells
+     * @param softWrapped True if this line ended with a soft wrap (visual line break due to
+     *                    terminal width), false if it ended with a hard break (actual newline).
+     *                    This is used when copying text to avoid inserting spurious newlines
+     *                    in wrapped long commands.
      * @return 0 on success
      */
-    fun pushScrollbackLine(cols: Int, cells: Array<ScreenCell>): Int
+    fun pushScrollbackLine(cols: Int, cells: Array<ScreenCell>, softWrapped: Boolean): Int
 
     /**
      * Called when a line should be popped from scrollback buffer.

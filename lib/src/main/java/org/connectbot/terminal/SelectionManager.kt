@@ -265,11 +265,20 @@ internal class SelectionManager {
 
                 when (mode) {
                     SelectionMode.LINE -> {
-                        line.cells.forEach { cell ->
-                            append(cell.char)
-                            cell.combiningChars.forEach { append(it) }
-                        }
-                        if (row < maxRow) append('\n')
+                        // Build line text and trim trailing whitespace.
+                        // Terminal lines are always padded to terminal width with spaces,
+                        // but we don't want those trailing spaces in copied text.
+                        val lineText = buildString {
+                            line.cells.forEach { cell ->
+                                append(cell.char)
+                                cell.combiningChars.forEach { append(it) }
+                            }
+                        }.trimEnd()
+                        append(lineText)
+                        // Only add newline for hard line breaks, not soft wraps.
+                        // This ensures that copying a long wrapped command doesn't
+                        // insert spurious newlines that break the command when pasted.
+                        if (row < maxRow && !line.softWrapped) append('\n')
                     }
                     SelectionMode.BLOCK -> {
                         val startCol = when (row) {
@@ -281,12 +290,17 @@ internal class SelectionManager {
                             else -> line.cells.size - 1
                         }
 
-                        for (col in startCol..minOf(endCol, line.cells.lastIndex)) {
-                            val cell = line.cells[col]
-                            append(cell.char)
-                            cell.combiningChars.forEach { append(it) }
-                        }
-                        if (row < maxRow) append('\n')
+                        // Build line text and trim trailing whitespace
+                        val lineText = buildString {
+                            for (col in startCol..minOf(endCol, line.cells.lastIndex)) {
+                                val cell = line.cells[col]
+                                append(cell.char)
+                                cell.combiningChars.forEach { append(it) }
+                            }
+                        }.trimEnd()
+                        append(lineText)
+                        // Only add newline for hard line breaks, not soft wraps.
+                        if (row < maxRow && !line.softWrapped) append('\n')
                     }
                     SelectionMode.NONE -> {}
                 }

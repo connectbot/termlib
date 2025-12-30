@@ -69,7 +69,7 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
         LOGE("Failed to find bell method");
     }
     mPushScrollbackMethod = env->GetMethodID(callbacksClass, "pushScrollbackLine",
-        "(I[Lorg/connectbot/terminal/ScreenCell;)I");
+        "(I[Lorg/connectbot/terminal/ScreenCell;Z)I");
     if (!mPushScrollbackMethod) {
         LOGE("Failed to find pushScrollbackLine method");
     }
@@ -531,7 +531,20 @@ int Terminal::termBell(void* user) {
 
 int Terminal::termSbPushline(int cols, const VTermScreenCell* cells, void* user) {
     auto* term = static_cast<Terminal*>(user);
-    term->invokePushScrollbackLine(cols, cells);
+
+    // Check if row 1 (the next line after the one being pushed) is a continuation.
+    // If row 1 has continuation=1, it means the line being pushed (row 0) ended with
+    // a soft wrap rather than a hard line break.
+    VTermState* state = vterm_obtain_state(term->mVt);
+    bool softWrapped = false;
+    if (state && term->mRows > 1) {
+        const VTermLineInfo* nextLineInfo = vterm_state_get_lineinfo(state, 1);
+        if (nextLineInfo) {
+            softWrapped = nextLineInfo->continuation != 0;
+        }
+    }
+
+    term->invokePushScrollbackLine(cols, cells, softWrapped);
     return 1;
 }
 
@@ -754,7 +767,7 @@ void Terminal::invokeBell() {
     env->CallIntMethod(mCallbacks, mBellMethod);
 }
 
-void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) {
+void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, bool softWrapped) {
     if (!mPushScrollbackMethod) {
         return;
     }
@@ -862,8 +875,8 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells) 
         env->DeleteLocalRef(screenCells[i]);
     }
 
-    // Call the Java callback with actual cell count
-    env->CallIntMethod(mCallbacks, mPushScrollbackMethod, actualCells, actualCellArray);
+    // Call the Java callback with actual cell count and soft wrap status
+    env->CallIntMethod(mCallbacks, mPushScrollbackMethod, actualCells, actualCellArray, (jboolean)softWrapped);
 
     // Clean up only the array (classes are cached globally)
     env->DeleteLocalRef(actualCellArray);
@@ -1053,6 +1066,27 @@ int Terminal::invokeOscSequence(int command, const std::string& payload, int cur
     return result;
 }
 
+// Line info retrieval
+bool Terminal::getLineContinuation(int row) {
+    std::lock_guard<std::recursive_mutex> lock(mLock);
+
+    if (!mVt || row < 0 || row >= mRows) {
+        return false;
+    }
+
+    VTermState* state = vterm_obtain_state(mVt);
+    if (!state) {
+        return false;
+    }
+
+    const VTermLineInfo* lineInfo = vterm_state_get_lineinfo(state, row);
+    if (!lineInfo) {
+        return false;
+    }
+
+    return lineInfo->continuation != 0;
+}
+
 // Helper functions
 bool Terminal::cellStyleEqual(const VTermScreenCell& a, const VTermScreenCell& b) {
     return memcmp(&a.fg, &b.fg, sizeof(VTermColor)) == 0 &&
@@ -1196,6 +1230,13 @@ Java_org_connectbot_terminal_TerminalNative_nativeSetDefaultColors(JNIEnv* /* en
                                                                    jlong ptr, jint fgColor, jint bgColor) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->setDefaultColors(static_cast<uint32_t>(fgColor), static_cast<uint32_t>(bgColor));
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeGetLineContinuation(JNIEnv* /* env */, jobject /* thiz */,
+                                                                       jlong ptr, jint row) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->getLineContinuation(row);
 }
 
 } // extern "C"
