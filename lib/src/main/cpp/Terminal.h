@@ -40,6 +40,9 @@ public:
     // Cell data retrieval for rendering
     int getCellRun(JNIEnv* env, int row, int col, jobject runObject);
 
+    // Line info retrieval (for continuation/soft-wrap detection)
+    bool getLineContinuation(int row);
+
     // Color configuration
     int setPaletteColors(const uint32_t* colors, int count);
     int setDefaultColors(uint32_t fgColor, uint32_t bgColor);
@@ -70,7 +73,7 @@ private:
     void invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool visible);
     void invokeSetTermProp(VTermProp prop, VTermValue* val);
     void invokeBell();
-    void invokePushScrollbackLine(int cols, const VTermScreenCell* cells);
+    void invokePushScrollbackLine(int cols, const VTermScreenCell* cells, bool softWrapped);
     int invokePopScrollbackLine(int cols, VTermScreenCell* cells);
     void invokeKeyboardOutput(const char* data, size_t len);
     int invokeOscSequence(int command, const std::string& payload, int cursorRow, int cursorCol);

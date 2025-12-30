@@ -154,6 +154,20 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     }
 
     /**
+     * Get the continuation (soft wrap) status for a visible screen line.
+     *
+     * A line is a "continuation" if it continues from the previous line due to
+     * text wrapping, rather than starting after a hard newline.
+     *
+     * @param row Row index (0-based)
+     * @return true if this line is a continuation of the previous line
+     */
+    fun getLineContinuation(row: Int): Boolean {
+        checkNotClosed()
+        return nativeGetLineContinuation(nativePtr, row)
+    }
+
+    /**
      * Close the terminal and release native resources.
      * After calling this, the Terminal instance cannot be used.
      */
@@ -187,6 +201,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeGetCellRun(ptr: Long, row: Int, col: Int, run: CellRun): Int
     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int
+    private external fun nativeGetLineContinuation(ptr: Long, row: Int): Boolean
 
     companion object {
         init {
