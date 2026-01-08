@@ -201,4 +201,170 @@ class OscParserTest {
         assertEquals("c", action.selection)
         assertEquals("", action.data)
     }
+
+    @Test
+    fun testOsc8HyperlinkBasic() {
+        val parser = OscParser()
+        val row = 5
+        val cols = 80
+
+        // Start hyperlink at col 0
+        var actions = parser.parse(8, ";https://example.com", row, 0, cols)
+        assertTrue(actions.isEmpty()) // No action yet, just state update
+
+        // End hyperlink at col 12 (after "Example Link")
+        actions = parser.parse(8, ";", row, 12, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.AddSegment
+        assertEquals(SemanticType.HYPERLINK, action.type)
+        assertEquals(0, action.startCol)
+        assertEquals(12, action.endCol)
+        assertEquals("https://example.com", action.metadata)
+    }
+
+    @Test
+    fun testOsc8HyperlinkWithId() {
+        val parser = OscParser()
+        val row = 5
+        val cols = 80
+
+        // Start hyperlink with id parameter
+        var actions = parser.parse(8, "id=link1;https://example.com", row, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        // End hyperlink
+        actions = parser.parse(8, ";", row, 10, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.AddSegment
+        assertEquals(SemanticType.HYPERLINK, action.type)
+        assertEquals("https://example.com", action.metadata)
+    }
+
+    @Test
+    fun testOsc8HyperlinkWithMultipleParams() {
+        val parser = OscParser()
+        val row = 5
+        val cols = 80
+
+        // Start hyperlink with multiple params (colon-separated)
+        var actions = parser.parse(8, "id=link1:foo=bar;https://example.com", row, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        // End hyperlink
+        actions = parser.parse(8, ";", row, 8, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.AddSegment
+        assertEquals(SemanticType.HYPERLINK, action.type)
+        assertEquals("https://example.com", action.metadata)
+    }
+
+    @Test
+    fun testOsc8HyperlinkNoEndMarker() {
+        val parser = OscParser()
+        val row = 5
+        val cols = 80
+
+        // Start hyperlink but never end it - no segment should be created
+        var actions = parser.parse(8, ";https://example.com", row, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        // Start a new hyperlink on a different row (old one implicitly abandoned)
+        actions = parser.parse(8, ";https://other.com", row + 1, 5, cols)
+        assertTrue(actions.isEmpty())
+
+        // End the new hyperlink
+        actions = parser.parse(8, ";", row + 1, 15, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.AddSegment
+        assertEquals("https://other.com", action.metadata)
+        assertEquals(5, action.startCol)
+        assertEquals(15, action.endCol)
+    }
+
+    @Test
+    fun testOsc8HyperlinkSameRowReplacement() {
+        val parser = OscParser()
+        val row = 5
+        val cols = 80
+
+        // Start hyperlink at col 0
+        var actions = parser.parse(8, ";https://first.com", row, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        // Start another hyperlink at col 10 (should close first one)
+        actions = parser.parse(8, ";https://second.com", row, 10, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.AddSegment
+        assertEquals("https://first.com", action.metadata)
+        assertEquals(0, action.startCol)
+        assertEquals(10, action.endCol)
+
+        // End the second hyperlink
+        actions = parser.parse(8, ";", row, 20, cols)
+        assertEquals(1, actions.size)
+        val action2 = actions[0] as OscParser.Action.AddSegment
+        assertEquals("https://second.com", action2.metadata)
+        assertEquals(10, action2.startCol)
+        assertEquals(20, action2.endCol)
+    }
+
+    @Test
+    fun testOsc8HyperlinkMissingSeparator() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Missing semicolon separator should be ignored
+        val actions = parser.parse(8, "https://example.com", row, 0, cols)
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun testOsc8HyperlinkEmptyEndAtSameColumn() {
+        val parser = OscParser()
+        val row = 5
+        val cols = 80
+
+        // Start hyperlink at col 5
+        var actions = parser.parse(8, ";https://example.com", row, 5, cols)
+        assertTrue(actions.isEmpty())
+
+        // End hyperlink at same column (zero-width) - should not create segment
+        actions = parser.parse(8, ";", row, 5, cols)
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun testOsc8HyperlinkUrlWithSpecialChars() {
+        val parser = OscParser()
+        val row = 5
+        val cols = 80
+
+        // URL with query params and fragments
+        val complexUrl = "https://example.com/path?query=value&foo=bar#section"
+        var actions = parser.parse(8, ";$complexUrl", row, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        actions = parser.parse(8, ";", row, 20, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.AddSegment
+        assertEquals(complexUrl, action.metadata)
+    }
+
+    @Test
+    fun testOsc8HyperlinkFileUrl() {
+        val parser = OscParser()
+        val row = 5
+        val cols = 80
+
+        // File URL (common for local links in terminal)
+        val fileUrl = "file:///home/user/document.txt"
+        var actions = parser.parse(8, ";$fileUrl", row, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        actions = parser.parse(8, ";", row, 12, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.AddSegment
+        assertEquals(fileUrl, action.metadata)
+    }
 }

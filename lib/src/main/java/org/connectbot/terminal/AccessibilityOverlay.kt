@@ -247,6 +247,15 @@ private fun buildSemanticAnnotatedString(line: TerminalLine): AnnotatedString {
                     append("Annotation: ")
                     append(segmentText)
                 }
+                SemanticType.HYPERLINK -> {
+                    append("Link: ")
+                    append(segmentText)
+                    val url = segment.metadata
+                    if (url != null) {
+                        append(", URL: ")
+                        append(url)
+                    }
+                }
                 SemanticType.DEFAULT -> append(segmentText)
             }
 
@@ -321,10 +330,17 @@ private fun buildSemanticDescription(line: TerminalLine): String {
                     }
                 }
                 SemanticType.ANNOTATION -> append("Annotation: ")
+                SemanticType.HYPERLINK -> append("Link: ")
                 SemanticType.DEFAULT -> { /* No prefix */ }
             }
 
             append(segmentText)
+
+            // For hyperlinks, also append the URL for accessibility
+            if (segment.semanticType == SemanticType.HYPERLINK && segment.metadata != null) {
+                append(", URL: ")
+                append(segment.metadata)
+            }
 
             // Add space between segments
             if (isNotEmpty() && !endsWith(' ')) {

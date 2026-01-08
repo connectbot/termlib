@@ -24,12 +24,13 @@ class SemanticTypeTest {
     @Test
     fun testSemanticTypeExists() {
         val types = SemanticType.values()
-        assertEquals(6, types.size)
+        assertEquals(7, types.size)
         assertTrue(types.contains(SemanticType.PROMPT))
         assertTrue(types.contains(SemanticType.COMMAND_INPUT))
         assertTrue(types.contains(SemanticType.COMMAND_OUTPUT))
         assertTrue(types.contains(SemanticType.COMMAND_FINISHED))
         assertTrue(types.contains(SemanticType.ANNOTATION))
+        assertTrue(types.contains(SemanticType.HYPERLINK))
         assertTrue(types.contains(SemanticType.DEFAULT))
     }
 
@@ -136,6 +137,32 @@ class SemanticTypeTest {
         assertEquals(2, line.getSegmentsOfType(SemanticType.PROMPT).size)
         assertEquals(2, line.getSegmentsOfType(SemanticType.COMMAND_INPUT).size)
         assertEquals(1, line.promptId) // Returns first promptId
+    }
+
+    @Test
+    fun testHyperlinkSegment() {
+        val cells = buildTestCells("Click here for docs")
+        val line = TerminalLine(
+            row = 0,
+            cells = cells,
+            semanticSegments = listOf(
+                SemanticSegment(
+                    startCol = 0,
+                    endCol = 10,
+                    semanticType = SemanticType.HYPERLINK,
+                    metadata = "https://example.com",
+                    promptId = -1
+                )
+            )
+        )
+
+        assertEquals(SemanticType.HYPERLINK, line.getSemanticTypeAt(0))
+        assertEquals(SemanticType.HYPERLINK, line.getSemanticTypeAt(9))
+        assertEquals(SemanticType.DEFAULT, line.getSemanticTypeAt(10))
+
+        val hyperlinkSegments = line.getSegmentsOfType(SemanticType.HYPERLINK)
+        assertEquals(1, hyperlinkSegments.size)
+        assertEquals("https://example.com", hyperlinkSegments[0].metadata)
     }
 
     private fun buildTestCells(text: String): List<TerminalLine.Cell> {

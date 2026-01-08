@@ -39,7 +39,10 @@ internal enum class SemanticType {
     COMMAND_FINISHED,
 
     /** Annotated content (OSC 1337;AddAnnotation) */
-    ANNOTATION
+    ANNOTATION,
+
+    /** Hyperlink (OSC 8) - metadata contains the URL */
+    HYPERLINK
 }
 
 /**
