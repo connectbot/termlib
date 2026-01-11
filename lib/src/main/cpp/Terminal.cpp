@@ -550,14 +550,17 @@ void Terminal::termOutput(const char* s, size_t len, void* user) {
 int Terminal::termOscFallback(int command, VTermStringFragment frag, void* user) {
     auto* term = static_cast<Terminal*>(user);
 
-    // Start of a new OSC sequence - save cursor position now
-    // because libvterm may process more text before the OSC callback completes
+    // Start of a new OSC sequence
     if (frag.initial) {
         term->mOscData.clear();
         term->mOscCommand = command;
-        // Capture cursor position at the START of the OSC sequence
-        VTermState* state = vterm_obtain_state(term->mVt);
-        vterm_state_get_cursorpos(state, &term->mOscCursorPos);
+        // For OSC 8 (hyperlinks), save cursor position at the START of the sequence
+        // because libvterm processes text before calling callbacks, causing the
+        // cursor position at frag.final to reflect the position AFTER the hyperlink text
+        if (command == 8) {
+            VTermState* state = vterm_obtain_state(term->mVt);
+            vterm_state_get_cursorpos(state, &term->mOscCursorPos);
+        }
     }
 
     // Accumulate fragment data
@@ -567,9 +570,21 @@ int Terminal::termOscFallback(int command, VTermStringFragment frag, void* user)
 
     // When we have the final fragment, send complete payload to Java
     if (frag.final) {
-        // Use the cursor position saved at frag.initial, not current position
-        int result = term->invokeOscSequence(term->mOscCommand, term->mOscData,
-                                              term->mOscCursorPos.row, term->mOscCursorPos.col);
+        int cursorRow, cursorCol;
+        if (term->mOscCommand == 8) {
+            // For OSC 8, use the position saved at frag.initial
+            cursorRow = term->mOscCursorPos.row;
+            cursorCol = term->mOscCursorPos.col;
+        } else {
+            // For other OSC commands, get current cursor position
+            VTermState* state = vterm_obtain_state(term->mVt);
+            VTermPos cursorPos;
+            vterm_state_get_cursorpos(state, &cursorPos);
+            cursorRow = cursorPos.row;
+            cursorCol = cursorPos.col;
+        }
+
+        int result = term->invokeOscSequence(term->mOscCommand, term->mOscData, cursorRow, cursorCol);
         term->mOscData.clear();
         term->mOscCommand = -1;
         return result;
