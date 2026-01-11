@@ -550,10 +550,14 @@ void Terminal::termOutput(const char* s, size_t len, void* user) {
 int Terminal::termOscFallback(int command, VTermStringFragment frag, void* user) {
     auto* term = static_cast<Terminal*>(user);
 
-    // Start of a new OSC sequence
+    // Start of a new OSC sequence - save cursor position now
+    // because libvterm may process more text before the OSC callback completes
     if (frag.initial) {
         term->mOscData.clear();
         term->mOscCommand = command;
+        // Capture cursor position at the START of the OSC sequence
+        VTermState* state = vterm_obtain_state(term->mVt);
+        vterm_state_get_cursorpos(state, &term->mOscCursorPos);
     }
 
     // Accumulate fragment data
@@ -563,12 +567,9 @@ int Terminal::termOscFallback(int command, VTermStringFragment frag, void* user)
 
     // When we have the final fragment, send complete payload to Java
     if (frag.final) {
-        // Get current cursor position from libvterm
-        VTermState* state = vterm_obtain_state(term->mVt);
-        VTermPos cursorPos;
-        vterm_state_get_cursorpos(state, &cursorPos);
-
-        int result = term->invokeOscSequence(term->mOscCommand, term->mOscData, cursorPos.row, cursorPos.col);
+        // Use the cursor position saved at frag.initial, not current position
+        int result = term->invokeOscSequence(term->mOscCommand, term->mOscData,
+                                              term->mOscCursorPos.row, term->mOscCursorPos.col);
         term->mOscData.clear();
         term->mOscCommand = -1;
         return result;

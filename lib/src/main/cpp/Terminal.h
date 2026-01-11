@@ -94,6 +94,7 @@ private:
     // OSC fallback buffer for accumulating fragmented OSC sequences (e.g., OSC 8 hyperlinks)
     std::string mOscData;  // Accumulates OSC payload across fragments
     int mOscCommand{-1};   // Current OSC command being accumulated
+    VTermPos mOscCursorPos{0, 0};  // Cursor position when OSC sequence started
 
     // Terminal dimensions
     int mRows;

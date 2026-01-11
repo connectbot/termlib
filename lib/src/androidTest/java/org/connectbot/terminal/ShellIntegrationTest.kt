@@ -154,18 +154,22 @@ class ShellIntegrationTest {
         // Line 4: ""
         // Line 5: "End of test"
 
-        val lines = listOf(
-            "=== OSC8 Hyperlink Test ===\n",
-            "\n",
-            "1. Google: ${osc8Start("https://google.com")}Google${osc8End()}\n",
-            "2. GitHub: ${osc8Start("https://github.com")}GitHub${osc8End()}\n",
-            "\n",
-            "End of test\n"
-        )
+        val impl = emulator as TerminalEmulatorImpl
 
-        for (line in lines) {
-            emulator.writeInput(line.toByteArray())
-        }
+        // Use \r\n to ensure cursor column resets to 0 after each line
+        impl.writeInput("=== OSC8 Hyperlink Test ===\r\n\r\n".toByteArray())
+        impl.processPendingUpdates()
+
+        // Write Google line with hyperlink
+        impl.writeInput("1. Google: ${osc8Start("https://google.com")}Google${osc8End()}\r\n".toByteArray())
+        impl.processPendingUpdates()
+
+        // Write GitHub line with hyperlink
+        impl.writeInput("2. GitHub: ${osc8Start("https://github.com")}GitHub${osc8End()}\r\n".toByteArray())
+        impl.processPendingUpdates()
+
+        impl.writeInput("\r\nEnd of test\r\n".toByteArray())
+        impl.processPendingUpdates()
 
         val snapshot = (emulator as TerminalEmulatorImpl).let {
             it.processPendingUpdates()
@@ -232,58 +236,70 @@ class ShellIntegrationTest {
         // Line 5: "More text"
         // Line 6: "[Link3](url3)"
 
-        val lines = listOf(
-            "Line 1\n",
-            "Line 2\n",
-            "${osc8Start("https://link1.com")}Link1${osc8End()}\n",
-            "Plain text\n",
-            "${osc8Start("https://link2.com")}Link2${osc8End()}\n",
-            "More text\n",
-            "${osc8Start("https://link3.com")}Link3${osc8End()}\n"
-        )
+        // Write each line separately with \r\n to ensure proper cursor positioning
+        val impl = emulator as TerminalEmulatorImpl
 
-        for (line in lines) {
-            emulator.writeInput(line.toByteArray())
-        }
+        impl.writeInput("Line 1\r\n".toByteArray())
+        impl.processPendingUpdates()
+
+        impl.writeInput("Line 2\r\n".toByteArray())
+        impl.processPendingUpdates()
+
+        impl.writeInput("${osc8Start("https://link1.com")}Link1${osc8End()}\r\n".toByteArray())
+        impl.processPendingUpdates()
+
+        impl.writeInput("Plain text\r\n".toByteArray())
+        impl.processPendingUpdates()
+
+        impl.writeInput("${osc8Start("https://link2.com")}Link2${osc8End()}\r\n".toByteArray())
+        impl.processPendingUpdates()
+
+        impl.writeInput("More text\r\n".toByteArray())
+        impl.processPendingUpdates()
+
+        impl.writeInput("${osc8Start("https://link3.com")}Link3${osc8End()}\r\n".toByteArray())
+        impl.processPendingUpdates()
 
         val snapshot = (emulator as TerminalEmulatorImpl).let {
             it.processPendingUpdates()
             it.snapshot.value
         }
 
-        // After scrolling, visible lines should be:
-        // Row 0: "[Link1](url1)" (was line 2, scrolled up)
-        // Row 1: "Plain text" (was line 3)
-        // Row 2: "[Link2](url2)" (was line 4)
-        // Row 3: "More text" (was line 5)
-        // Row 4: "[Link3](url3)" (was line 6)
+        // After scrolling (7 lines, 5 rows = 3 scrolls), visible lines should be:
+        // Row 0: "Plain text" (was line 3) - no hyperlink
+        // Row 1: "[Link2](url2)" (was line 4) - has hyperlink
+        // Row 2: "More text" (was line 5) - no hyperlink
+        // Row 3: "[Link3](url3)" (was line 6) - has hyperlink
+        // Row 4: empty (cursor after last newline)
+        // Scrollback contains: Line1, Line2, Link1
 
-        // Row 0 should have Link1
-        val row0Segments = snapshot.lines[0].getSegmentsOfType(SemanticType.HYPERLINK)
-        assertEquals("Row 0 should have 1 hyperlink (Link1)", 1, row0Segments.size)
-        assertEquals("https://link1.com", row0Segments[0].metadata)
-
-        // Row 1 should have no hyperlinks (plain text)
+        // Row 0 should have no hyperlinks (plain text)
         assertTrue(
-            "Row 1 should have no hyperlinks",
-            snapshot.lines[1].getSegmentsOfType(SemanticType.HYPERLINK).isEmpty()
+            "Row 0 should have no hyperlinks (plain text)",
+            snapshot.lines[0].getSegmentsOfType(SemanticType.HYPERLINK).isEmpty()
         )
 
-        // Row 2 should have Link2
-        val row2Segments = snapshot.lines[2].getSegmentsOfType(SemanticType.HYPERLINK)
-        assertEquals("Row 2 should have 1 hyperlink (Link2)", 1, row2Segments.size)
-        assertEquals("https://link2.com", row2Segments[0].metadata)
+        // Row 1 should have Link2
+        val row1Segments = snapshot.lines[1].getSegmentsOfType(SemanticType.HYPERLINK)
+        assertEquals("Row 1 should have 1 hyperlink (Link2)", 1, row1Segments.size)
+        assertEquals("https://link2.com", row1Segments[0].metadata)
 
-        // Row 3 should have no hyperlinks (more text)
+        // Row 2 should have no hyperlinks (more text)
         assertTrue(
-            "Row 3 should have no hyperlinks",
-            snapshot.lines[3].getSegmentsOfType(SemanticType.HYPERLINK).isEmpty()
+            "Row 2 should have no hyperlinks",
+            snapshot.lines[2].getSegmentsOfType(SemanticType.HYPERLINK).isEmpty()
         )
 
-        // Row 4 should have Link3
-        val row4Segments = snapshot.lines[4].getSegmentsOfType(SemanticType.HYPERLINK)
-        assertEquals("Row 4 should have 1 hyperlink (Link3)", 1, row4Segments.size)
-        assertEquals("https://link3.com", row4Segments[0].metadata)
+        // Row 3 should have Link3
+        val row3Segments = snapshot.lines[3].getSegmentsOfType(SemanticType.HYPERLINK)
+        assertEquals("Row 3 should have 1 hyperlink (Link3)", 1, row3Segments.size)
+        assertEquals("https://link3.com", row3Segments[0].metadata)
+
+        // Row 4 should have no hyperlinks (empty after cursor)
+        assertTrue(
+            "Row 4 should have no hyperlinks (empty)",
+            snapshot.lines[4].getSegmentsOfType(SemanticType.HYPERLINK).isEmpty()
+        )
     }
 
     @Test
@@ -296,12 +312,13 @@ class ShellIntegrationTest {
         )
 
         // Print hyperlink on row 0, then move to row 5 and print plain text
+        // Using \r\n for proper cursor column reset after newlines
         val input = buildString {
-            append("${osc8Start("https://example.com")}Click me${osc8End()}\n")
-            append("\n")
-            append("\n")
-            append("\n")
-            append("\n")
+            append("${osc8Start("https://example.com")}Click me${osc8End()}\r\n")
+            append("\r\n")
+            append("\r\n")
+            append("\r\n")
+            append("\r\n")
             append("This is plain text on row 5")
         }
 

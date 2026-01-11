@@ -514,8 +514,6 @@ internal class TerminalEmulatorImpl(
                 emptyList()
             }
 
-            android.util.Log.d("TerminalEmulator", "pushScrollbackLine: Saving line 0 with ${line0Segments.size} segments")
-
             val line = TerminalLine(row = -1, cells = cellList, semanticSegments = line0Segments)
 
             scrollback.add(line)
@@ -539,7 +537,6 @@ internal class TerminalEmulatorImpl(
                     semanticSegments = emptyList()
                 )
                 currentLines = newLines
-                android.util.Log.d("TerminalEmulator", "pushScrollbackLine: Shifted segments up")
             }
 
             propertyChanged = true
@@ -564,13 +561,11 @@ internal class TerminalEmulatorImpl(
         return 0
     }
 
-    override fun onOscSequence(command: Int, payload: String, cursorRow: Int, cursorCol: Int): Int {
-        android.util.Log.d("TerminalEmulator", "onOscSequence: command=$command, payload='$payload', cursor=($cursorRow,$cursorCol)")
-        // Use cursor position from native terminal for accurate OSC 8 hyperlink tracking
+    override fun onOscSequence(command: Int, payload: String, nativeCursorRow: Int, nativeCursorCol: Int): Int {
+        // Use the native cursor position from libvterm for OSC sequence processing
         val actions = synchronized(damageLock) {
-            oscParser.parse(command, payload, cursorRow, cursorCol, cols)
+            oscParser.parse(command, payload, nativeCursorRow, nativeCursorCol, cols)
         }
-        android.util.Log.d("TerminalEmulator", "onOscSequence: parsed ${actions.size} actions")
 
         synchronized(damageLock) {
             for (action in actions) {
@@ -703,13 +698,8 @@ internal class TerminalEmulatorImpl(
     private fun applySemanticSegment(segment: PendingSemanticSegment) {
         val row = segment.row
 
-        android.util.Log.d("TerminalEmulator", "applySemanticSegment: row=$row, startCol=${segment.startCol}, " +
-            "endCol=${segment.endCol}, type=${segment.semanticType}, metadata=${segment.metadata}, " +
-            "currentLines.size=${currentLines.size}")
-
         // Ensure row is valid
         if (row < 0 || row >= currentLines.size) {
-            android.util.Log.w("TerminalEmulator", "applySemanticSegment: Invalid row $row (size=${currentLines.size})")
             return
         }
 
@@ -727,8 +717,6 @@ internal class TerminalEmulatorImpl(
         // Add to existing segments (sorted by startCol)
         val updatedSegments = (line.semanticSegments + newSegment)
             .sortedBy { it.startCol }
-
-        android.util.Log.d("TerminalEmulator", "applySemanticSegment: Line $row now has ${updatedSegments.size} segments")
 
         // Update the line with new segments
         currentLines = currentLines.toMutableList().apply {
