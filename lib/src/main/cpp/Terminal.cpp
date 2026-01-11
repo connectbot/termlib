@@ -82,7 +82,7 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     if (!mKeyboardInputMethod) {
         LOGE("Failed to find onKeyboardInput method");
     }
-    mOscSequenceMethod = env->GetMethodID(callbacksClass, "onOscSequence", "(ILjava/lang/String;)I");
+    mOscSequenceMethod = env->GetMethodID(callbacksClass, "onOscSequence", "(ILjava/lang/String;II)I");
     if (!mOscSequenceMethod) {
         LOGE("Failed to find onOscSequence method");
     }
@@ -546,13 +546,35 @@ void Terminal::termOutput(const char* s, size_t len, void* user) {
 }
 
 // OSC sequence fallback handler
+// Handles fragmented OSC sequences by accumulating data across callbacks
 int Terminal::termOscFallback(int command, VTermStringFragment frag, void* user) {
     auto* term = static_cast<Terminal*>(user);
 
-    // Convert VTermStringFragment to std::string
-    std::string payload(frag.str, frag.len);
+    // Start of a new OSC sequence
+    if (frag.initial) {
+        term->mOscData.clear();
+        term->mOscCommand = command;
+    }
 
-    return term->invokeOscSequence(command, payload);
+    // Accumulate fragment data
+    if (frag.len > 0) {
+        term->mOscData.append(frag.str, frag.len);
+    }
+
+    // When we have the final fragment, send complete payload to Java
+    if (frag.final) {
+        // Get current cursor position from libvterm
+        VTermState* state = vterm_obtain_state(term->mVt);
+        VTermPos cursorPos;
+        vterm_state_get_cursorpos(state, &cursorPos);
+
+        int result = term->invokeOscSequence(term->mOscCommand, term->mOscData, cursorPos.row, cursorPos.col);
+        term->mOscData.clear();
+        term->mOscCommand = -1;
+        return result;
+    }
+
+    return 1;  // Indicate we're handling this (continue accumulating)
 }
 
 // OSC 52 selection set callback - receives base64-decoded clipboard data from libvterm
@@ -577,7 +599,8 @@ int Terminal::termSelectionSet(VTermSelectionMask mask, VTermStringFragment frag
         // Use OSC 52 command number and pass the decoded data as payload
         // Format: selection;data - but since libvterm already decoded base64, we pass raw data
         std::string payload = "c;" + term->mSelectionData;  // 'c' for clipboard
-        term->invokeOscSequence(52, payload);
+        // Cursor position not relevant for OSC 52, pass 0,0
+        term->invokeOscSequence(52, payload, 0, 0);
         term->mSelectionData.clear();
     }
 
@@ -982,13 +1005,18 @@ void Terminal::invokeKeyboardOutput(const char* data, size_t len) {
     env->DeleteLocalRef(array);
 }
 
-int Terminal::invokeOscSequence(int command, const std::string& payload) {
+int Terminal::invokeOscSequence(int command, const std::string& payload, int cursorRow, int cursorCol) {
+    LOGD("invokeOscSequence: command=%d, payload='%s' (len=%zu), cursor=(%d,%d)",
+         command, payload.c_str(), payload.length(), cursorRow, cursorCol);
+
     if (!mOscSequenceMethod) {
+        LOGE("invokeOscSequence: mOscSequenceMethod is null");
         return 0;
     }
 
     JNIEnv* env;
     if (mJavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) {
+        LOGE("invokeOscSequence: Failed to get JNI env");
         return 0;
     }
 
@@ -999,8 +1027,9 @@ int Terminal::invokeOscSequence(int command, const std::string& payload) {
         return 0;
     }
 
-    // Call the Java callback
-    jint result = env->CallIntMethod(mCallbacks, mOscSequenceMethod, command, payloadStr);
+    // Call the Java callback with cursor position
+    jint result = env->CallIntMethod(mCallbacks, mOscSequenceMethod, command, payloadStr, cursorRow, cursorCol);
+    LOGD("invokeOscSequence: Java callback returned %d", result);
 
     // Clean up
     env->DeleteLocalRef(payloadStr);

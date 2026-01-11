@@ -73,7 +73,7 @@ private:
     void invokePushScrollbackLine(int cols, const VTermScreenCell* cells);
     int invokePopScrollbackLine(int cols, VTermScreenCell* cells);
     void invokeKeyboardOutput(const char* data, size_t len);
-    int invokeOscSequence(int command, const std::string& payload);
+    int invokeOscSequence(int command, const std::string& payload, int cursorRow, int cursorCol);
 
     // Helper functions
     static bool cellStyleEqual(const VTermScreenCell& a, const VTermScreenCell& b);
@@ -90,6 +90,10 @@ private:
     static constexpr size_t SELECTION_BUFFER_SIZE = 8192;
     char mSelectionBuffer[SELECTION_BUFFER_SIZE]{};
     std::string mSelectionData;  // Accumulates decoded clipboard data across fragments
+
+    // OSC fallback buffer for accumulating fragmented OSC sequences (e.g., OSC 8 hyperlinks)
+    std::string mOscData;  // Accumulates OSC payload across fragments
+    int mOscCommand{-1};   // Current OSC command being accumulated
 
     // Terminal dimensions
     int mRows;

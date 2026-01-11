@@ -100,13 +100,15 @@ internal interface TerminalCallbacks {
 
     /**
      * Called when an OSC (Operating System Command) sequence is received.
-     * Used for shell integration (OSC 133) and iTerm2-style annotations (OSC 1337).
+     * Used for shell integration (OSC 133), iTerm2-style annotations (OSC 1337), and hyperlinks (OSC 8).
      *
-     * @param command The OSC command number (e.g., 133, 1337)
+     * @param command The OSC command number (e.g., 8, 133, 1337)
      * @param payload The payload string (e.g., "A" for OSC 133;A, "AddAnnotation=..." for OSC 1337)
+     * @param cursorRow Current cursor row from native terminal
+     * @param cursorCol Current cursor column from native terminal
      * @return 1 if handled, 0 otherwise
      */
-    fun onOscSequence(command: Int, payload: String): Int
+    fun onOscSequence(command: Int, payload: String, cursorRow: Int, cursorCol: Int): Int
 }
 
 /**

@@ -265,6 +265,7 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
  * @param onImeVisibilityChanged Callback invoked when IME visibility changes (true = shown, false = hidden)
  * @param forcedSize Force terminal to specific dimensions (rows, cols). When set, font size is calculated to fit.
  * @param onSelectionControllerAvailable Optional callback providing access to the SelectionController for controlling selection mode
+ * @param onHyperlinkClick Callback when user taps on an OSC8 hyperlink. Receives the URL as parameter.
  */
 @Composable
 fun Terminal(
@@ -283,7 +284,8 @@ fun Terminal(
     onImeVisibilityChanged: (Boolean) -> Unit = {},
     forcedSize: Pair<Int, Int>? = null,
     modifierManager: ModifierManager? = null,
-    onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null
+    onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
+    onHyperlinkClick: (String) -> Unit = {}
 ) {
     TerminalWithAccessibility(
         terminalEmulator = terminalEmulator,
@@ -301,7 +303,8 @@ fun Terminal(
         onImeVisibilityChanged = onImeVisibilityChanged,
         forcedSize = forcedSize,
         modifierManager = modifierManager,
-        onSelectionControllerAvailable = onSelectionControllerAvailable
+        onSelectionControllerAvailable = onSelectionControllerAvailable,
+        onHyperlinkClick = onHyperlinkClick
     )
 }
 
@@ -329,7 +332,8 @@ fun TerminalWithAccessibility(
     forcedSize: Pair<Int, Int>? = null,
     modifierManager: ModifierManager? = null,
     forceAccessibilityEnabled: Boolean? = null,
-    onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null
+    onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
+    onHyperlinkClick: (String) -> Unit = {}
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -948,15 +952,28 @@ fun TerminalWithAccessibility(
 
                             GestureType.Undetermined -> {
                                 // This is a tap. If a selection is active, clear it.
-                                // Otherwise, forward the tap.
+                                // Otherwise, check for hyperlink or forward the tap.
                                 if (selectionManager.mode != SelectionMode.NONE) {
                                     selectionManager.clearSelection()
                                 } else {
-                                    // Request focus when terminal is tapped to show keyboard
-                                    if (keyboardEnabled) {
-                                        focusRequester.requestFocus()
+                                    // Check if tap is on a hyperlink
+                                    val tapCol = (down.position.x / baseCharWidth).toInt()
+                                        .coerceIn(0, screenState.snapshot.cols - 1)
+                                    val tapRow = (down.position.y / baseCharHeight).toInt()
+                                        .coerceIn(0, screenState.snapshot.rows - 1)
+                                    val line = screenState.getVisibleLine(tapRow)
+                                    val hyperlinkUrl = line.getHyperlinkUrlAt(tapCol)
+
+                                    if (hyperlinkUrl != null) {
+                                        // User tapped on a hyperlink
+                                        onHyperlinkClick(hyperlinkUrl)
+                                    } else {
+                                        // Request focus when terminal is tapped to show keyboard
+                                        if (keyboardEnabled) {
+                                            focusRequester.requestFocus()
+                                        }
+                                        onTerminalTap()
                                     }
-                                    onTerminalTap()
                                 }
                             }
 
@@ -1161,6 +1178,9 @@ private fun DrawScope.drawLine(
         // Check if this cell is selected
         val isSelected = selectionManager.isCellSelected(row, col)
 
+        // Check if this cell is part of a hyperlink
+        val isHyperlink = line.getHyperlinkUrlAt(col) != null
+
         // Determine colors (handle reverse video and selection)
         val fgColor = if (cell.reverse) cell.bgColor else cell.fgColor
         val bgColor = if (cell.reverse) cell.fgColor else cell.bgColor
@@ -1186,7 +1206,8 @@ private fun DrawScope.drawLine(
             textPaint.color = fgColor.toArgb()
             textPaint.isFakeBoldText = cell.bold
             textPaint.textSkewX = if (cell.italic) -0.25f else 0f
-            textPaint.isUnderlineText = cell.underline == 1
+            // Underline if cell has underline OR if it's a hyperlink
+            textPaint.isUnderlineText = cell.underline == 1 || isHyperlink
             textPaint.isStrikeThruText = cell.strike
 
             // Draw text

@@ -64,6 +64,16 @@ internal data class TerminalLine(
     fun hasPrompt(): Boolean = semanticSegments.any { it.semanticType == SemanticType.PROMPT }
 
     /**
+     * Get the hyperlink URL at a specific column, if any.
+     * Returns null if no hyperlink covers that column.
+     */
+    fun getHyperlinkUrlAt(col: Int): String? {
+        return semanticSegments.firstOrNull {
+            it.semanticType == SemanticType.HYPERLINK && it.contains(col)
+        }?.metadata
+    }
+
+    /**
      * Get the prompt ID for this line (from the first segment that has one).
      */
     val promptId: Int
