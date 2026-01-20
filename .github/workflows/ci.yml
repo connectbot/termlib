@@ -55,7 +55,8 @@ jobs:
           packages: 'cmdline-tools;latest tools platform-tools'
 
       - name: Build ConnectBot Terminal
-        run: ./gradlew build
+        # --no-configuration-cache due to net.researchgate.release plugin incompatibility
+        run: ./gradlew build --no-configuration-cache
 
       - name: Enable KVM for emulator and clear up space
         run: |
@@ -102,7 +103,7 @@ jobs:
           target: default
           arch: x86_64
           disk-size: 2G
-          script: ./gradlew connectedCheck --continue
+          script: ./gradlew connectedCheck --continue --no-configuration-cache
 
       - name: Prepare release
         if: ${{ github.event_name == 'push' }}
@@ -136,7 +137,7 @@ jobs:
       - name: Upload to Sonatype
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          ./gradlew publishToMavenCentral -PmavenCentralUsername=${ORG_GRADLE_PROJECT_mavenCentralUsername} -PmavenCentralPassword=${ORG_GRADLE_PROJECT_mavenCentralPassword}
+          ./gradlew publishToMavenCentral --no-configuration-cache -PmavenCentralUsername=${ORG_GRADLE_PROJECT_mavenCentralUsername} -PmavenCentralPassword=${ORG_GRADLE_PROJECT_mavenCentralPassword}
         env:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_GPG_KEYID }}
@@ -211,7 +212,7 @@ jobs:
           packages: 'cmdline-tools;latest tools platform-tools'
 
       - name: Build documents
-        run: ./gradlew :lib:dokkaGenerateHtml
+        run: ./gradlew :lib:dokkaGenerateHtml --no-configuration-cache
 
       - name: Determine subdirectory name
         id: subdir
