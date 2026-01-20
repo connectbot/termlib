@@ -8,6 +8,14 @@ package org.connectbot.terminal {
     method public boolean isShiftActive();
   }
 
+  public enum ProgressState {
+    enum_constant public static final org.connectbot.terminal.ProgressState DEFAULT;
+    enum_constant public static final org.connectbot.terminal.ProgressState ERROR;
+    enum_constant public static final org.connectbot.terminal.ProgressState HIDDEN;
+    enum_constant public static final org.connectbot.terminal.ProgressState INDETERMINATE;
+    enum_constant public static final org.connectbot.terminal.ProgressState WARNING;
+  }
+
   public interface SelectionController {
     method public void clearSelection();
     method public String copySelection();
@@ -34,8 +42,11 @@ package org.connectbot.terminal {
     method public int component1();
     method public int component2();
     method public org.connectbot.terminal.TerminalDimensions copy(int rows, int columns);
+    method public boolean equals(Object? other);
     method public int getColumns();
     method public int getRows();
+    method public int hashCode();
+    method public String toString();
     property public final int columns;
     property public final int rows;
   }
@@ -50,7 +61,7 @@ package org.connectbot.terminal {
     method public int setAnsiPalette(int[] ansiColors);
     method public int setDefaultColors(int foreground, int background);
     method public void writeInput(byte[] data, optional int offset, optional int length);
-    method public void writeInput(java.nio.ByteBuffer buffer, int length);
+    method public void writeInput(error.NonExistentClass buffer, int length);
     property public abstract org.connectbot.terminal.TerminalDimensions dimensions;
   }
 
@@ -60,12 +71,12 @@ package org.connectbot.terminal {
   }
 
   public static final class TerminalEmulatorFactory.Companion {
-    method public org.connectbot.terminal.TerminalEmulator create(optional android.os.Looper looper, optional int initialRows, optional int initialCols, optional long defaultForeground, optional long defaultBackground, optional kotlin.jvm.functions.Function1<? super byte[],kotlin.Unit> onKeyboardInput, optional kotlin.jvm.functions.Function0<kotlin.Unit>? onBell, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.TerminalDimensions,kotlin.Unit>? onResize, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit>? onClipboardCopy);
+    method public org.connectbot.terminal.TerminalEmulator create(optional error.NonExistentClass looper, optional int initialRows, optional int initialCols, optional error.NonExistentClass defaultForeground, optional error.NonExistentClass defaultBackground, optional kotlin.jvm.functions.Function1<? super byte[],kotlin.Unit> onKeyboardInput, optional kotlin.jvm.functions.Function0<kotlin.Unit>? onBell, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.TerminalDimensions,kotlin.Unit>? onResize, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit>? onClipboardCopy, optional kotlin.jvm.functions.Function2<? super org.connectbot.terminal.ProgressState,? super java.lang.Integer,kotlin.Unit>? onProgressChange);
   }
 
   public final class TerminalKt {
-    method @androidx.compose.runtime.Composable public static void Terminal(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional androidx.compose.ui.Modifier modifier, optional android.graphics.Typeface typeface, optional long initialFontSize, optional long minFontSize, optional long maxFontSize, optional long backgroundColor, optional long foregroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional androidx.compose.ui.focus.FocusRequester focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<? super java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional kotlin.Pair<java.lang.Integer,java.lang.Integer>? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit> onHyperlinkClick);
-    method @VisibleForTesting @androidx.compose.runtime.Composable public static void TerminalWithAccessibility(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional androidx.compose.ui.Modifier modifier, optional android.graphics.Typeface typeface, optional long initialFontSize, optional long minFontSize, optional long maxFontSize, optional long backgroundColor, optional long foregroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional androidx.compose.ui.focus.FocusRequester focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<? super java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional kotlin.Pair<java.lang.Integer,java.lang.Integer>? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional Boolean? forceAccessibilityEnabled, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit> onHyperlinkClick);
+    method public static void Terminal(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional error.NonExistentClass modifier, optional error.NonExistentClass typeface, optional error.NonExistentClass initialFontSize, optional error.NonExistentClass minFontSize, optional error.NonExistentClass maxFontSize, optional error.NonExistentClass backgroundColor, optional error.NonExistentClass foregroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional error.NonExistentClass focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<? super java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional error.NonExistentClass? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit> onHyperlinkClick);
+    method public static void TerminalWithAccessibility(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional error.NonExistentClass modifier, optional error.NonExistentClass typeface, optional error.NonExistentClass initialFontSize, optional error.NonExistentClass minFontSize, optional error.NonExistentClass maxFontSize, optional error.NonExistentClass backgroundColor, optional error.NonExistentClass foregroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional error.NonExistentClass focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<? super java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional error.NonExistentClass? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional Boolean? forceAccessibilityEnabled, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit> onHyperlinkClick);
   }
 
   public final class VTermKey {

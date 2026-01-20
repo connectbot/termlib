@@ -142,6 +142,10 @@ dependencies {
 
 val gitHubUrl = "https://github.com/connectbot/termlib"
 
+metalava {
+    additionalSourceSets.from(file("src/main/java"))
+}
+
 dokka {
     moduleName.set("ConnectBot Terminal")
 
