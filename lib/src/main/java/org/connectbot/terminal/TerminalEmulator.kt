@@ -121,6 +121,8 @@ class TerminalEmulatorFactory {
          * @param onResize Optional callback for terminal resize
          * @param onClipboardCopy Optional callback for OSC 52 clipboard copy operations.
          *                        The callback receives the decoded text to copy.
+         * @param onProgressChange Optional callback for OSC 9;4 progress reporting.
+         *                         The callback receives the progress state and percentage (0-100).
          */
         fun create(
             looper: Looper = Looper.getMainLooper(),
@@ -131,7 +133,8 @@ class TerminalEmulatorFactory {
             onKeyboardInput: (ByteArray) -> Unit = {},
             onBell: (() -> Unit)? = null,
             onResize: ((TerminalDimensions) -> Unit)? = null,
-            onClipboardCopy: ((String) -> Unit)? = null
+            onClipboardCopy: ((String) -> Unit)? = null,
+            onProgressChange: ((ProgressState, Int) -> Unit)? = null
         ): TerminalEmulator {
             return TerminalEmulatorImpl(
                 looper = looper,
@@ -142,7 +145,8 @@ class TerminalEmulatorFactory {
                 onKeyboardInput = onKeyboardInput,
                 onBell = onBell,
                 onResize = onResize,
-                onClipboardCopy = onClipboardCopy
+                onClipboardCopy = onClipboardCopy,
+                onProgressChange = onProgressChange
             )
         }
     }
@@ -176,6 +180,7 @@ class TerminalEmulatorFactory {
  * @param onBell Optional callback for terminal bell
  * @param onResize Optional callback for terminal resize
  * @param onClipboardCopy Optional callback for OSC 52 clipboard copy operations
+ * @param onProgressChange Optional callback for OSC 9;4 progress reporting
  */
 internal class TerminalEmulatorImpl(
     private val looper: Looper = Looper.getMainLooper(),
@@ -186,7 +191,8 @@ internal class TerminalEmulatorImpl(
     private val onKeyboardInput: (ByteArray) -> Unit = {},
     private val onBell: (() -> Unit)? = null,
     private val onResize: ((TerminalDimensions) -> Unit)? = null,
-    private val onClipboardCopy: ((String) -> Unit)? = null
+    private val onClipboardCopy: ((String) -> Unit)? = null,
+    private val onProgressChange: ((ProgressState, Int) -> Unit)? = null
 ) : TerminalEmulator, TerminalCallbacks {
 
     // Handler for escaping native mutex
@@ -592,6 +598,12 @@ internal class TerminalEmulatorImpl(
                         // Post clipboard copy to handler thread to avoid blocking native callback
                         handler.post {
                             onClipboardCopy?.invoke(action.data)
+                        }
+                    }
+                    is OscParser.Action.SetProgress -> {
+                        // Post progress change to handler thread to avoid blocking native callback
+                        handler.post {
+                            onProgressChange?.invoke(action.state, action.progress)
                         }
                     }
                 }
