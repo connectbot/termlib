@@ -19,9 +19,21 @@ package org.connectbot.terminal
 import kotlin.io.encoding.Base64;
 
 /**
+ * Progress state for OSC 9;4 progress reporting.
+ * Used by Windows Terminal and other terminals to display progress in tab headers.
+ */
+enum class ProgressState {
+    HIDDEN,
+    DEFAULT,
+    ERROR,
+    INDETERMINATE,
+    WARNING
+}
+
+/**
  * Parser for OSC (Operating System Command) sequences.
  * Handles clipboard operations (OSC 52), shell integration (OSC 133),
- * iTerm2 extensions (OSC 1337), and hyperlinks (OSC 8).
+ * iTerm2 extensions (OSC 1337), hyperlinks (OSC 8), and progress reporting (OSC 9;4).
  */
 internal class OscParser {
     // Track current prompt ID for grouping command blocks
@@ -58,6 +70,17 @@ internal class OscParser {
             val selection: String,
             val data: String
         ) : Action()
+
+        /**
+         * Action to report progress status via OSC 9;4.
+         *
+         * @param state The progress state (HIDDEN, DEFAULT, ERROR, INDETERMINATE, WARNING)
+         * @param progress The progress percentage (0-100)
+         */
+        data class SetProgress(
+            val state: ProgressState,
+            val progress: Int
+        ) : Action()
     }
 
     /**
@@ -78,6 +101,7 @@ internal class OscParser {
     ): List<Action> {
         return when (command) {
             8 -> handleOsc8(payload, cursorRow, cursorCol)
+            9 -> handleOsc9(payload)
             52 -> handleOsc52(payload)
             133 -> handleOsc133(payload, cursorRow, cursorCol)
             1337 -> handleOsc1337(payload, cursorRow, cursorCol, cols)
@@ -124,6 +148,42 @@ internal class OscParser {
         }
 
         return listOf(Action.ClipboardCopy(selection, decodedData))
+    }
+
+    /**
+     * Handle OSC 9;4 progress reporting sequence.
+     *
+     * Format: OSC 9 ; 4 ; <state> ; <progress> ST
+     * - state: Progress state (0=hidden, 1=default, 2=error, 3=indeterminate, 4=warning)
+     * - progress: Progress percentage (0-100), ignored for indeterminate state
+     *
+     * This is a Windows Terminal extension that allows terminal applications to
+     * report progress status for display in the tab header or taskbar.
+     */
+    private fun handleOsc9(payload: String): List<Action> {
+        // Payload format: "4;<state>;<progress>"
+        if (!payload.startsWith("4;")) return emptyList()
+
+        val parts = payload.substring(2).split(";")
+        if (parts.isEmpty()) return emptyList()
+
+        val stateValue = parts[0].toIntOrNull() ?: return emptyList()
+        val state = when (stateValue) {
+            0 -> ProgressState.HIDDEN
+            1 -> ProgressState.DEFAULT
+            2 -> ProgressState.ERROR
+            3 -> ProgressState.INDETERMINATE
+            4 -> ProgressState.WARNING
+            else -> return emptyList()
+        }
+
+        val progress = if (parts.size > 1) {
+            parts[1].toIntOrNull()?.coerceIn(0, 100) ?: 0
+        } else {
+            0
+        }
+
+        return listOf(Action.SetProgress(state, progress))
     }
 
     /**

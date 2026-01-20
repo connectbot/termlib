@@ -367,4 +367,174 @@ class OscParserTest {
         val action = actions[0] as OscParser.Action.AddSegment
         assertEquals(fileUrl, action.metadata)
     }
+
+    @Test
+    fun testOsc9ProgressDefault() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Default progress state with 50%
+        val actions = parser.parse(9, "4;1;50", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(ProgressState.DEFAULT, action.state)
+        assertEquals(50, action.progress)
+    }
+
+    @Test
+    fun testOsc9ProgressHidden() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Hidden state (clears progress)
+        val actions = parser.parse(9, "4;0;0", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(ProgressState.HIDDEN, action.state)
+        assertEquals(0, action.progress)
+    }
+
+    @Test
+    fun testOsc9ProgressError() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Error state with 75%
+        val actions = parser.parse(9, "4;2;75", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(ProgressState.ERROR, action.state)
+        assertEquals(75, action.progress)
+    }
+
+    @Test
+    fun testOsc9ProgressIndeterminate() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Indeterminate state (progress ignored)
+        val actions = parser.parse(9, "4;3;0", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(ProgressState.INDETERMINATE, action.state)
+        assertEquals(0, action.progress)
+    }
+
+    @Test
+    fun testOsc9ProgressWarning() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Warning state with 90%
+        val actions = parser.parse(9, "4;4;90", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(ProgressState.WARNING, action.state)
+        assertEquals(90, action.progress)
+    }
+
+    @Test
+    fun testOsc9ProgressInvalidState() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Invalid state value (5 is not valid)
+        val actions = parser.parse(9, "4;5;50", row, 0, cols)
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun testOsc9ProgressBoundaryValues() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Progress value 0 (minimum)
+        var actions = parser.parse(9, "4;1;0", row, 0, cols)
+        assertEquals(1, actions.size)
+        var action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(0, action.progress)
+
+        // Progress value 100 (maximum)
+        actions = parser.parse(9, "4;1;100", row, 0, cols)
+        assertEquals(1, actions.size)
+        action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(100, action.progress)
+    }
+
+    @Test
+    fun testOsc9ProgressClampedValues() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Progress value above 100 should be clamped
+        var actions = parser.parse(9, "4;1;150", row, 0, cols)
+        assertEquals(1, actions.size)
+        var action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(100, action.progress)
+
+        // Progress value below 0 should be clamped
+        actions = parser.parse(9, "4;1;-10", row, 0, cols)
+        assertEquals(1, actions.size)
+        action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(0, action.progress)
+    }
+
+    @Test
+    fun testOsc9ProgressMissingProgress() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Missing progress value defaults to 0
+        val actions = parser.parse(9, "4;1", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(ProgressState.DEFAULT, action.state)
+        assertEquals(0, action.progress)
+    }
+
+    @Test
+    fun testOsc9ProgressInvalidPayload() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Payload doesn't start with "4;"
+        var actions = parser.parse(9, "5;1;50", row, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        // Empty payload
+        actions = parser.parse(9, "", row, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        // Only "4;" without state
+        actions = parser.parse(9, "4;", row, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        // Non-numeric state
+        actions = parser.parse(9, "4;abc;50", row, 0, cols)
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun testOsc9ProgressInvalidProgressValue() {
+        val parser = OscParser()
+        val row = 0
+        val cols = 80
+
+        // Non-numeric progress value defaults to 0
+        val actions = parser.parse(9, "4;1;abc", row, 0, cols)
+        assertEquals(1, actions.size)
+        val action = actions[0] as OscParser.Action.SetProgress
+        assertEquals(ProgressState.DEFAULT, action.state)
+        assertEquals(0, action.progress)
+    }
 }
