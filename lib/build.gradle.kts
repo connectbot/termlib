@@ -2,7 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("kotlin-parcelize")
     alias(libs.plugins.spotless)
@@ -146,7 +145,7 @@ val gitHubUrl = "https://github.com/connectbot/termlib"
 dokka {
     moduleName.set("ConnectBot Terminal")
 
-    dokkaSourceSets.named("main") {
+    dokkaSourceSets.configureEach {
         sourceLink {
             includes.from("README.md")
             localDirectory.set(file("./"))
