@@ -2,7 +2,7 @@
 androidGradlePlugin = "9.0.0"
 kotlin = "2.3.0"
 spotless = "8.1.0"
-publish = "0.35.0"
+publish = "0.36.0"
 release = "3.1.0"
 metalava = "0.4.0-alpha03"
 dokka = "2.2.0-Beta"
