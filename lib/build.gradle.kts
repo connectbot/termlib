@@ -1,3 +1,4 @@
+import com.vanniktech.maven.publish.DeploymentValidation
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -164,7 +165,7 @@ dokka {
 }
 
 mavenPublishing {
-    publishToMavenCentral(automaticRelease = true, validateDeployment = false)
+    publishToMavenCentral(automaticRelease = true, validateDeployment = DeploymentValidation.PUBLISHED)
     signAllPublications()
 
     coordinates(groupId = "org.connectbot", artifactId = "termlib")
