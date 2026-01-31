@@ -104,6 +104,17 @@ sealed interface TerminalEmulator {
     )
 
     val dimensions: TerminalDimensions
+
+    /**
+     * Get the text output of the last completed command.
+     *
+     * Uses OSC 133 semantic segments to find the boundaries of the most recent
+     * completed command output. Requires shell integration (OSC 133) to be
+     * enabled in the user's shell.
+     *
+     * @return The command output text, or null if no completed command is found
+     */
+    fun getLastCommandOutput(): String?
 }
 
 class TerminalEmulatorFactory {
@@ -338,6 +349,15 @@ internal class TerminalEmulatorImpl(
      * Clears the terminal emulator screen.
      */
     override fun clearScreen() = writeInput("\u001B[2J\u001B[H".toByteArray())
+
+    /**
+     * Get the text output of the last completed command.
+     */
+    override fun getLastCommandOutput(): String? {
+        val currentSnapshot = _snapshot.value
+        val allLines = currentSnapshot.scrollback + currentSnapshot.lines
+        return getLastCommandOutput(allLines)
+    }
 
     /**
      * Set ANSI palette colors (indices 0-15).

@@ -103,7 +103,7 @@ internal class OscParser {
             8 -> handleOsc8(payload, cursorRow, cursorCol)
             9 -> handleOsc9(payload)
             52 -> handleOsc52(payload)
-            133 -> handleOsc133(payload, cursorRow, cursorCol)
+            133 -> handleOsc133(payload, cursorRow, cursorCol, cols)
             1337 -> handleOsc1337(payload, cursorRow, cursorCol, cols)
             else -> emptyList()
         }
@@ -274,7 +274,7 @@ internal class OscParser {
         return null
     }
 
-    private fun handleOsc133(payload: String, cursorRow: Int, cursorCol: Int): List<Action> {
+    private fun handleOsc133(payload: String, cursorRow: Int, cursorCol: Int, cols: Int): List<Action> {
         val actions = mutableListOf<Action>()
 
         when {
@@ -297,22 +297,27 @@ internal class OscParser {
                         )
                     )
                 }
+                // Create COMMAND_INPUT marker immediately on the prompt line.
+                // This must happen at B time (not C time) because after the user
+                // presses Enter, scrolling shifts content but the screen-relative
+                // cursor row stays the same. By placing COMMAND_INPUT now, it will
+                // be correctly shifted by pushScrollbackLine along with the text.
+                actions.add(
+                    Action.AddSegment(
+                        row = cursorRow,
+                        startCol = cursorCol,
+                        endCol = cursorCol, // Zero-width marker, updated by C if possible
+                        type = SemanticType.COMMAND_INPUT,
+                        promptId = currentPromptId
+                    )
+                )
                 currentSegmentStartCol = cursorCol
             }
             payload == "C" -> {
                 // Command output start (end of input)
-                val inputEndCol = cursorCol
-                if (currentSegmentStartCol < inputEndCol) {
-                    actions.add(
-                        Action.AddSegment(
-                            row = cursorRow,
-                            startCol = currentSegmentStartCol,
-                            endCol = inputEndCol,
-                            type = SemanticType.COMMAND_INPUT,
-                            promptId = currentPromptId
-                        )
-                    )
-                }
+                // If C is on the same row as B and cursor advanced, we could
+                // update the COMMAND_INPUT endCol, but the marker from B is
+                // sufficient for getLastCommandOutput() to work.
             }
             payload.startsWith("D") -> {
                 // Command finished
