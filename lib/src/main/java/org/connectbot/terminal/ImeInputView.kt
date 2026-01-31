@@ -30,8 +30,8 @@ import android.view.inputmethod.InputMethodManager
  * This view creates a custom InputConnection that:
  * - Handles backspace via deleteSurroundingText by sending KEYCODE_DEL
  * - Handles enter/return keys properly via sendKeyEvent
- * - Configures the keyboard as password-type to show number rows
- * - Disables text suggestions and autocorrect
+ * - Configures the keyboard to disable suggestions while allowing voice input
+ * - Handles composing text from IME (for voice input partial results)
  * - Manages IME visibility using InputMethodManager for reliable show/hide
  *
  * Based on the ConnectBot v1.9.13 TerminalView implementation.
@@ -80,16 +80,23 @@ internal class ImeInputView(
                 EditorInfo.IME_ACTION_NONE
 
         // Configure keyboard type:
-        // - TYPE_TEXT_VARIATION_PASSWORD: Shows password-style keyboard with number rows
-        // - TYPE_TEXT_VARIATION_VISIBLE_PASSWORD: Keeps text visible (we handle display ourselves)
-        // - TYPE_TEXT_FLAG_NO_SUGGESTIONS: Disables autocomplete/suggestions
-        // - TYPE_NULL: No special input processing
-        outAttrs.inputType = EditorInfo.TYPE_NULL or
-                EditorInfo.TYPE_TEXT_VARIATION_PASSWORD or
-                EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
-                EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        // - TYPE_CLASS_TEXT: Standard text input class
+        // Note: TYPE_TEXT_FLAG_NO_SUGGESTIONS is intentionally omitted because Gboard
+        // hides its entire suggestion strip when that flag is set, and the voice input
+        // microphone button lives on the suggestion strip. Since our InputConnection
+        // doesn't maintain real text state, suggestions will be minimal.
+        // Password variations are also omitted to allow Gboard voice input.
+        outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT
 
-        return TerminalInputConnection(this, false)
+        // Report valid selection state so IMEs know this is a capable text field.
+        // Without this, defaults are -1 which signals no selection support.
+        outAttrs.initialSelStart = 0
+        outAttrs.initialSelEnd = 0
+
+        // fullEditor=true makes BaseInputConnection manage an internal Editable, so
+        // getExtractedText() returns a valid object instead of null. Gboard checks this
+        // and disables voice input when it gets null.
+        return TerminalInputConnection(this, true)
     }
 
     override fun onCheckIsTextEditor(): Boolean = true
@@ -101,6 +108,55 @@ internal class ImeInputView(
         targetView: View,
         fullEditor: Boolean
     ) : BaseInputConnection(targetView, fullEditor) {
+
+        private var composingText: String = ""
+
+        override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+            val newText = text?.toString() ?: ""
+            super.setComposingText(text, newCursorPosition)
+
+            if (newText == composingText) {
+                return true
+            }
+
+            if (newText.isEmpty()) {
+                if (composingText.isNotEmpty()) {
+                    // Composition cleared by IME; remove the projected text from the terminal.
+                    sendBackspaces(composingText.length)
+                }
+                composingText = ""
+                return true
+            }
+
+            when {
+                newText.startsWith(composingText) -> {
+                    // Typical case: IME appends new chars to the composition
+                    val delta = newText.substring(composingText.length)
+                    sendTextInput(delta)
+                }
+                composingText.startsWith(newText) -> {
+                    // IME removed characters from the end of the composition
+                    val deleteCount = composingText.length - newText.length
+                    sendBackspaces(deleteCount)
+                }
+                else -> {
+                    // IME replaced the composition; rewrite it in the terminal
+                    sendBackspaces(composingText.length)
+                    sendTextInput(newText)
+                }
+            }
+
+            composingText = newText
+            return true
+        }
+
+        override fun finishComposingText(): Boolean {
+            super.finishComposingText()
+            composingText = ""
+            // Clear the internal Editable to prevent unbounded accumulation
+            editable?.clear()
+            return true
+        }
 
         override fun deleteSurroundingText(leftLength: Int, rightLength: Int): Boolean {
             // Handle backspace by sending DEL key events
@@ -115,6 +171,12 @@ internal class ImeInputView(
             }
 
             // TODO: Implement forward delete if rightLength > 0
+            if (leftLength > 0 && composingText.isNotEmpty()) {
+                val newLength = (composingText.length - leftLength).coerceAtLeast(0)
+                composingText = composingText.substring(0, newLength)
+            }
+
+            super.deleteSurroundingText(leftLength, rightLength)
             return true
         }
 
@@ -124,14 +186,31 @@ internal class ImeInputView(
         }
 
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
-            if (text.isNullOrEmpty()) {
-                return true
-            }
+            val committedText = text?.toString() ?: ""
+            super.commitText(text, newCursorPosition)
 
-            // Send text input to the terminal
-            val bytes = text.toString().toByteArray(Charsets.UTF_8)
-            keyboardHandler.onTextInput(bytes)
+            if (committedText.isNotEmpty()) {
+                if (composingText.isNotEmpty()) {
+                    sendBackspaces(composingText.length)
+                }
+                sendTextInput(committedText)
+            }
+            composingText = ""
+            // Clear the internal Editable to prevent unbounded accumulation
+            editable?.clear()
             return true
+        }
+
+        private fun sendBackspaces(count: Int) {
+            repeat(count.coerceAtLeast(0)) {
+                sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+            }
+        }
+
+        private fun sendTextInput(text: String) {
+            if (text.isNotEmpty()) {
+                keyboardHandler.onTextInput(text.toByteArray(Charsets.UTF_8))
+            }
         }
     }
 }
