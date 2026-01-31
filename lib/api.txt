@@ -57,6 +57,7 @@ package org.connectbot.terminal {
     method public void dispatchCharacter(int modifiers, char character);
     method public void dispatchKey(int modifiers, int key);
     method public org.connectbot.terminal.TerminalDimensions getDimensions();
+    method public String? getLastCommandOutput();
     method public void resize(int newRows, int newCols);
     method public int setAnsiPalette(int[] ansiColors);
     method public int setDefaultColors(int foreground, int background);
