@@ -137,6 +137,7 @@ internal fun AccessibilityOverlay(
                             add(CustomAccessibilityAction("Read Last Output") {
                                 val outputText = getLastCommandOutput(allLines)
                                 if (outputText != null) {
+                                    @Suppress("DEPRECATION")
                                     view.announceForAccessibility(outputText)
                                     true
                                 } else {
