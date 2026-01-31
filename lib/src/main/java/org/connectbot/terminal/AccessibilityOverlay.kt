@@ -26,19 +26,23 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.buildAnnotatedString
-import kotlinx.coroutines.launch
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
+import kotlinx.coroutines.launch
 
 /**
  * Invisible overlay that provides semantic structure for screen readers.
@@ -67,7 +71,10 @@ internal fun AccessibilityOverlay(
     val snapshot = screenState.snapshot
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
-    val view = LocalView.current
+
+    // State for live region announcements (replaces deprecated announceForAccessibility)
+    val announcementText = remember { mutableStateOf("") }
+    val announcementCounter = remember { mutableIntStateOf(0) }
 
     // Include both scrollback and visible lines in the list
     val allLines = snapshot.scrollback + snapshot.lines
@@ -83,6 +90,21 @@ internal fun AccessibilityOverlay(
                 lazyListState.scrollToItem(targetIndex)
             }
         }
+    }
+
+    // Hidden live region for TalkBack announcements.
+    // When announcementCounter changes, TalkBack reads the updated contentDescription.
+    // This replaces the deprecated View.announceForAccessibility().
+    val counter = announcementCounter.intValue
+    if (counter > 0) {
+        Box(
+            modifier = Modifier
+                .height(with(density) { 0.toDp() })
+                .semantics {
+                    contentDescription = announcementText.value
+                    liveRegion = LiveRegionMode.Polite
+                }
+        )
     }
 
     LazyColumn(
@@ -137,8 +159,8 @@ internal fun AccessibilityOverlay(
                             add(CustomAccessibilityAction("Read Last Output") {
                                 val outputText = getLastCommandOutput(allLines)
                                 if (outputText != null) {
-                                    @Suppress("DEPRECATION")
-                                    view.announceForAccessibility(outputText)
+                                    announcementText.value = outputText
+                                    announcementCounter.intValue++
                                     true
                                 } else {
                                     false
