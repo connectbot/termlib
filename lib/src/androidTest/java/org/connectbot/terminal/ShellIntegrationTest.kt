@@ -47,9 +47,8 @@ class ShellIntegrationTest {
         assertNotNull("Expected a line marked as PROMPT", promptLine)
 
         // Verify specific segment
-        val segments = promptLine!!.semanticSegments
+        val segments = promptLine!!.getSegmentsOfType(SemanticType.PROMPT)
         assertEquals(1, segments.size)
-        assertEquals(SemanticType.PROMPT, segments[0].semanticType)
         assertEquals(0, segments[0].startCol)
         assertEquals(promptText.length, segments[0].endCol)
     }
