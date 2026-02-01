@@ -1,6 +1,7 @@
 package org.connectbot.terminal
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -11,6 +12,18 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ShellIntegrationTest {
+
+    /**
+     * Get a stable snapshot after writing input to the emulator.
+     * Drains the main looper to ensure any handler-posted processPendingUpdates()
+     * completes before the test's own call, avoiding a race condition where the
+     * handler consumes pending state before the test can process it.
+     */
+    private fun getSnapshot(impl: TerminalEmulatorImpl): TerminalSnapshot {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        impl.processPendingUpdates()
+        return impl.snapshot.value
+    }
 
     // OSC 8 escape sequence helpers
     private fun osc8Start(url: String, id: String? = null): String {
@@ -38,10 +51,7 @@ class ShellIntegrationTest {
 
         // Verify the line is marked as PROMPT
 
-        val snapshot = (emulator as TerminalEmulatorImpl).let {
-            it.processPendingUpdates()
-            it.snapshot.value
-        }
+        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
         val promptLine = snapshot.lines.firstOrNull { it.hasPrompt() }
 
         assertNotNull("Expected a line marked as PROMPT", promptLine)
@@ -64,10 +74,7 @@ class ShellIntegrationTest {
         emulator.writeInput("\u001B]133;D;42\u001B\\".toByteArray())
 
         // Verify metadata contains exit code
-        val snapshot = (emulator as TerminalEmulatorImpl).let {
-            it.processPendingUpdates()
-            it.snapshot.value
-        }
+        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
         val finishedLine = snapshot.lines.firstOrNull {
             it.getSegmentsOfType(SemanticType.COMMAND_FINISHED).isNotEmpty()
         }
@@ -89,10 +96,7 @@ class ShellIntegrationTest {
         val annotationMsg = "Hello World"
         emulator.writeInput("\u001B]1337;AddAnnotation=$annotationMsg\u001B\\".toByteArray())
         // Verify annotation
-        val snapshot = (emulator as TerminalEmulatorImpl).let {
-            it.processPendingUpdates()
-            it.snapshot.value
-        }
+        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
         val annotatedLine = snapshot.lines.firstOrNull {
             it.getSegmentsOfType(SemanticType.ANNOTATION).isNotEmpty()
         }
@@ -117,10 +121,7 @@ class ShellIntegrationTest {
 
         emulator.writeInput(input.toByteArray())
 
-        val snapshot = (emulator as TerminalEmulatorImpl).let {
-            it.processPendingUpdates()
-            it.snapshot.value
-        }
+        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
 
         // Hyperlink should be on row 0
         val hyperlinkSegments = snapshot.lines[0].getSegmentsOfType(SemanticType.HYPERLINK)
@@ -170,10 +171,7 @@ class ShellIntegrationTest {
         impl.writeInput("\r\nEnd of test\r\n".toByteArray())
         impl.processPendingUpdates()
 
-        val snapshot = (emulator as TerminalEmulatorImpl).let {
-            it.processPendingUpdates()
-            it.snapshot.value
-        }
+        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
 
         // Row 0: No hyperlinks (just header text)
         assertTrue(
@@ -259,10 +257,7 @@ class ShellIntegrationTest {
         impl.writeInput("${osc8Start("https://link3.com")}Link3${osc8End()}\r\n".toByteArray())
         impl.processPendingUpdates()
 
-        val snapshot = (emulator as TerminalEmulatorImpl).let {
-            it.processPendingUpdates()
-            it.snapshot.value
-        }
+        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
 
         // After scrolling (7 lines, 5 rows = 3 scrolls), visible lines should be:
         // Row 0: "Plain text" (was line 3) - no hyperlink
@@ -323,10 +318,7 @@ class ShellIntegrationTest {
 
         emulator.writeInput(input.toByteArray())
 
-        val snapshot = (emulator as TerminalEmulatorImpl).let {
-            it.processPendingUpdates()
-            it.snapshot.value
-        }
+        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
 
         // Only row 0 should have the hyperlink
         val row0Segments = snapshot.lines[0].getSegmentsOfType(SemanticType.HYPERLINK)

@@ -872,17 +872,23 @@ internal class TerminalEmulatorImpl(
      * Build a complete snapshot of terminal state.
      */
     private fun buildSnapshot(): TerminalSnapshot {
-        // Only copy scrollback if it changed (avoid copying 10K references every frame!)
+        // Read all mutable state under damageLock to ensure cross-thread visibility.
+        // addSemanticSegment writes currentLines on the JNI callback thread; without
+        // the lock here, the snapshot-building thread might see a stale reference.
+        val lines: List<TerminalLine>
+        val scrollbackCopy: List<TerminalLine>
         synchronized(damageLock) {
             if (scrollbackDirty) {
                 scrollbackSnapshot = scrollback.toList()
                 scrollbackDirty = false
             }
+            lines = currentLines.toList()  // Immutable copy (24 references)
+            scrollbackCopy = scrollbackSnapshot  // Reuse cached immutable copy
         }
 
         return TerminalSnapshot(
-            lines = currentLines.toList(),  // Immutable copy (24 references)
-            scrollback = scrollbackSnapshot,  // Reuse cached immutable copy
+            lines = lines,
+            scrollback = scrollbackCopy,
             cursorRow = cursorRow,
             cursorCol = cursorCol,
             cursorVisible = cursorVisible,
