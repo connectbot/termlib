@@ -32,23 +32,22 @@ class OscParserTest {
 
         // 2. Prompt end / Input start (B) at col 10
         // "user@host$" is 10 chars
+        // B creates both PROMPT and COMMAND_INPUT segments
         actions = parser.parse(133, "B", row, 10, cols)
-        assertEquals(1, actions.size)
+        assertEquals(2, actions.size)
         val promptAction = actions[0] as OscParser.Action.AddSegment
         assertEquals(SemanticType.PROMPT, promptAction.type)
         assertEquals(0, promptAction.startCol)
         assertEquals(10, promptAction.endCol)
         assertTrue(promptAction.promptId > 0)
-
-        // 3. Input end / Output start (C) at col 15
-        // "ls -l" is 5 chars
-        actions = parser.parse(133, "C", row, 15, cols)
-        assertEquals(1, actions.size)
-        val inputAction = actions[0] as OscParser.Action.AddSegment
+        val inputAction = actions[1] as OscParser.Action.AddSegment
         assertEquals(SemanticType.COMMAND_INPUT, inputAction.type)
         assertEquals(10, inputAction.startCol)
-        assertEquals(15, inputAction.endCol)
         assertEquals(promptAction.promptId, inputAction.promptId)
+
+        // 3. Input end / Output start (C) - no new segments needed
+        actions = parser.parse(133, "C", row, 15, cols)
+        assertTrue(actions.isEmpty())
 
         // 4. Command finished (D)
         actions = parser.parse(133, "D;0", row, 0, cols)
@@ -56,6 +55,43 @@ class OscParserTest {
         val finishedAction = actions[0] as OscParser.Action.AddSegment
         assertEquals(SemanticType.COMMAND_FINISHED, finishedAction.type)
         assertEquals("0", finishedAction.metadata)
+        assertEquals(promptAction.promptId, finishedAction.promptId)
+    }
+
+    @Test
+    fun testOsc133PromptFlowCrossRow() {
+        // Realistic bash shell integration: after Enter, scroll keeps cursor
+        // at the same screen-relative row. COMMAND_INPUT must be created at B
+        // time so it gets shifted by pushScrollbackLine along with the text.
+        val parser = OscParser()
+        val cols = 80
+        val bottomRow = 35
+
+        // 1. Prompt start (A) at bottom row
+        var actions = parser.parse(133, "A", bottomRow, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        // 2. B at (35, 2) after "$ " - creates PROMPT and COMMAND_INPUT
+        actions = parser.parse(133, "B", bottomRow, 2, cols)
+        assertEquals(2, actions.size)
+        val promptAction = actions[0] as OscParser.Action.AddSegment
+        assertEquals(SemanticType.PROMPT, promptAction.type)
+        assertEquals(bottomRow, promptAction.row)
+        val inputAction = actions[1] as OscParser.Action.AddSegment
+        assertEquals(SemanticType.COMMAND_INPUT, inputAction.type)
+        assertEquals(bottomRow, inputAction.row)
+        assertEquals(2, inputAction.startCol)
+
+        // 3. User types "echo hello\n" → scroll happens → C at (35, 0)
+        //    No new segments - COMMAND_INPUT was already created at B time
+        actions = parser.parse(133, "C", bottomRow, 0, cols)
+        assertTrue(actions.isEmpty())
+
+        // 4. Output prints, scrolls, then D at (35, 0)
+        actions = parser.parse(133, "D;0", bottomRow, 0, cols)
+        assertEquals(1, actions.size)
+        val finishedAction = actions[0] as OscParser.Action.AddSegment
+        assertEquals(SemanticType.COMMAND_FINISHED, finishedAction.type)
         assertEquals(promptAction.promptId, finishedAction.promptId)
     }
 

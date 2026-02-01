@@ -26,18 +26,23 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.buildAnnotatedString
-import kotlinx.coroutines.launch
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
+import kotlinx.coroutines.launch
 
 /**
  * Invisible overlay that provides semantic structure for screen readers.
@@ -67,6 +72,10 @@ internal fun AccessibilityOverlay(
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
 
+    // State for live region announcements (replaces deprecated announceForAccessibility)
+    val announcementText = remember { mutableStateOf("") }
+    val announcementCounter = remember { mutableIntStateOf(0) }
+
     // Include both scrollback and visible lines in the list
     val allLines = snapshot.scrollback + snapshot.lines
 
@@ -81,6 +90,21 @@ internal fun AccessibilityOverlay(
                 lazyListState.scrollToItem(targetIndex)
             }
         }
+    }
+
+    // Hidden live region for TalkBack announcements.
+    // When announcementCounter changes, TalkBack reads the updated contentDescription.
+    // This replaces the deprecated View.announceForAccessibility().
+    val counter = announcementCounter.intValue
+    if (counter > 0) {
+        Box(
+            modifier = Modifier
+                .height(with(density) { 0.toDp() })
+                .semantics {
+                    contentDescription = announcementText.value
+                    liveRegion = LiveRegionMode.Polite
+                }
+        )
     }
 
     LazyColumn(
@@ -129,6 +153,18 @@ internal fun AccessibilityOverlay(
                             add(CustomAccessibilityAction("Copy Line") {
                                 clipboardManager.setText(buildAnnotatedString { append(line.text) })
                                 true
+                            })
+
+                            // Read Last Output
+                            add(CustomAccessibilityAction("Read Last Output") {
+                                val outputText = getLastCommandOutput(allLines)
+                                if (outputText != null) {
+                                    announcementText.value = outputText
+                                    announcementCounter.intValue++
+                                    true
+                                } else {
+                                    false
+                                }
                             })
 
                             // Toggle Review Mode
@@ -358,6 +394,56 @@ private fun buildSemanticDescription(line: TerminalLine): String {
             }
         }
     }.trim()
+}
+
+/**
+ * Extract the text output of the last completed command.
+ *
+ * Uses OSC 133 semantic segments to find the boundaries of the most recent
+ * command output. Scans backward through the lines to find the latest
+ * [SemanticType.COMMAND_FINISHED] marker, then locates the corresponding
+ * [SemanticType.COMMAND_INPUT] segment (matched by promptId) to determine
+ * where the output begins.
+ *
+ * @param lines All terminal lines (scrollback + visible)
+ * @return The command output text, or null if no completed command is found
+ */
+internal fun getLastCommandOutput(lines: List<TerminalLine>): String? {
+    // Find the most recent COMMAND_FINISHED marker
+    var finishedIndex = -1
+    var finishedPromptId = -1
+    for (i in lines.indices.reversed()) {
+        val segments = lines[i].getSegmentsOfType(SemanticType.COMMAND_FINISHED)
+        if (segments.isNotEmpty()) {
+            finishedIndex = i
+            finishedPromptId = segments.first().promptId
+            break
+        }
+    }
+    if (finishedIndex < 0) return null
+
+    // Find the COMMAND_INPUT line with the same promptId
+    var inputIndex = -1
+    for (i in (0 until finishedIndex).reversed()) {
+        val segments = lines[i].getSegmentsOfType(SemanticType.COMMAND_INPUT)
+        if (segments.any { it.promptId == finishedPromptId }) {
+            inputIndex = i
+            break
+        }
+    }
+    if (inputIndex < 0) return null
+
+    // Output is between the command input line (exclusive) and the finished marker line (exclusive)
+    val outputStart = inputIndex + 1
+    val outputEnd = finishedIndex - 1
+    if (outputStart > outputEnd) return null
+
+    val outputText = (outputStart..outputEnd)
+        .map { lines[it].text.trimEnd() }
+        .joinToString("\n")
+        .trimEnd()
+
+    return outputText.ifEmpty { null }
 }
 
 /**

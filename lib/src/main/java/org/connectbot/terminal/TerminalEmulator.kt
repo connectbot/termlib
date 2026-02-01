@@ -104,6 +104,17 @@ sealed interface TerminalEmulator {
     )
 
     val dimensions: TerminalDimensions
+
+    /**
+     * Get the text output of the last completed command.
+     *
+     * Uses OSC 133 semantic segments to find the boundaries of the most recent
+     * completed command output. Requires shell integration (OSC 133) to be
+     * enabled in the user's shell.
+     *
+     * @return The command output text, or null if no completed command is found
+     */
+    fun getLastCommandOutput(): String?
 }
 
 class TerminalEmulatorFactory {
@@ -338,6 +349,15 @@ internal class TerminalEmulatorImpl(
      * Clears the terminal emulator screen.
      */
     override fun clearScreen() = writeInput("\u001B[2J\u001B[H".toByteArray())
+
+    /**
+     * Get the text output of the last completed command.
+     */
+    override fun getLastCommandOutput(): String? {
+        val currentSnapshot = _snapshot.value
+        val allLines = currentSnapshot.scrollback + currentSnapshot.lines
+        return getLastCommandOutput(allLines)
+    }
 
     /**
      * Set ANSI palette colors (indices 0-15).
@@ -852,17 +872,23 @@ internal class TerminalEmulatorImpl(
      * Build a complete snapshot of terminal state.
      */
     private fun buildSnapshot(): TerminalSnapshot {
-        // Only copy scrollback if it changed (avoid copying 10K references every frame!)
+        // Read all mutable state under damageLock to ensure cross-thread visibility.
+        // addSemanticSegment writes currentLines on the JNI callback thread; without
+        // the lock here, the snapshot-building thread might see a stale reference.
+        val lines: List<TerminalLine>
+        val scrollbackCopy: List<TerminalLine>
         synchronized(damageLock) {
             if (scrollbackDirty) {
                 scrollbackSnapshot = scrollback.toList()
                 scrollbackDirty = false
             }
+            lines = currentLines.toList()  // Immutable copy (24 references)
+            scrollbackCopy = scrollbackSnapshot  // Reuse cached immutable copy
         }
 
         return TerminalSnapshot(
-            lines = currentLines.toList(),  // Immutable copy (24 references)
-            scrollback = scrollbackSnapshot,  // Reuse cached immutable copy
+            lines = lines,
+            scrollback = scrollbackCopy,
             cursorRow = cursorRow,
             cursorCol = cursorCol,
             cursorVisible = cursorVisible,
