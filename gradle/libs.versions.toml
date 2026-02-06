@@ -1,6 +1,6 @@
 [versions]
 androidGradlePlugin = "9.0.0"
-kotlin = "2.3.0"
+kotlin = "2.3.10"
 spotless = "8.2.1"
 publish = "0.36.0"
 release = "3.1.0"
