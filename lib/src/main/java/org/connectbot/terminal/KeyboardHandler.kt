@@ -49,6 +49,7 @@ internal class KeyboardHandler(
     var selectionController: SelectionController? = null,
     var onInputProcessed: (() -> Unit)? = null
 ) {
+    var composeMode: ComposeMode? = null
 
     /**
      * Process a Compose KeyEvent and send to terminal.
@@ -63,6 +64,33 @@ internal class KeyboardHandler(
         val ctrl = event.isCtrlPressed
         val alt = event.isAltPressed
         val shift = event.isShiftPressed
+
+        // If compose mode is active, intercept all input
+        val compose = composeMode
+        if (compose != null && compose.isActive) {
+            when (key) {
+                Key.Enter -> {
+                    val text = compose.commit()
+                    if (text != null) {
+                        text.forEach { char ->
+                            terminalEmulator.dispatchCharacter(0, char)
+                        }
+                    }
+                    onInputProcessed?.invoke()
+                }
+                Key.Escape -> compose.cancel()
+                Key.Backspace -> compose.deleteLastChar()
+                else -> {
+                    if (!ctrl && !alt) {
+                        val char = getCharacterFromKey(key, shift)
+                        if (char != null) {
+                            compose.appendChar(char)
+                        }
+                    }
+                }
+            }
+            return true
+        }
 
         // If selection is active, intercept arrow keys for selection movement
         val selection = selectionController
@@ -131,6 +159,12 @@ internal class KeyboardHandler(
      * This is called for printable characters.
      */
     fun onCharacterInput(char: Char, ctrl: Boolean = false, alt: Boolean = false): Boolean {
+        val compose = composeMode
+        if (compose != null && compose.isActive) {
+            compose.appendChar(char)
+            return true
+        }
+
         val modifiers = buildModifierMask(ctrl, alt, false)
 
         terminalEmulator.dispatchCharacter(modifiers, char)
@@ -145,6 +179,13 @@ internal class KeyboardHandler(
      */
     fun onTextInput(bytes: ByteArray) {
         if (bytes.isEmpty()) return
+
+        val compose = composeMode
+        if (compose != null && compose.isActive) {
+            val text = bytes.toString(Charsets.UTF_8)
+            compose.appendText(text)
+            return
+        }
 
         val modifiers = getModifierMask()
         val text = bytes.toString(Charsets.UTF_8)

@@ -184,6 +184,136 @@ class KeyboardHandlerTest {
         )
     }
 
+    // === Compose Mode Tests ===
+
+    @Test
+    fun testComposeModeInterceptsKeyEvent() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+
+        val handled = keyboardHandler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
+
+        assertTrue(handled)
+        assertEquals("a", composeMode.buffer)
+    }
+
+    @Test
+    fun testComposeModeInterceptsMultipleKeys() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.B, KeyEventType.KeyDown))
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.C, KeyEventType.KeyDown))
+
+        assertEquals("abc", composeMode.buffer)
+    }
+
+    @Test
+    fun testComposeModeBackspace() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.B, KeyEventType.KeyDown))
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.Backspace, KeyEventType.KeyDown))
+
+        assertEquals("a", composeMode.buffer)
+    }
+
+    @Test
+    fun testComposeModeEscapeCancels() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.Escape, KeyEventType.KeyDown))
+
+        assertFalse(composeMode.isActive)
+        assertEquals("", composeMode.buffer)
+    }
+
+    @Test
+    fun testComposeModeEnterCommits() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+        keyboardHandler.onInputProcessed = { inputProcessedCallCount++ }
+
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.B, KeyEventType.KeyDown))
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.Enter, KeyEventType.KeyDown))
+
+        assertFalse(composeMode.isActive)
+        assertEquals(1, inputProcessedCallCount)
+    }
+
+    @Test
+    fun testComposeModeDoesNotInterceptWhenInactive() {
+        val composeMode = ComposeMode()
+        keyboardHandler.composeMode = composeMode
+        keyboardHandler.onInputProcessed = { inputProcessedCallCount++ }
+
+        val handled = keyboardHandler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
+
+        assertTrue(handled)
+        assertEquals("", composeMode.buffer)
+        assertEquals(1, inputProcessedCallCount)
+    }
+
+    @Test
+    fun testComposeModeInterceptsCharacterInput() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+
+        val handled = keyboardHandler.onCharacterInput('x')
+
+        assertTrue(handled)
+        assertEquals("x", composeMode.buffer)
+    }
+
+    @Test
+    fun testComposeModeInterceptsTextInput() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+
+        keyboardHandler.onTextInput("hello".toByteArray(Charsets.UTF_8))
+
+        assertEquals("hello", composeMode.buffer)
+    }
+
+    @Test
+    fun testComposeModeTextInputDoesNotDispatchToTerminal() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+        keyboardHandler.onInputProcessed = { inputProcessedCallCount++ }
+
+        keyboardHandler.onTextInput("hello".toByteArray(Charsets.UTF_8))
+
+        // onInputProcessed should NOT be called when compose mode intercepts
+        assertEquals(0, inputProcessedCallCount)
+    }
+
+    @Test
+    fun testComposeModeCharacterInputDoesNotCallOnInputProcessed() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+        keyboardHandler.onInputProcessed = { inputProcessedCallCount++ }
+
+        keyboardHandler.onCharacterInput('a')
+
+        // onInputProcessed should NOT be called when compose mode intercepts
+        assertEquals(0, inputProcessedCallCount)
+    }
+
     private fun keyToAndroidKeyCode(key: Key): Int {
         return when (key) {
             Key.A -> android.view.KeyEvent.KEYCODE_A
@@ -193,6 +323,7 @@ class KeyboardHandlerTest {
             Key.Spacebar -> android.view.KeyEvent.KEYCODE_SPACE
             Key.Backspace -> android.view.KeyEvent.KEYCODE_DEL
             Key.Tab -> android.view.KeyEvent.KEYCODE_TAB
+            Key.Escape -> android.view.KeyEvent.KEYCODE_ESCAPE
             else -> android.view.KeyEvent.KEYCODE_UNKNOWN
         }
     }

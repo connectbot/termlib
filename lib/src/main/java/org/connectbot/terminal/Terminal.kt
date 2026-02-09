@@ -285,7 +285,8 @@ fun Terminal(
     forcedSize: Pair<Int, Int>? = null,
     modifierManager: ModifierManager? = null,
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
-    onHyperlinkClick: (String) -> Unit = {}
+    onHyperlinkClick: (String) -> Unit = {},
+    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null
 ) {
     TerminalWithAccessibility(
         terminalEmulator = terminalEmulator,
@@ -304,7 +305,8 @@ fun Terminal(
         forcedSize = forcedSize,
         modifierManager = modifierManager,
         onSelectionControllerAvailable = onSelectionControllerAvailable,
-        onHyperlinkClick = onHyperlinkClick
+        onHyperlinkClick = onHyperlinkClick,
+        onComposeControllerAvailable = onComposeControllerAvailable
     )
 }
 
@@ -333,7 +335,8 @@ fun TerminalWithAccessibility(
     modifierManager: ModifierManager? = null,
     forceAccessibilityEnabled: Boolean? = null,
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
-    onHyperlinkClick: (String) -> Unit = {}
+    onHyperlinkClick: (String) -> Unit = {},
+    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -559,10 +562,54 @@ fun TerminalWithAccessibility(
         }
     }
 
+    // Compose mode state
+    val composeMode = remember(terminalEmulator) {
+        ComposeMode()
+    }
+
+    // Compose controller - expose API for external control
+    val composeController = remember(terminalEmulator, composeMode, selectionController) {
+        object : ComposeController {
+            override val isComposeModeActive: Boolean
+                get() = composeMode.isActive
+
+            override fun startComposeMode() {
+                selectionController.clearSelection()
+                composeMode.activate()
+            }
+
+            override fun stopComposeMode() {
+                composeMode.cancel()
+            }
+
+            override fun toggleComposeMode() {
+                if (composeMode.isActive) {
+                    stopComposeMode()
+                } else {
+                    startComposeMode()
+                }
+            }
+
+            override fun getComposedText(): String {
+                return composeMode.buffer
+            }
+        }
+    }
+
+    // Wire compose mode into keyboard handler
+    LaunchedEffect(composeMode) {
+        keyboardHandler.composeMode = composeMode
+    }
+
     // Provide selection controller to caller and keyboard handler
     LaunchedEffect(selectionController) {
         keyboardHandler.selectionController = selectionController
         onSelectionControllerAvailable?.invoke(selectionController)
+    }
+
+    // Provide compose controller to caller
+    LaunchedEffect(composeController) {
+        onComposeControllerAvailable?.invoke(composeController)
     }
 
     // Coroutine scope for animations
@@ -1028,6 +1075,20 @@ fun TerminalWithAccessibility(
                         charHeight = baseCharHeight,
                         foregroundColor = foregroundColor,
                         cursorShape = screenState.snapshot.cursorShape
+                    )
+                }
+
+                // Draw compose mode overlay
+                if (composeMode.isActive && screenState.scrollbackPosition == 0) {
+                    drawComposeOverlay(
+                        buffer = composeMode.buffer,
+                        cursorRow = screenState.snapshot.cursorRow,
+                        cursorCol = screenState.snapshot.cursorCol,
+                        totalCols = screenState.snapshot.cols,
+                        charWidth = baseCharWidth,
+                        charHeight = baseCharHeight,
+                        charBaseline = baseCharBaseline,
+                        textPaint = textPaint
                     )
                 }
 
@@ -1534,6 +1595,91 @@ private fun DrawScope.drawCursor(
             )
         }
     }
+}
+
+/**
+ * Background color for the compose mode overlay.
+ */
+private val COMPOSE_OVERLAY_BACKGROUND = Color(0xFF2E7D32).copy(alpha = 0.85f)
+
+/**
+ * Width of the compose mode cursor bar in pixels.
+ */
+private const val COMPOSE_CURSOR_BAR_WIDTH = 2f
+
+/**
+ * Draw the compose mode overlay at the cursor position.
+ *
+ * Displays the buffered text with a slide-left behavior when the buffer
+ * exceeds available space. Shows an ellipsis at the left edge when text
+ * is truncated.
+ */
+private fun DrawScope.drawComposeOverlay(
+    buffer: String,
+    cursorRow: Int,
+    cursorCol: Int,
+    totalCols: Int,
+    charWidth: Float,
+    charHeight: Float,
+    charBaseline: Float,
+    textPaint: TextPaint
+) {
+    val x = cursorCol * charWidth
+    val y = cursorRow * charHeight
+    val availableCols = totalCols - cursorCol
+
+    // Determine displayed text with slide-left behavior
+    val displayText = if (buffer.length > availableCols) {
+        "\u2026" + buffer.takeLast(availableCols - 1)
+    } else {
+        buffer
+    }
+
+    val displayWidth = displayText.length * charWidth
+
+    // Draw background
+    drawRect(
+        color = COMPOSE_OVERLAY_BACKGROUND,
+        topLeft = Offset(x, y),
+        size = Size(displayWidth.coerceAtLeast(charWidth), charHeight)
+    )
+
+    // Draw text
+    if (displayText.isNotEmpty()) {
+        val savedColor = textPaint.color
+        val savedBold = textPaint.isFakeBoldText
+        val savedSkew = textPaint.textSkewX
+        val savedUnderline = textPaint.isUnderlineText
+        val savedStrike = textPaint.isStrikeThruText
+
+        textPaint.color = Color.White.toArgb()
+        textPaint.isFakeBoldText = false
+        textPaint.textSkewX = 0f
+        textPaint.isUnderlineText = false
+        textPaint.isStrikeThruText = false
+
+        drawContext.canvas.nativeCanvas.drawText(
+            displayText,
+            x,
+            y + charBaseline,
+            textPaint
+        )
+
+        textPaint.color = savedColor
+        textPaint.isFakeBoldText = savedBold
+        textPaint.textSkewX = savedSkew
+        textPaint.isUnderlineText = savedUnderline
+        textPaint.isStrikeThruText = savedStrike
+    }
+
+    // Draw cursor bar at end of displayed text
+    val cursorX = x + displayText.length * charWidth
+    drawRect(
+        color = Color.White,
+        topLeft = Offset(cursorX, y),
+        size = Size(COMPOSE_CURSOR_BAR_WIDTH, charHeight),
+        alpha = CURSOR_LINE_ALPHA
+    )
 }
 
 /**
