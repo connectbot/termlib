@@ -1,6 +1,15 @@
 // Signature format: 4.0
 package org.connectbot.terminal {
 
+  public interface ComposeController {
+    method public String getComposedText();
+    method public boolean isComposeModeActive();
+    method public void startComposeMode();
+    method public void stopComposeMode();
+    method public void toggleComposeMode();
+    property public abstract boolean isComposeModeActive;
+  }
+
   public interface ModifierManager {
     method public void clearTransients();
     method public boolean isAltActive();
@@ -76,8 +85,8 @@ package org.connectbot.terminal {
   }
 
   public final class TerminalKt {
-    method public static void Terminal(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional error.NonExistentClass modifier, optional error.NonExistentClass typeface, optional error.NonExistentClass initialFontSize, optional error.NonExistentClass minFontSize, optional error.NonExistentClass maxFontSize, optional error.NonExistentClass backgroundColor, optional error.NonExistentClass foregroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional error.NonExistentClass focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<? super java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional error.NonExistentClass? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit> onHyperlinkClick);
-    method public static void TerminalWithAccessibility(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional error.NonExistentClass modifier, optional error.NonExistentClass typeface, optional error.NonExistentClass initialFontSize, optional error.NonExistentClass minFontSize, optional error.NonExistentClass maxFontSize, optional error.NonExistentClass backgroundColor, optional error.NonExistentClass foregroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional error.NonExistentClass focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<? super java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional error.NonExistentClass? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional Boolean? forceAccessibilityEnabled, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit> onHyperlinkClick);
+    method public static void Terminal(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional error.NonExistentClass modifier, optional error.NonExistentClass typeface, optional error.NonExistentClass initialFontSize, optional error.NonExistentClass minFontSize, optional error.NonExistentClass maxFontSize, optional error.NonExistentClass backgroundColor, optional error.NonExistentClass foregroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional error.NonExistentClass focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<? super java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional error.NonExistentClass? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit> onHyperlinkClick, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.ComposeController,kotlin.Unit>? onComposeControllerAvailable);
+    method public static void TerminalWithAccessibility(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional error.NonExistentClass modifier, optional error.NonExistentClass typeface, optional error.NonExistentClass initialFontSize, optional error.NonExistentClass minFontSize, optional error.NonExistentClass maxFontSize, optional error.NonExistentClass backgroundColor, optional error.NonExistentClass foregroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional error.NonExistentClass focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<? super java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional error.NonExistentClass? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional Boolean? forceAccessibilityEnabled, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<? super java.lang.String,kotlin.Unit> onHyperlinkClick, optional kotlin.jvm.functions.Function1<? super org.connectbot.terminal.ComposeController,kotlin.Unit>? onComposeControllerAvailable);
   }
 
   public final class VTermKey {
