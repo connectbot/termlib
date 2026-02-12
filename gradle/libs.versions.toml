@@ -10,7 +10,7 @@ dokka = "2.2.0-Beta"
 composeBom = "2026.01.01"
 lifecycleViewModel = "2.10.0"
 activityCompose = "1.12.3"
-composeRuntime = "1.10.2"
+composeRuntime = "1.10.3"
 foundation = "1.10.2"
 
 appcompat = "1.7.1"
