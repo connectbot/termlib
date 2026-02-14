@@ -769,10 +769,13 @@ fun TerminalWithAccessibility(
                         // 2. Start long press detection for selection
                         // Only start selection if no selection is already active
                         var longPressDetected = false
+                        var gestureEnded = false
                         val longPressJob = launch {
                             delay(viewConfiguration.longPressTimeoutMillis)
+                            // Only trigger long press if gesture is still undetermined AND still in progress
                             if (gestureType == GestureType.Undetermined &&
-                                selectionManager.mode == SelectionMode.NONE
+                                selectionManager.mode == SelectionMode.NONE &&
+                                !gestureEnded
                             ) {
                                 longPressDetected = true
                                 gestureType = GestureType.Selection
@@ -913,6 +916,7 @@ fun TerminalWithAccessibility(
                         }
 
                         // 6. Gesture ended - cleanup
+                        gestureEnded = true
                         longPressJob.cancel()
 
                         when (gestureType) {
