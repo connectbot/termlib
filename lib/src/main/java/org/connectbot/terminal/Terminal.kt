@@ -76,6 +76,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -288,6 +289,11 @@ fun Terminal(
     onHyperlinkClick: (String) -> Unit = {},
     onComposeControllerAvailable: ((ComposeController) -> Unit)? = null
 ) {
+    if (LocalInspectionMode.current) {
+        TerminalPreview(modifier, backgroundColor, foregroundColor)
+        return
+    }
+
     TerminalWithAccessibility(
         terminalEmulator = terminalEmulator,
         modifier = modifier,
@@ -1423,6 +1429,47 @@ private fun isTouchingHandle(
         distToStart < hitRadius,
         distToEnd < hitRadius
     )
+}
+
+/**
+ * Lightweight placeholder shown when the Terminal composable is rendered
+ * inside Android Studio's Compose Preview (LocalInspectionMode).
+ */
+@Composable
+private fun TerminalPreview(
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = Color.Black,
+    foregroundColor: Color = Color.White,
+) {
+    val previewLines = listOf(
+        "$ echo hello",
+        "hello",
+        "$ _",
+    )
+
+    Canvas(
+        modifier = modifier
+            .fillMaxSize()
+            .background(backgroundColor),
+    ) {
+        val textPaint = TextPaint().apply {
+            color = foregroundColor.toArgb()
+            typeface = Typeface.MONOSPACE
+            textSize = 14f * density
+        }
+        val metrics = textPaint.fontMetrics
+        val lineHeight = metrics.descent - metrics.ascent
+        val baseline = -metrics.ascent
+
+        previewLines.forEachIndexed { index, line ->
+            drawContext.canvas.nativeCanvas.drawText(
+                line,
+                0f,
+                baseline + index * lineHeight,
+                textPaint,
+            )
+        }
+    }
 }
 
 /**
