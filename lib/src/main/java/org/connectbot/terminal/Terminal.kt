@@ -64,8 +64,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -654,11 +656,17 @@ fun TerminalWithAccessibility(
                                     else -> {
                                         // Any other key exits Review Mode and goes to shell
                                         isReviewMode = false
+                                        if (event.type == KeyEventType.KeyDown) {
+                                            imeInputView?.resetImeBuffer()
+                                        }
                                         keyboardHandler.onKeyEvent(event)
                                     }
                                 }
                             } else {
                                 // Input Mode: send all keys to shell
+                                if (event.type == KeyEventType.KeyDown) {
+                                    imeInputView?.resetImeBuffer()
+                                }
                                 keyboardHandler.onKeyEvent(event)
                             }
                         }
@@ -1202,6 +1210,9 @@ fun TerminalWithAccessibility(
                     ImeInputView(context, keyboardHandler).apply {
                         // Set up key event handling
                         setOnKeyListener { _, _, event ->
+                            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                                resetImeBuffer()
+                            }
                             keyboardHandler.onKeyEvent(
                                 androidx.compose.ui.input.key.KeyEvent(event)
                             )

@@ -38,10 +38,10 @@ import android.view.inputmethod.InputMethodManager
  */
 internal class ImeInputView(
     context: Context,
-    private val keyboardHandler: KeyboardHandler
+    private val keyboardHandler: KeyboardHandler,
+    internal val inputMethodManager: InputMethodManager =
+        context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
 ) : View(context) {
-
-    private val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
 
     init {
         isFocusable = true
@@ -96,10 +96,24 @@ internal class ImeInputView(
         // fullEditor=true makes BaseInputConnection manage an internal Editable, so
         // getExtractedText() returns a valid object instead of null. Gboard checks this
         // and disables voice input when it gets null.
-        return TerminalInputConnection(this, true)
+        return TerminalInputConnection(this, true).also { activeConnection = it }
     }
 
     override fun onCheckIsTextEditor(): Boolean = true
+
+    private var activeConnection: TerminalInputConnection? = null
+
+    /**
+     * Clears the IME's internal text buffer and resets its selection state to (0, 0).
+     *
+     * Call this after key events that are dispatched outside the InputConnection (e.g. physical
+     * keyboard events handled via onPreviewKeyEvent or setOnKeyListener), so that the IME's
+     * suggestion context stays in sync with the terminal's stateless text model.
+     */
+    fun resetImeBuffer() {
+        activeConnection?.editable?.clear()
+        inputMethodManager.updateSelection(this, 0, 0, -1, -1)
+    }
 
     /**
      * Custom InputConnection that handles backspace and other special keys for terminal input.
@@ -181,8 +195,15 @@ internal class ImeInputView(
         }
 
         override fun sendKeyEvent(event: KeyEvent): Boolean {
-            // Let the view's key listener handle the event
-            return this@ImeInputView.dispatchKeyEvent(event)
+            val result = this@ImeInputView.dispatchKeyEvent(event)
+            // After any key event, clear the IME's text buffer and reset the selection to (0,0).
+            // This prevents Gboard from accumulating terminal input into its suggestion context
+            // (e.g. treating "git status<enter>ls -l" as a single suggestion candidate).
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                editable?.clear()
+                inputMethodManager.updateSelection(this@ImeInputView, 0, 0, -1, -1)
+            }
+            return result
         }
 
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
