@@ -98,10 +98,15 @@ internal class ImeInputView(
             outAttrs.initialSelStart = 0
             outAttrs.initialSelEnd = 0
         } else {
-            // Normal terminal mode: suppress suggestions and autocorrect. TYPE_NULL signals
-            // to the IME that this is not a regular text field, avoiding spurious suggestions
-            // and ensuring raw keystrokes are delivered.
-            outAttrs.inputType = EditorInfo.TYPE_NULL
+            // Normal terminal mode:
+            // - TYPE_TEXT_VARIATION_PASSWORD: Shows password-style keyboard with number rows
+            // - TYPE_TEXT_VARIATION_VISIBLE_PASSWORD: Keeps text visible (we handle display ourselves)
+            // - TYPE_TEXT_FLAG_NO_SUGGESTIONS: Disables autocomplete/suggestions
+            // - TYPE_NULL: No special input processing
+            outAttrs.inputType = EditorInfo.TYPE_NULL or
+                    EditorInfo.TYPE_TEXT_VARIATION_PASSWORD or
+                    EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
+                    EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
 
         return TerminalInputConnection(this, isComposeModeActive).also { activeConnection = it }
@@ -156,11 +161,13 @@ internal class ImeInputView(
                     val delta = newText.substring(composingText.length)
                     sendTextInput(delta)
                 }
+
                 composingText.startsWith(newText) -> {
                     // IME removed characters from the end of the composition
                     val deleteCount = composingText.length - newText.length
                     sendBackspaces(deleteCount)
                 }
+
                 else -> {
                     // IME replaced the composition; rewrite it in the terminal
                     sendBackspaces(composingText.length)
