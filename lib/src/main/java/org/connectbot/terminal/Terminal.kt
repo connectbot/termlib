@@ -612,6 +612,12 @@ fun TerminalWithAccessibility(
         onComposeControllerAvailable?.invoke(composeController)
     }
 
+    // Sync compose mode active state to ImeInputView so onCreateInputConnection returns the
+    // correct outAttrs (and restartInput is called to apply the change).
+    LaunchedEffect(composeMode.isActive, imeInputView) {
+        imeInputView?.isComposeModeActive = composeMode.isActive
+    }
+
     // Coroutine scope for animations
     val coroutineScope = rememberCoroutineScope()
 

@@ -71,10 +71,8 @@ internal class KeyboardHandler(
             when (key) {
                 Key.Enter -> {
                     val text = compose.commit()
-                    if (text != null) {
-                        text.forEach { char ->
-                            terminalEmulator.dispatchCharacter(0, char)
-                        }
+                    text?.forEach { char ->
+                        terminalEmulator.dispatchCharacter(0, char)
                     }
                     onInputProcessed?.invoke()
                 }
