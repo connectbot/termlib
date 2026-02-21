@@ -48,6 +48,15 @@ internal class ImeInputView(
         isFocusableInTouchMode = true
     }
 
+    var isComposeModeActive: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            if (windowToken != null) {
+                inputMethodManager.restartInput(this)
+            }
+        }
+
     /**
      * Show the IME forcefully. This is more reliable than SoftwareKeyboardController.
      */
@@ -79,24 +88,23 @@ internal class ImeInputView(
                 EditorInfo.IME_FLAG_NO_ENTER_ACTION or
                 EditorInfo.IME_ACTION_NONE
 
-        // Configure keyboard type:
-        // - TYPE_CLASS_TEXT: Standard text input class
-        // Note: TYPE_TEXT_FLAG_NO_SUGGESTIONS is intentionally omitted because Gboard
-        // hides its entire suggestion strip when that flag is set, and the voice input
-        // microphone button lives on the suggestion strip. Since our InputConnection
-        // doesn't maintain real text state, suggestions will be minimal.
-        // Password variations are also omitted to allow Gboard voice input.
-        outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT
+        if (isComposeModeActive) {
+            // Compose mode: allow voice input and IME suggestions.
+            // TYPE_CLASS_TEXT without NO_SUGGESTIONS keeps the suggestion strip (and its
+            // microphone button) visible. fullEditor=true makes BaseInputConnection provide
+            // a real Editable so getExtractedText() returns non-null (required by Gboard
+            // for voice input).
+            outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT
+            outAttrs.initialSelStart = 0
+            outAttrs.initialSelEnd = 0
+        } else {
+            // Normal terminal mode: suppress suggestions and autocorrect. TYPE_NULL signals
+            // to the IME that this is not a regular text field, avoiding spurious suggestions
+            // and ensuring raw keystrokes are delivered.
+            outAttrs.inputType = EditorInfo.TYPE_NULL
+        }
 
-        // Report valid selection state so IMEs know this is a capable text field.
-        // Without this, defaults are -1 which signals no selection support.
-        outAttrs.initialSelStart = 0
-        outAttrs.initialSelEnd = 0
-
-        // fullEditor=true makes BaseInputConnection manage an internal Editable, so
-        // getExtractedText() returns a valid object instead of null. Gboard checks this
-        // and disables voice input when it gets null.
-        return TerminalInputConnection(this, true).also { activeConnection = it }
+        return TerminalInputConnection(this, isComposeModeActive).also { activeConnection = it }
     }
 
     override fun onCheckIsTextEditor(): Boolean = true
