@@ -223,16 +223,18 @@ internal class ImeInputView(
 
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
             val committedText = text?.toString() ?: ""
+            // Save composingText before super.commitText() which internally calls
+            // finishComposingText(), clearing composingText before we can use it.
+            val previousComposingText = composingText
             super.commitText(text, newCursorPosition)
 
             if (committedText.isNotEmpty()) {
-                if (composingText.isNotEmpty()) {
-                    sendBackspaces(composingText.length)
+                if (previousComposingText.isNotEmpty()) {
+                    sendBackspaces(previousComposingText.length)
                 }
                 sendTextInput(committedText)
             }
             composingText = ""
-            // Clear the internal Editable to prevent unbounded accumulation
             editable?.clear()
             return true
         }
