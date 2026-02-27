@@ -19,6 +19,7 @@ package org.connectbot.terminal
 import android.view.KeyEvent
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -206,5 +207,61 @@ class ImeInputViewTest {
 
         assertEquals("", ic.getEditable()?.toString())
         verify { imm.updateSelection(view, 0, 0, -1, -1) }
+    }
+
+    // === IME duplicate character tests (connectbot/connectbot#1955) ===
+
+    private fun createIntegrationInputConnection(): Pair<TerminalEmulator, InputConnection> {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
+        val handler = KeyboardHandler(emulator)
+        var ic: InputConnection? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = ImeInputView(context, handler)
+            view.setOnKeyListener { _, _, event ->
+                handler.onKeyEvent(
+                    androidx.compose.ui.input.key.KeyEvent(event)
+                )
+            }
+            ic = view.onCreateInputConnection(EditorInfo())
+        }
+        return emulator to ic!!
+    }
+
+    private fun getScreenText(emulator: TerminalEmulator, row: Int): String {
+        val impl = emulator as TerminalEmulatorImpl
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        impl.processPendingUpdates()
+        return impl.snapshot.value.lines[row].text.trimEnd('\u0000')
+    }
+
+    @Test
+    fun testCommitAfterComposingDoesNotDuplicate() {
+        val (emulator, ic) = createIntegrationInputConnection()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.setComposingText("a", 1)
+            ic.commitText("a", 1)
+        }
+        assertEquals("a", getScreenText(emulator, 0))
+    }
+
+    @Test
+    fun testMultiCharComposingCommitDoesNotDuplicate() {
+        val (emulator, ic) = createIntegrationInputConnection()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.setComposingText("h", 1)
+            ic.setComposingText("he", 1)
+            ic.setComposingText("hel", 1)
+            ic.commitText("hel", 1)
+        }
+        assertEquals("hel", getScreenText(emulator, 0))
+    }
+
+    @Test
+    fun testDirectCommitWithoutComposing() {
+        val (emulator, ic) = createIntegrationInputConnection()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText("x", 1)
+        }
+        assertEquals("x", getScreenText(emulator, 0))
     }
 }
