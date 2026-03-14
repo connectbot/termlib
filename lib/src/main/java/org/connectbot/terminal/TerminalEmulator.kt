@@ -575,8 +575,53 @@ internal class TerminalEmulatorImpl(
     }
 
     override fun popScrollbackLine(cols: Int, cells: Array<ScreenCell>): Int {
-        // Not implemented - scrollback is managed separately
-        return 0
+        synchronized(damageLock) {
+            if (scrollback.isEmpty()) return 0
+
+            val line = scrollback.removeAt(scrollback.size - 1)
+            scrollbackDirty = true
+
+            // Convert TerminalLine.Cell back to ScreenCell (reverse of pushScrollbackLine)
+            for (i in 0 until minOf(cols, cells.size)) {
+                val cell = line.cells.getOrNull(i)
+                if (cell != null) {
+                    cells[i] = ScreenCell(
+                        char = cell.char,
+                        combiningChars = cell.combiningChars,
+                        fgRed = (cell.fgColor.red * 255).toInt(),
+                        fgGreen = (cell.fgColor.green * 255).toInt(),
+                        fgBlue = (cell.fgColor.blue * 255).toInt(),
+                        bgRed = (cell.bgColor.red * 255).toInt(),
+                        bgGreen = (cell.bgColor.green * 255).toInt(),
+                        bgBlue = (cell.bgColor.blue * 255).toInt(),
+                        bold = cell.bold,
+                        italic = cell.italic,
+                        underline = cell.underline,
+                        reverse = cell.reverse,
+                        strike = cell.strike,
+                        width = cell.width,
+                    )
+                } else {
+                    // Fill remaining columns with empty cells using current defaults
+                    cells[i] = ScreenCell(
+                        char = ' ',
+                        fgRed = (currentDefaultForeground.red * 255).toInt(),
+                        fgGreen = (currentDefaultForeground.green * 255).toInt(),
+                        fgBlue = (currentDefaultForeground.blue * 255).toInt(),
+                        bgRed = (currentDefaultBackground.red * 255).toInt(),
+                        bgGreen = (currentDefaultBackground.green * 255).toInt(),
+                        bgBlue = (currentDefaultBackground.blue * 255).toInt(),
+                    )
+                }
+            }
+
+            propertyChanged = true
+            if (!damagePosted) {
+                handler.post { processPendingUpdates() }
+                damagePosted = true
+            }
+        }
+        return 1
     }
 
     override fun onKeyboardInput(data: ByteArray): Int {
