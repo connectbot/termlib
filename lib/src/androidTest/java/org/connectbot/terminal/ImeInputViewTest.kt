@@ -212,7 +212,12 @@ class ImeInputViewTest {
     // === IME duplicate character tests (connectbot/connectbot#1955) ===
 
     private fun createIntegrationInputConnection(): Pair<TerminalEmulator, InputConnection> {
-        val emulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
+        lateinit var emulator: TerminalEmulator
+        emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> emulator.writeInput(data) }
+        )
         val handler = KeyboardHandler(emulator)
         var ic: InputConnection? = null
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
