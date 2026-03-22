@@ -19,6 +19,7 @@ package org.connectbot.terminal
 import android.view.KeyEvent
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -206,5 +207,87 @@ class ImeInputViewTest {
 
         assertEquals("", ic.getEditable()?.toString())
         verify { imm.updateSelection(view, 0, 0, -1, -1) }
+    }
+
+    // === IME duplicate character tests (connectbot/connectbot#1955) ===
+
+    private fun createKeyboardOutputCapture(): Pair<InputConnection, MutableList<ByteArray>> {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+        )
+        val handler = KeyboardHandler(emulator)
+        var ic: InputConnection? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = ImeInputView(context, handler)
+            view.isComposeModeActive = true
+            view.setOnKeyListener { _, _, event ->
+                handler.onKeyEvent(
+                    androidx.compose.ui.input.key.KeyEvent(event)
+                )
+            }
+            ic = view.onCreateInputConnection(EditorInfo())
+        }
+        return ic!! to outputs
+    }
+
+    /**
+     * Compute the effective text from captured keyboard output by applying
+     * BS (0x08) and DEL (0x7F) as character erasure operations.
+     */
+    private fun effectiveText(outputs: List<ByteArray>): String {
+        val buffer = StringBuilder()
+        for (data in outputs) {
+            for (byte in data) {
+                val code = byte.toInt() and 0xFF
+                when {
+                    code == 0x08 || code == 0x7F -> {
+                        if (buffer.isNotEmpty()) buffer.deleteCharAt(buffer.length - 1)
+                    }
+                    code >= 0x20 -> buffer.append(byte.toInt().toChar())
+                }
+            }
+        }
+        return buffer.toString()
+    }
+
+    private fun drainMainLooper() {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+    }
+
+    @Test
+    fun testCommitAfterComposingDoesNotDuplicate() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.setComposingText("a", 1)
+            ic.commitText("a", 1)
+        }
+        drainMainLooper()
+        assertEquals("a", effectiveText(outputs))
+    }
+
+    @Test
+    fun testMultiCharComposingCommitDoesNotDuplicate() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.setComposingText("h", 1)
+            ic.setComposingText("he", 1)
+            ic.setComposingText("hel", 1)
+            ic.commitText("hel", 1)
+        }
+        drainMainLooper()
+        assertEquals("hel", effectiveText(outputs))
+    }
+
+    @Test
+    fun testDirectCommitWithoutComposing() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText("x", 1)
+        }
+        drainMainLooper()
+        assertEquals("x", effectiveText(outputs))
     }
 }
