@@ -9,7 +9,7 @@ dokka = "2.2.0-Beta"
 
 composeBom = "2026.03.00"
 lifecycleViewModel = "2.10.0"
-activityCompose = "1.12.4"
+activityCompose = "1.13.0"
 composeRuntime = "1.10.4"
 foundation = "1.10.5"
 
