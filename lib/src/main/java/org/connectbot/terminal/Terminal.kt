@@ -107,6 +107,13 @@ private const val CURSOR_BLINK_RATE_MS = 500L
 private const val WAIT_FOR_SECOND_TOUCH_MS = 40L
 
 /**
+ * Long-press delay for text selection in mouse mode (ms).
+ * Longer than the interceptor's right-click threshold (400ms) so the
+ * user can distinguish right-click (release before 1s) from selection (hold past 1s).
+ */
+private const val MOUSE_MODE_SELECTION_DELAY_MS = 1000L
+
+/**
  * Text selection magnifier loupe size in dp.
  */
 private const val MAGNIFIER_SIZE_DP = 100
@@ -827,15 +834,17 @@ fun TerminalWithAccessibility(
                         }
 
                         // 2. Start long press detection for selection
-                        // Only start selection if no selection is already active
-                        // Skip in mouse mode — long-press is handled by the gesture interceptor
+                        // Only start selection if no selection is already active.
+                        // In mouse mode the interceptor sends a right-click at 400ms,
+                        // but the system long-press (~500ms) still triggers selection
+                        // so the user can copy text even in TUI apps.
                         var longPressDetected = false
                         var gestureEnded = false
                         val longPressJob = launch {
-                            delay(viewConfiguration.longPressTimeoutMillis)
+                            delay(if (mouseMode) MOUSE_MODE_SELECTION_DELAY_MS else viewConfiguration.longPressTimeoutMillis)
                             if (gestureType == GestureType.Undetermined &&
                                 selectionManager.mode == SelectionMode.NONE &&
-                                !gestureEnded && !mouseMode
+                                !gestureEnded
                             ) {
                                 longPressDetected = true
                                 gestureType = GestureType.Selection
