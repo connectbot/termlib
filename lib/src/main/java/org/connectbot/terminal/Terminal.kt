@@ -168,7 +168,7 @@ private val SELECTION_HIGHLIGHT_COLOR = Color(0xFF4A90E2)
 /**
  * Touch radius in pixels for detecting selection handle touches.
  */
-private const val HANDLE_HIT_RADIUS = 50f
+private const val HANDLE_HIT_RADIUS = 80f
 
 /**
  * Vertical offset in dp to position the magnifier above the finger.
@@ -817,7 +817,6 @@ fun TerminalWithAccessibility(
                                         magnifierPosition = change.position
                                         change.consume()
                                     }
-
                                     showMagnifier = false
                                     // Don't auto-show menu again after dragging handle
                                     return@awaitEachGesture
@@ -1422,13 +1421,18 @@ private fun isTouchingHandle(
     charHeight: Float,
     hitRadius: Float = HANDLE_HIT_RADIUS
 ): Pair<Boolean, Boolean> {
+    // Handle circles are drawn offset from the character edge by their radius (~12dp).
+    // Start handle points up (circle above the character top),
+    // end handle points down (circle below the character bottom).
+    // Use a generous hit radius centered on the circle's visual center.
+    val handleRadius = charHeight * 0.4f // approximate circle radius
     val startPos = Offset(
         range.startCol * charWidth + charWidth / 2,
-        range.startRow * charHeight
+        range.startRow * charHeight - handleRadius
     )
     val endPos = Offset(
         range.endCol * charWidth + charWidth / 2,
-        range.endRow * charHeight + charHeight
+        range.endRow * charHeight + charHeight + handleRadius
     )
 
     val distToStart = (touchPos - startPos).getDistance()
