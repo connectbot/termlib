@@ -5,7 +5,7 @@ spotless = "8.3.0"
 publish = "0.36.0"
 release = "3.1.0"
 metalava = "0.5.0"
-dokka = "2.2.0-Beta"
+dokka = "2.2.0"
 
 composeBom = "2026.03.00"
 lifecycleViewModel = "2.10.0"
