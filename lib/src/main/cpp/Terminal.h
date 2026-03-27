@@ -22,6 +22,29 @@
 #include <memory>
 #include <mutex>
 
+template<typename T>
+class ScopedLocalRef {
+public:
+    ScopedLocalRef(JNIEnv* env, T ref) : mEnv(env), mRef(ref) {}
+    ~ScopedLocalRef() { if (mRef) mEnv->DeleteLocalRef(mRef); }
+    T get() const { return mRef; }
+    operator T() const { return mRef; }
+    ScopedLocalRef(ScopedLocalRef&& other) noexcept : mEnv(other.mEnv), mRef(other.mRef) {
+        other.mRef = nullptr;
+    }
+    ScopedLocalRef(const ScopedLocalRef&) = delete;
+    ScopedLocalRef& operator=(ScopedLocalRef&& other) noexcept {
+        if (mRef) mEnv->DeleteLocalRef(mRef);
+        mEnv = other.mEnv;
+        mRef = other.mRef;
+        other.mRef = nullptr;
+        return *this;
+    }
+private:
+    JNIEnv* mEnv;
+    T mRef;
+};
+
 class Terminal {
 public:
     Terminal(JNIEnv* env, jobject callbacks, int rows = 24, int cols = 80);
