@@ -1214,6 +1214,10 @@ fun TerminalWithAccessibility(
                     ImeInputView(context, keyboardHandler).apply {
                         // Set up key event handling
                         setOnKeyListener { _, _, event ->
+                            // Skip raw key events that were already dispatched through the
+                            // InputConnection.sendKeyEvent path (e.g. soft-keyboard keys from
+                            // Gboard with TYPE_NULL) to avoid doubling input to the terminal.
+                            if (isDispatchingFromIme) return@setOnKeyListener false
                             if (event.action == android.view.KeyEvent.ACTION_DOWN) {
                                 resetImeBuffer()
                             }

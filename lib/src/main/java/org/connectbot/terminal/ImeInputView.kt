@@ -117,6 +117,14 @@ internal class ImeInputView(
     private var activeConnection: TerminalInputConnection? = null
 
     /**
+     * True while the InputConnection is actively dispatching a key event so that the
+     * setOnKeyListener in Terminal.kt can skip the duplicate raw key event that some IMEs
+     * (e.g. Gboard with TYPE_NULL) fire on the view at the same time.
+     */
+    var isDispatchingFromIme: Boolean = false
+        private set
+
+    /**
      * Clears the IME's internal text buffer and resets its selection state to (0, 0).
      *
      * Call this after key events that are dispatched outside the InputConnection (e.g. physical
@@ -210,7 +218,12 @@ internal class ImeInputView(
         }
 
         override fun sendKeyEvent(event: KeyEvent): Boolean {
+            // Set the flag before dispatching so the setOnKeyListener in Terminal.kt can
+            // suppress the duplicate raw key event that some IMEs (e.g. Gboard with TYPE_NULL)
+            // fire on the view concurrently with the InputConnection sendKeyEvent call.
+            isDispatchingFromIme = true
             val result = this@ImeInputView.dispatchKeyEvent(event)
+            isDispatchingFromIme = false
             // After any key event, clear the IME's text buffer and reset the selection to (0,0).
             // This prevents Gboard from accumulating terminal input into its suggestion context
             // (e.g. treating "git status<enter>ls -l" as a single suggestion candidate).

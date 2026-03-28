@@ -290,4 +290,57 @@ class ImeInputViewTest {
         drainMainLooper()
         assertEquals("x", effectiveText(outputs))
     }
+
+    // === Soft-keyboard doubling regression (TYPE_NULL IME key event duplication) ===
+
+    /**
+     * Regression test for soft-keyboard input doubling when TYPE_NULL is set (non-compose mode).
+     *
+     * Some IMEs (e.g. Gboard) deliver soft-keyboard keys via BOTH:
+     *   1. InputConnection.sendKeyEvent → dispatchKeyEvent → setOnKeyListener
+     *   2. A raw KeyEvent dispatched directly on the view → setOnKeyListener
+     *
+     * The isDispatchingFromIme flag on ImeInputView gates the setOnKeyListener so the
+     * raw duplicate is suppressed, resulting in each keystroke being sent exactly once.
+     */
+    @Test
+    fun testSoftKeyboardKeyEventNotDoubledByRawViewEvent() {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+        )
+        val handler = KeyboardHandler(emulator)
+        var ic: android.view.inputmethod.InputConnection? = null
+        var view: ImeInputView? = null
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = ImeInputView(context, handler).also { v ->
+                // isComposeModeActive = false → TYPE_NULL path (the regression scenario)
+                v.setOnKeyListener { _, _, event ->
+                    if (v.isDispatchingFromIme) return@setOnKeyListener false
+                    if (event.action == KeyEvent.ACTION_DOWN) v.resetImeBuffer()
+                    handler.onKeyEvent(androidx.compose.ui.input.key.KeyEvent(event))
+                }
+                ic = v.onCreateInputConnection(EditorInfo())
+            }
+        }
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val keyDown = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A)
+            // Path 1: IME delivers key via InputConnection.sendKeyEvent. Our override sets
+            //         isDispatchingFromIme=true, calls dispatchKeyEvent → setOnKeyListener
+            //         sees the flag and skips, then clears the flag. This path is suppressed.
+            ic!!.sendKeyEvent(keyDown)
+            // Path 2: IME also fires the same key as a raw view dispatchKeyEvent (the
+            //         behavior that causes doubling with TYPE_NULL on Gboard). Now
+            //         isDispatchingFromIme=false so setOnKeyListener processes it normally.
+            view!!.dispatchKeyEvent(keyDown)
+        }
+        drainMainLooper()
+
+        // 'a' should appear exactly once: Path 1 suppressed, Path 2 processed.
+        assertEquals("a", effectiveText(outputs))
+    }
 }
