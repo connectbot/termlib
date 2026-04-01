@@ -243,6 +243,7 @@ jobs:
           cp -r ./lib/build/dokka/html/* "gh-pages-deploy/${SUBDIR}/"
           .github/scripts/generate-version-sitemap.sh gh-pages-deploy "${SUBDIR}" "${{ steps.pages.outputs.base_url }}"
           .github/scripts/generate-sitemap-index.sh gh-pages-deploy "${{ steps.pages.outputs.base_url }}"
+          .github/scripts/generate-index.sh gh-pages-deploy "${{ steps.pages.outputs.base_url }}"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
