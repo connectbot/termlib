@@ -30,7 +30,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Box
@@ -56,11 +55,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
@@ -141,14 +138,14 @@ private const val KEYBOARD_SHOW_DELAY_MS = 50L
 private val TERMINAL_BORDER_WIDTH = 2.dp
 
 /**
- * Minimum zoom scale for pinch-to-zoom gesture.
+ * Minimum font size for pinch-to-zoom gesture (sp).
  */
-private const val MIN_ZOOM_SCALE = 0.5f
+private const val MIN_PINCH_FONT_SP = 6f
 
 /**
- * Maximum zoom scale for pinch-to-zoom gesture.
+ * Maximum font size for pinch-to-zoom gesture (sp).
  */
-private const val MAX_ZOOM_SCALE = 3f
+private const val MAX_PINCH_FONT_SP = 32f
 
 /**
  * Size of the copy button when selection is active in dp.
@@ -287,7 +284,9 @@ fun Terminal(
     modifierManager: ModifierManager? = null,
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
     onHyperlinkClick: (String) -> Unit = {},
-    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null
+    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
+    onFontSizeChanged: ((TextUnit) -> Unit)? = null,
+    mouseMode: Boolean = false,
 ) {
     if (LocalInspectionMode.current) {
         TerminalPreview(modifier, backgroundColor, foregroundColor)
@@ -312,7 +311,9 @@ fun Terminal(
         modifierManager = modifierManager,
         onSelectionControllerAvailable = onSelectionControllerAvailable,
         onHyperlinkClick = onHyperlinkClick,
-        onComposeControllerAvailable = onComposeControllerAvailable
+        onComposeControllerAvailable = onComposeControllerAvailable,
+        onFontSizeChanged = onFontSizeChanged,
+        mouseMode = mouseMode,
     )
 }
 
@@ -342,7 +343,9 @@ fun TerminalWithAccessibility(
     forceAccessibilityEnabled: Boolean? = null,
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
     onHyperlinkClick: (String) -> Unit = {},
-    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null
+    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
+    onFontSizeChanged: ((TextUnit) -> Unit)? = null,
+    mouseMode: Boolean = false,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -371,12 +374,12 @@ fun TerminalWithAccessibility(
         KeyboardHandler(terminalEmulator, modifierManager)
     }
 
-    // Font size and zoom state
-    var zoomScale by remember(terminalEmulator) { mutableStateOf(1f) }
-    var zoomOffset by remember(terminalEmulator) { mutableStateOf(Offset.Zero) }
-    var zoomOrigin by remember(terminalEmulator) { mutableStateOf(TransformOrigin.Center) }
-    var isZooming by remember(terminalEmulator) { mutableStateOf(false) }
+    // Font size state (pinch-to-zoom adjusts this directly)
     var calculatedFontSize by remember(terminalEmulator) { mutableStateOf(initialFontSize) }
+    // Track whether a pinch gesture set the font size, to avoid the
+    // initialFontSize LaunchedEffect overwriting it before the preference
+    // round-trips back.
+    var fontSetByPinch by remember(terminalEmulator) { mutableStateOf(false) }
 
     // Magnifying glass state
     var showMagnifier by remember(terminalEmulator) { mutableStateOf(false) }
@@ -701,9 +704,13 @@ fun TerminalWithAccessibility(
                 calculatedFontSize = optimalSize.sp
             }
         } else {
-            // When not forcing size, reset the font size to the initial value.
+            // Sync from external font size changes (e.g. settings slider).
+            // Skip if a pinch gesture just set the size — the preference
+            // will round-trip back as a new initialFontSize momentarily.
             LaunchedEffect(initialFontSize) {
-                if (calculatedFontSize != initialFontSize) {
+                if (fontSetByPinch) {
+                    fontSetByPinch = false
+                } else if (calculatedFontSize != initialFontSize) {
                     calculatedFontSize = initialFontSize
                 }
             }
@@ -757,8 +764,8 @@ fun TerminalWithAccessibility(
 
         // Draw terminal content with context menu overlay
         Box(
-            modifier = (if (forcedSize != null && !isZooming && zoomScale == 1f) {
-                // Add border outside the terminal content (only when not zooming)
+            modifier = (if (forcedSize != null) {
+                // Add border outside the terminal content
                 Modifier
                     .size(
                         width = with(density) { terminalWidthPx.toDp() },
@@ -770,7 +777,7 @@ fun TerminalWithAccessibility(
                     )
             } else {
                 Modifier.fillMaxSize()
-            }).pointerInput(terminalEmulator, baseCharHeight) {
+            }).pointerInput(terminalEmulator) {
                 val touchSlopSquared =
                     viewConfiguration.touchSlop * viewConfiguration.touchSlop
                 coroutineScope {
@@ -827,14 +834,14 @@ fun TerminalWithAccessibility(
 
                         // 2. Start long press detection for selection
                         // Only start selection if no selection is already active
+                        // Skip in mouse mode — long-press is handled by the gesture interceptor
                         var longPressDetected = false
                         var gestureEnded = false
                         val longPressJob = launch {
                             delay(viewConfiguration.longPressTimeoutMillis)
-                            // Only trigger long press if gesture is still undetermined AND still in progress
                             if (gestureType == GestureType.Undetermined &&
                                 selectionManager.mode == SelectionMode.NONE &&
-                                !gestureEnded
+                                !gestureEnded && !mouseMode
                             ) {
                                 longPressDetected = true
                                 gestureType = GestureType.Selection
@@ -861,46 +868,32 @@ fun TerminalWithAccessibility(
                             awaitPointerEvent().changes.firstOrNull { it.id != down.id && it.pressed }
                         }
 
-                        if (secondPointer != null) {
+                        if (secondPointer != null && forcedSize == null) {
                             longPressJob.cancel()
                             gestureType = GestureType.Zoom
 
-                            // Handle zoom using Compose's built-in gesture calculations
-                            isZooming = true
-
-                            val centerX = (down.position.x + secondPointer.position.x) / 2f
-                            val centerY = (down.position.y + secondPointer.position.y) / 2f
-                            zoomOrigin = TransformOrigin(
-                                pivotFractionX = centerX / size.width,
-                                pivotFractionY = centerY / size.height
-                            )
+                            // Pinch-to-zoom: adjust font size directly
+                            val startFontSize = calculatedFontSize.value
+                            var cumulativeZoom = 1f
 
                             while (true) {
                                 val event = awaitPointerEvent()
                                 if (event.changes.all { !it.pressed }) break
 
                                 if (event.changes.size > 1) {
-                                    val gestureZoom = event.calculateZoom()
-                                    val gesturePan = event.calculatePan()
-
-                                    val oldScale = zoomScale
-                                    val newScale =
-                                        (oldScale * gestureZoom).coerceIn(
-                                            MIN_ZOOM_SCALE,
-                                            MAX_ZOOM_SCALE
-                                        )
-
-                                    zoomOffset += gesturePan
-                                    zoomScale = newScale
+                                    cumulativeZoom *= event.calculateZoom()
+                                    val newSize = (startFontSize * cumulativeZoom)
+                                        .coerceIn(MIN_PINCH_FONT_SP, MAX_PINCH_FONT_SP)
+                                    calculatedFontSize = newSize.sp
 
                                     event.changes.forEach { it.consume() }
                                 }
                             }
 
-                            // Gesture ended - reset
-                            isZooming = false
-                            zoomScale = 1f
-                            zoomOffset = Offset.Zero
+                            // Persist the new font size; flag prevents the
+                            // LaunchedEffect from resetting before round-trip.
+                            fontSetByPinch = true
+                            onFontSizeChanged?.invoke(calculatedFontSize)
 
                             return@awaitEachGesture
                         }
@@ -1014,28 +1007,32 @@ fun TerminalWithAccessibility(
                             }
 
                             GestureType.Undetermined -> {
-                                // This is a tap. If a selection is active, clear it.
-                                // Otherwise, check for hyperlink or forward the tap.
-                                if (selectionManager.mode != SelectionMode.NONE) {
-                                    selectionManager.clearSelection()
-                                } else {
-                                    // Check if tap is on a hyperlink
-                                    val tapCol = (down.position.x / baseCharWidth).toInt()
-                                        .coerceIn(0, screenState.snapshot.cols - 1)
-                                    val tapRow = (down.position.y / baseCharHeight).toInt()
-                                        .coerceIn(0, screenState.snapshot.rows - 1)
-                                    val line = screenState.getVisibleLine(tapRow)
-                                    val hyperlinkUrl = line.getHyperlinkUrlAt(tapCol)
-
-                                    if (hyperlinkUrl != null) {
-                                        // User tapped on a hyperlink
-                                        onHyperlinkClick(hyperlinkUrl)
+                                // In mouse mode, taps are handled by the gesture
+                                // interceptor — skip selection/hyperlink/focus here.
+                                if (!mouseMode) {
+                                    // This is a tap. If a selection is active, clear it.
+                                    // Otherwise, check for hyperlink or forward the tap.
+                                    if (selectionManager.mode != SelectionMode.NONE) {
+                                        selectionManager.clearSelection()
                                     } else {
-                                        // Request focus when terminal is tapped to show keyboard
-                                        if (keyboardEnabled) {
-                                            focusRequester.requestFocus()
+                                        // Check if tap is on a hyperlink
+                                        val tapCol = (down.position.x / baseCharWidth).toInt()
+                                            .coerceIn(0, screenState.snapshot.cols - 1)
+                                        val tapRow = (down.position.y / baseCharHeight).toInt()
+                                            .coerceIn(0, screenState.snapshot.rows - 1)
+                                        val line = screenState.getVisibleLine(tapRow)
+                                        val hyperlinkUrl = line.getHyperlinkUrlAt(tapCol)
+
+                                        if (hyperlinkUrl != null) {
+                                            // User tapped on a hyperlink
+                                            onHyperlinkClick(hyperlinkUrl)
+                                        } else {
+                                            // Request focus when terminal is tapped to show keyboard
+                                            if (keyboardEnabled) {
+                                                focusRequester.requestFocus()
+                                            }
+                                            onTerminalTap()
                                         }
-                                        onTerminalTap()
                                     }
                                 }
                             }
@@ -1052,13 +1049,6 @@ fun TerminalWithAccessibility(
                     .clearAndSetSemantics {
                         // Hide Canvas from accessibility tree - AccessibilityOverlay provides semantic structure
                     }
-                    .graphicsLayer {
-                        translationX = zoomOffset.x * zoomScale
-                        translationY = zoomOffset.y * zoomScale
-                        scaleX = zoomScale
-                        scaleY = zoomScale
-                        transformOrigin = zoomOrigin
-                    }
             ) {
                 // Fill background
                 drawRect(
@@ -1066,7 +1056,7 @@ fun TerminalWithAccessibility(
                     size = size
                 )
 
-                // Draw each line (zoom/pan applied via graphicsLayer)
+                // Draw each line
                 for (row in 0 until screenState.snapshot.rows) {
                     val line = screenState.getVisibleLine(row)
                     drawLine(
