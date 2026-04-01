@@ -212,7 +212,7 @@ jobs:
           packages: 'cmdline-tools;latest tools platform-tools'
 
       - name: Build documents
-        run: ./gradlew :lib:dokkaGenerateHtml --no-configuration-cache
+        run: ./gradlew :lib:dokkaGeneratePublicationHtml :lib:dokkaGenerateMarkdown --no-configuration-cache
 
       - name: Determine subdirectory name
         id: subdir
@@ -226,18 +226,23 @@ jobs:
           path: gh-pages
         continue-on-error: true
 
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
       - name: Prepare docs for deployment
         run: |
           mkdir -p gh-pages-deploy
           if [ -d "gh-pages" ]; then
             cp -r gh-pages/* gh-pages-deploy/ 2>/dev/null || true
           fi
-          rm -rf "gh-pages-deploy/${{ steps.subdir.outputs.name }}"
-          mkdir -p "gh-pages-deploy/${{ steps.subdir.outputs.name }}"
-          cp -r ./lib/build/dokka/html/* "gh-pages-deploy/${{ steps.subdir.outputs.name }}/"
-
-      - name: Setup Pages
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+          SUBDIR="${{ steps.subdir.outputs.name }}"
+          rm -rf "gh-pages-deploy/${SUBDIR}"
+          mkdir -p "gh-pages-deploy/${SUBDIR}"
+          cp -r ./lib/build/dokka/markdown/* "gh-pages-deploy/${SUBDIR}/"
+          cp -r ./lib/build/dokka/html/* "gh-pages-deploy/${SUBDIR}/"
+          .github/scripts/generate-version-sitemap.sh gh-pages-deploy "${SUBDIR}" "${{ steps.pages.outputs.base_url }}"
+          .github/scripts/generate-sitemap-index.sh gh-pages-deploy "${{ steps.pages.outputs.base_url }}"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
