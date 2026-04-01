@@ -16,16 +16,17 @@
  */
 package org.connectbot.terminal
 
+import android.content.Context
 import android.view.KeyEvent
+import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.mockk.mockk
-import io.mockk.verify
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,19 +40,43 @@ class ImeInputViewTest {
     @Before
     fun setup() {
         val terminalEmulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
-        keyboardHandler = mockk(relaxed = true)
+        keyboardHandler = KeyboardHandler(terminalEmulator)
     }
 
-    private fun makeView(imm: InputMethodManager = mockk(relaxed = true)) =
-        ImeInputView(context, keyboardHandler, imm)
+    private val noOpImm get() = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
 
-    private fun ImeInputView.ic() = onCreateInputConnection(EditorInfo()) as BaseInputConnection
+    private fun makeView(
+        selectionUpdates: MutableList<SelectionUpdate>? = null
+    ): ImeInputView {
+        val onUpdateSelection: (View, Int, Int, Int, Int) -> Unit =
+            if (selectionUpdates != null) {
+                { view, selStart, selEnd, cStart, cEnd ->
+                    selectionUpdates.add(SelectionUpdate(view, selStart, selEnd, cStart, cEnd))
+                }
+            } else {
+                { _, _, _, _, _ -> }
+            }
+        return ImeInputView(context, keyboardHandler, noOpImm, onUpdateSelection)
+    }
 
-    // === IME editable buffer reset on key events ===
+    data class SelectionUpdate(
+        val view: View,
+        val selStart: Int,
+        val selEnd: Int,
+        val candidatesStart: Int,
+        val candidatesEnd: Int
+    )
+
+    private fun ImeInputView.ic(composeMode: Boolean = false): BaseInputConnection {
+        isComposeModeActive = composeMode
+        return onCreateInputConnection(EditorInfo()) as BaseInputConnection
+    }
+
+    // === IME editable buffer reset on key events (compose mode — has a real Editable) ===
 
     @Test
     fun testSendEnterKeyDownClearsEditable() {
-        val ic = makeView().ic()
+        val ic = makeView().ic(composeMode = true)
         ic.commitText("git status", 1)
 
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
@@ -61,8 +86,7 @@ class ImeInputViewTest {
 
     @Test
     fun testSendKeyUpDoesNotClearEditable() {
-        val ic = makeView().ic()
-        // Write directly to the editable, bypassing commitText (which clears it).
+        val ic = makeView().ic(composeMode = true)
         ic.getEditable()?.append("hello")
 
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
@@ -72,7 +96,7 @@ class ImeInputViewTest {
 
     @Test
     fun testSendBackspaceKeyDownClearsEditable() {
-        val ic = makeView().ic()
+        val ic = makeView().ic(composeMode = true)
         ic.commitText("abc", 1)
 
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
@@ -83,7 +107,7 @@ class ImeInputViewTest {
     @Test
     fun testSecondCommandDoesNotAccumulateAfterEnter() {
         // Regression: "git status<enter>ls -l" should not appear as one suggestion candidate.
-        val ic = makeView().ic()
+        val ic = makeView().ic(composeMode = true)
 
         ic.commitText("git status", 1)
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
@@ -98,7 +122,7 @@ class ImeInputViewTest {
 
     @Test
     fun testCommitTextClearsEditable() {
-        val ic = makeView().ic()
+        val ic = makeView().ic(composeMode = true)
         ic.commitText("some text", 1)
 
         assertEquals("", ic.getEditable()?.toString())
@@ -106,7 +130,7 @@ class ImeInputViewTest {
 
     @Test
     fun testCommitTextWithActiveCompositionClearsEditable() {
-        val ic = makeView().ic()
+        val ic = makeView().ic(composeMode = true)
         ic.setComposingText("wor", 1)
         ic.commitText("word", 1)
 
@@ -117,57 +141,56 @@ class ImeInputViewTest {
 
     @Test
     fun testFinishComposingTextClearsEditable() {
-        val ic = makeView().ic()
+        val ic = makeView().ic(composeMode = true)
         ic.setComposingText("partial", 1)
         ic.finishComposingText()
 
         assertEquals("", ic.getEditable()?.toString())
     }
 
-    // === updateSelection is called after ACTION_DOWN key events ===
+    // === updateSelection is called after ACTION_DOWN key events (compose mode) ===
 
     @Test
     fun testUpdateSelectionCalledAfterEnterKeyDown() {
-        val imm = mockk<InputMethodManager>(relaxed = true)
-        val view = makeView(imm)
-        val ic = view.ic()
+        val updates = mutableListOf<SelectionUpdate>()
+        val view = makeView(updates)
+        val ic = view.ic(composeMode = true)
 
         ic.commitText("git status", 1)
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
 
-        verify { imm.updateSelection(view, 0, 0, -1, -1) }
+        assertTrue(updates.any { it.view === view && it.selStart == 0 && it.selEnd == 0 && it.candidatesStart == -1 && it.candidatesEnd == -1 })
     }
 
     @Test
     fun testUpdateSelectionCalledAfterBackspaceKeyDown() {
-        val imm = mockk<InputMethodManager>(relaxed = true)
-        val view = makeView(imm)
-        val ic = view.ic()
+        val updates = mutableListOf<SelectionUpdate>()
+        val view = makeView(updates)
+        val ic = view.ic(composeMode = true)
 
         ic.commitText("abc", 1)
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
 
-        verify { imm.updateSelection(view, 0, 0, -1, -1) }
+        assertTrue(updates.any { it.view === view && it.selStart == 0 && it.selEnd == 0 && it.candidatesStart == -1 && it.candidatesEnd == -1 })
     }
 
     @Test
     fun testUpdateSelectionNotCalledOnKeyUp() {
-        val imm = mockk<InputMethodManager>(relaxed = true)
-        val view = makeView(imm)
-        val ic = view.ic()
+        val updates = mutableListOf<SelectionUpdate>()
+        val view = makeView(updates)
+        val ic = view.ic(composeMode = true)
 
         ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
 
-        verify(exactly = 0) { imm.updateSelection(any(), any(), any(), any(), any()) }
+        assertTrue(updates.isEmpty())
     }
 
     // === resetImeBuffer() — used by physical keyboard paths that bypass InputConnection ===
 
     @Test
     fun testResetImeBufferClearsEditable() {
-        val imm = mockk<InputMethodManager>(relaxed = true)
-        val view = makeView(imm)
-        val ic = view.ic()
+        val view = makeView()
+        val ic = view.ic(composeMode = true)
 
         ic.commitText("git status", 1)
         view.resetImeBuffer()
@@ -177,13 +200,13 @@ class ImeInputViewTest {
 
     @Test
     fun testResetImeBufferCallsUpdateSelection() {
-        val imm = mockk<InputMethodManager>(relaxed = true)
-        val view = makeView(imm)
+        val updates = mutableListOf<SelectionUpdate>()
+        val view = makeView(updates)
         view.ic()
 
         view.resetImeBuffer()
 
-        verify { imm.updateSelection(view, 0, 0, -1, -1) }
+        assertTrue(updates.any { it.view === view && it.selStart == 0 && it.selEnd == 0 && it.candidatesStart == -1 && it.candidatesEnd == -1 })
     }
 
     @Test
@@ -198,15 +221,15 @@ class ImeInputViewTest {
         // setComposingText (voice input path) writes to the editable but does not clear it —
         // only finishComposingText does. resetImeBuffer() must also handle this mid-composition
         // case, which can be triggered by a physical hardware key interrupting voice input.
-        val imm = mockk<InputMethodManager>(relaxed = true)
-        val view = makeView(imm)
-        val ic = view.ic()
+        val updates = mutableListOf<SelectionUpdate>()
+        val view = makeView(updates)
+        val ic = view.ic(composeMode = true)
 
         ic.setComposingText("hel", 1)
         view.resetImeBuffer()
 
         assertEquals("", ic.getEditable()?.toString())
-        verify { imm.updateSelection(view, 0, 0, -1, -1) }
+        assertTrue(updates.any { it.view === view && it.selStart == 0 && it.selEnd == 0 && it.candidatesStart == -1 && it.candidatesEnd == -1 })
     }
 
     // === IME duplicate character tests (connectbot/connectbot#1955) ===
@@ -291,20 +314,9 @@ class ImeInputViewTest {
         assertEquals("x", effectiveText(outputs))
     }
 
-    // === Soft-keyboard doubling regression (TYPE_NULL IME key event duplication) ===
+    // === Soft-keyboard TYPE_NULL key event routing ===
 
-    /**
-     * Regression test for soft-keyboard input doubling when TYPE_NULL is set (non-compose mode).
-     *
-     * Some IMEs (e.g. Gboard) deliver soft-keyboard keys via BOTH:
-     *   1. InputConnection.sendKeyEvent → dispatchKeyEvent → setOnKeyListener
-     *   2. A raw KeyEvent dispatched directly on the view → setOnKeyListener
-     *
-     * The isDispatchingFromIme flag on ImeInputView gates the setOnKeyListener so the
-     * raw duplicate is suppressed, resulting in each keystroke being sent exactly once.
-     */
-    @Test
-    fun testSoftKeyboardKeyEventNotDoubledByRawViewEvent() {
+    private fun createNonComposeModeCapture(): Triple<InputConnection, ImeInputView, MutableList<ByteArray>> {
         val outputs = mutableListOf<ByteArray>()
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
@@ -312,14 +324,62 @@ class ImeInputViewTest {
             onKeyboardInput = { data -> outputs.add(data.copyOf()) }
         )
         val handler = KeyboardHandler(emulator)
-        var ic: android.view.inputmethod.InputConnection? = null
+        var ic: InputConnection? = null
         var view: ImeInputView? = null
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view = ImeInputView(context, handler).also { v ->
-                // isComposeModeActive = false → TYPE_NULL path (the regression scenario)
+                // isComposeModeActive = false → TYPE_NULL path
                 v.setOnKeyListener { _, _, event ->
-                    if (v.isDispatchingFromIme) return@setOnKeyListener false
+                    if (event.action == KeyEvent.ACTION_DOWN) v.resetImeBuffer()
+                    handler.onKeyEvent(androidx.compose.ui.input.key.KeyEvent(event))
+                }
+                ic = v.onCreateInputConnection(EditorInfo())
+            }
+        }
+        return Triple(ic!!, view!!, outputs)
+    }
+
+    /**
+     * With TYPE_NULL, InputConnection.sendKeyEvent must deliver the key directly to the
+     * terminal without going through dispatchKeyEvent. This prevents Gboard's concurrent
+     * raw view key event from causing a double delivery.
+     */
+    @Test
+    fun testTypeNullSendKeyEventDeliversCharacter() {
+        val (ic, _, outputs) = createNonComposeModeCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A))
+        }
+        drainMainLooper()
+
+        assertEquals("a", effectiveText(outputs))
+    }
+
+    /**
+     * With TYPE_NULL, ENTER via InputConnection.sendKeyEvent must reach the terminal.
+     * This was broken by the previous isDispatchingFromIme approach which suppressed
+     * sendKeyEvent delivery and relied on a raw view event that Gboard does not always fire.
+     */
+    @Test
+    fun testTypeNullSendKeyEventEnterReachesTerminal() {
+        val outputs = mutableListOf<ByteArray>()
+        var enterDispatched = false
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data ->
+                outputs.add(data.copyOf())
+                if (data.contains(0x0D.toByte())) enterDispatched = true
+            }
+        )
+        val handler = KeyboardHandler(emulator)
+        var ic: InputConnection? = null
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = ImeInputView(context, handler).also { v ->
+                v.setOnKeyListener { _, _, event ->
                     if (event.action == KeyEvent.ACTION_DOWN) v.resetImeBuffer()
                     handler.onKeyEvent(androidx.compose.ui.input.key.KeyEvent(event))
                 }
@@ -328,19 +388,29 @@ class ImeInputViewTest {
         }
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val keyDown = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A)
-            // Path 1: IME delivers key via InputConnection.sendKeyEvent. Our override sets
-            //         isDispatchingFromIme=true, calls dispatchKeyEvent → setOnKeyListener
-            //         sees the flag and skips, then clears the flag. This path is suppressed.
-            ic!!.sendKeyEvent(keyDown)
-            // Path 2: IME also fires the same key as a raw view dispatchKeyEvent (the
-            //         behavior that causes doubling with TYPE_NULL on Gboard). Now
-            //         isDispatchingFromIme=false so setOnKeyListener processes it normally.
-            view!!.dispatchKeyEvent(keyDown)
+            ic!!.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
         }
         drainMainLooper()
 
-        // 'a' should appear exactly once: Path 1 suppressed, Path 2 processed.
-        assertEquals("a", effectiveText(outputs))
+        assertTrue("ENTER via sendKeyEvent did not reach the terminal", enterDispatched)
+    }
+
+    /**
+     * With TYPE_NULL, a raw view key event (Gboard's concurrent dispatch path) still reaches
+     * the terminal via setOnKeyListener, and does not double with the sendKeyEvent path.
+     */
+    @Test
+    fun testTypeNullRawViewEventAndSendKeyEventAreIndependent() {
+        val (ic, view, outputs) = createNonComposeModeCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            // Simulate Gboard: sends via InputConnection AND fires a raw view event.
+            // Each path delivers the character once — two independent 'a's total.
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A))
+            view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A))
+        }
+        drainMainLooper()
+
+        assertEquals("aa", effectiveText(outputs))
     }
 }

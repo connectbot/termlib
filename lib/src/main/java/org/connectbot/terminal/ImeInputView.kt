@@ -23,6 +23,7 @@ import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 
 /**
  * A minimal invisible View that provides proper IME input handling for terminal emulation.
@@ -40,7 +41,11 @@ internal class ImeInputView(
     context: Context,
     private val keyboardHandler: KeyboardHandler,
     internal val inputMethodManager: InputMethodManager =
-        context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager,
+    internal val onUpdateSelection: (view: View, selStart: Int, selEnd: Int, candidatesStart: Int, candidatesEnd: Int) -> Unit =
+        { view, selStart, selEnd, candidatesStart, candidatesEnd ->
+            inputMethodManager.updateSelection(view, selStart, selEnd, candidatesStart, candidatesEnd)
+        }
 ) : View(context) {
 
     init {
@@ -117,14 +122,6 @@ internal class ImeInputView(
     private var activeConnection: TerminalInputConnection? = null
 
     /**
-     * True while the InputConnection is actively dispatching a key event so that the
-     * setOnKeyListener in Terminal.kt can skip the duplicate raw key event that some IMEs
-     * (e.g. Gboard with TYPE_NULL) fire on the view at the same time.
-     */
-    var isDispatchingFromIme: Boolean = false
-        private set
-
-    /**
      * Clears the IME's internal text buffer and resets its selection state to (0, 0).
      *
      * Call this after key events that are dispatched outside the InputConnection (e.g. physical
@@ -133,7 +130,7 @@ internal class ImeInputView(
      */
     fun resetImeBuffer() {
         activeConnection?.editable?.clear()
-        inputMethodManager.updateSelection(this, 0, 0, -1, -1)
+        onUpdateSelection(this, 0, 0, -1, -1)
     }
 
     /**
@@ -141,12 +138,14 @@ internal class ImeInputView(
      */
     private inner class TerminalInputConnection(
         targetView: View,
-        fullEditor: Boolean
+        private val fullEditor: Boolean
     ) : BaseInputConnection(targetView, fullEditor) {
 
         private var composingText: String = ""
 
         override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+            if (!fullEditor) return super.setComposingText(text, newCursorPosition)
+
             val newText = text?.toString() ?: ""
             super.setComposingText(text, newCursorPosition)
 
@@ -188,6 +187,8 @@ internal class ImeInputView(
         }
 
         override fun finishComposingText(): Boolean {
+            if (!fullEditor) return super.finishComposingText()
+
             super.finishComposingText()
             composingText = ""
             // Clear the internal Editable to prevent unbounded accumulation
@@ -218,23 +219,32 @@ internal class ImeInputView(
         }
 
         override fun sendKeyEvent(event: KeyEvent): Boolean {
-            // Set the flag before dispatching so the setOnKeyListener in Terminal.kt can
-            // suppress the duplicate raw key event that some IMEs (e.g. Gboard with TYPE_NULL)
-            // fire on the view concurrently with the InputConnection sendKeyEvent call.
-            isDispatchingFromIme = true
-            val result = this@ImeInputView.dispatchKeyEvent(event)
-            isDispatchingFromIme = false
-            // After any key event, clear the IME's text buffer and reset the selection to (0,0).
-            // This prevents Gboard from accumulating terminal input into its suggestion context
-            // (e.g. treating "git status<enter>ls -l" as a single suggestion candidate).
-            if (event.action == KeyEvent.ACTION_DOWN) {
-                editable?.clear()
-                inputMethodManager.updateSelection(this@ImeInputView, 0, 0, -1, -1)
+            if (fullEditor) {
+                // Compose mode (TYPE_CLASS_TEXT): route through dispatchKeyEvent so the
+                // setOnKeyListener chain handles it. Clear the editable buffer afterward so
+                // Gboard does not accumulate terminal input as suggestion candidates.
+                val result = this@ImeInputView.dispatchKeyEvent(event)
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    editable?.clear()
+                    onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
+                }
+                return result
+            } else {
+                // TYPE_NULL mode: deliver directly to keyboardHandler instead of going through
+                // dispatchKeyEvent. With TYPE_NULL, Gboard fires the same key as both an
+                // InputConnection.sendKeyEvent call AND a raw View.dispatchKeyEvent. By handling
+                // sendKeyEvent here directly (not via dispatchKeyEvent), the setOnKeyListener in
+                // Terminal.kt processes only the raw view event — exactly once.
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
+                }
+                return true
             }
-            return result
         }
 
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
+            if (!fullEditor) return super.commitText(text, newCursorPosition)
+
             val committedText = text?.toString() ?: ""
             // Save composingText before super.commitText() which internally calls
             // finishComposingText(), clearing composingText before we can use it.
