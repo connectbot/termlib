@@ -165,6 +165,104 @@ class SemanticTypeTest {
         assertEquals("https://example.com", hyperlinkSegments[0].metadata)
     }
 
+    // --- URL auto-detection tests ---
+
+    @Test
+    fun testAutoDetectedUrlsHttps() {
+        val line = TerminalLine(row = 0, cells = buildTestCells("Visit https://example.com for docs"))
+        val urls = line.autoDetectedUrls
+        assertEquals(1, urls.size)
+        assertEquals("https://example.com", urls[0].third)
+        assertEquals(6, urls[0].first)   // starts at 'h'
+        assertEquals(25, urls[0].second) // exclusive end
+    }
+
+    @Test
+    fun testAutoDetectedUrlsBareDomain() {
+        val line = TerminalLine(row = 0, cells = buildTestCells("See example.com/path for info"))
+        val urls = line.autoDetectedUrls
+        assertEquals(1, urls.size)
+        assertEquals("example.com/path", urls[0].third)
+    }
+
+    @Test
+    fun testAutoDetectedUrlsMultiple() {
+        val line = TerminalLine(row = 0, cells = buildTestCells("https://a.com and https://b.org/foo"))
+        val urls = line.autoDetectedUrls
+        assertEquals(2, urls.size)
+        assertEquals("https://a.com", urls[0].third)
+        assertEquals("https://b.org/foo", urls[1].third)
+    }
+
+    @Test
+    fun testAutoDetectedUrlsNone() {
+        val line = TerminalLine(row = 0, cells = buildTestCells("no urls here"))
+        assertTrue(line.autoDetectedUrls.isEmpty())
+    }
+
+    @Test
+    fun testAutoDetectedUrlsIpWithPort() {
+        val line = TerminalLine(row = 0, cells = buildTestCells("connect to 192.168.1.1:8080 now"))
+        val urls = line.autoDetectedUrls
+        assertEquals(1, urls.size)
+        assertEquals("192.168.1.1:8080", urls[0].third)
+    }
+
+    @Test
+    fun testAutoDetectedUrlsIpWithPortAndPath() {
+        val line = TerminalLine(row = 0, cells = buildTestCells("http://10.0.0.1:3000/api/health"))
+        val urls = line.autoDetectedUrls
+        assertEquals(1, urls.size)
+        assertEquals("http://10.0.0.1:3000/api/health", urls[0].third)
+    }
+
+    @Test
+    fun testAutoDetectedUrlsDomainWithPort() {
+        val line = TerminalLine(row = 0, cells = buildTestCells("localhost.dev:9090/dashboard"))
+        val urls = line.autoDetectedUrls
+        assertEquals(1, urls.size)
+        assertEquals("localhost.dev:9090/dashboard", urls[0].third)
+    }
+
+    @Test
+    fun testAutoDetectedUrlsBareIpNoPort() {
+        // Bare IP without port should NOT match (avoids false positives like version numbers)
+        val line = TerminalLine(row = 0, cells = buildTestCells("version 1.2.3.4 released"))
+        assertTrue(line.autoDetectedUrls.isEmpty())
+    }
+
+    @Test
+    fun testGetHyperlinkUrlAtFallsBackToAutoDetect() {
+        // No OSC 8 segments — should fall back to auto-detected URL
+        val line = TerminalLine(row = 0, cells = buildTestCells("go to https://example.com ok"))
+        // "https://example.com" starts at col 6
+        assertNull(line.getHyperlinkUrlAt(0))
+        assertEquals("https://example.com", line.getHyperlinkUrlAt(6))
+        assertEquals("https://example.com", line.getHyperlinkUrlAt(24)) // last char 'm'
+        assertNull(line.getHyperlinkUrlAt(25))
+    }
+
+    @Test
+    fun testOsc8TakesPriorityOverAutoDetect() {
+        // Line text contains a URL, AND an OSC 8 segment covers the same range with a different URL
+        val text = "Click https://example.com here"
+        val line = TerminalLine(
+            row = 0,
+            cells = buildTestCells(text),
+            semanticSegments = listOf(
+                SemanticSegment(
+                    startCol = 6,
+                    endCol = 25,
+                    semanticType = SemanticType.HYPERLINK,
+                    metadata = "https://osc8-override.com"
+                )
+            )
+        )
+        // OSC 8 wins over auto-detect
+        assertEquals("https://osc8-override.com", line.getHyperlinkUrlAt(6))
+        assertEquals("https://osc8-override.com", line.getHyperlinkUrlAt(10))
+    }
+
     private fun buildTestCells(text: String): List<TerminalLine.Cell> {
         return text.map { char ->
             TerminalLine.Cell(
