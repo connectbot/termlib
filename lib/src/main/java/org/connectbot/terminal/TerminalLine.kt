@@ -73,13 +73,30 @@ internal data class TerminalLine(
     fun hasPrompt(): Boolean = semanticSegments.any { it.semanticType == SemanticType.PROMPT }
 
     /**
+     * Auto-detected URLs in the line text (not from OSC 8 semanticSegments).
+     * Lazily computed and cached per TerminalLine instance.
+     * Each triple is (startCol, endColExclusive, url).
+     */
+    internal val autoDetectedUrls: List<Triple<Int, Int, String>> by lazy {
+        if (cells.isEmpty()) return@lazy emptyList()
+        URL_REGEX.findAll(text).map { match ->
+            Triple(match.range.first, match.range.last + 1, match.value)
+        }.toList()
+    }
+
+    /**
      * Get the hyperlink URL at a specific column, if any.
+     * Checks OSC 8 semantic segments first, then falls back to auto-detected plain-text URLs.
      * Returns null if no hyperlink covers that column.
      */
     fun getHyperlinkUrlAt(col: Int): String? {
-        return semanticSegments.firstOrNull {
+        // OSC 8 segments take priority
+        val osc8 = semanticSegments.firstOrNull {
             it.semanticType == SemanticType.HYPERLINK && it.contains(col)
         }?.metadata
+        if (osc8 != null) return osc8
+        // Fallback: auto-detected plain-text URLs
+        return autoDetectedUrls.firstOrNull { col >= it.first && col < it.second }?.third
     }
 
     /**
@@ -111,6 +128,26 @@ internal data class TerminalLine(
          * This single shared instance prevents ~1,920 empty list allocations per frame.
          */
         val EMPTY_COMBINING_CHARS = emptyList<Char>()
+
+        /**
+         * URL regex for auto-detection in terminal text. Matches:
+         * - http://, https://, and ftp:// URLs (with any host including IP:port)
+         * - Bare domain names with common TLDs, optional :port and /path
+         * - IP:port patterns (e.g. 192.168.1.1:8080, 10.0.0.1:3000)
+         *
+         * Pure Kotlin regex (no android.util.Patterns dependency) for JUnit testability.
+         */
+        internal val URL_REGEX = Regex(
+            // Scheme URLs: http(s)://... or ftp://...
+            """(?:https?://|ftp://)[^\s<>"{}|\\^`\[\]]+""" +
+            // Bare domains with common TLDs, optional :port and /path
+            """|(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+""" +
+            """(?:com|org|net|edu|gov|io|dev|app|co|uk|de|fr|jp|ru|br|in|au|us|info|biz|me|tv|cc)""" +
+            """(?::\d{1,5})?""" +
+            """(?:/[^\s<>"{}|\\^`\[\]]*)?""" +
+            // IP:port (e.g. 192.168.1.1:8080) — require port to avoid matching version numbers
+            """|(?:\d{1,3}\.){3}\d{1,3}:\d{1,5}(?:/[^\s<>"{}|\\^`\[\]]*)?"""
+        )
 
         /**
          * Create an empty line with default cells.
