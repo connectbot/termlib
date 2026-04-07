@@ -1085,10 +1085,23 @@ fun TerminalWithAccessibility(
 
                 for (row in 0 until screenState.snapshot.rows) {
                     val line = screenState.getVisibleLine(row)
+                    // For URL continuation rows, compute where the URL-safe
+                    // prefix ends: skip leading spaces, then find the first
+                    // space after URL-safe content.
+                    val urlEndCol = if (row in urlContinuationRows) {
+                        val cells = line.cells
+                        var i = 0
+                        // Skip leading spaces (left margin padding)
+                        while (i < cells.size && cells[i].char == ' ') i++
+                        // Advance through URL-safe characters
+                        while (i < cells.size && cells[i].char.isUrlSafe()) i++
+                        i
+                    } else 0
                     drawLine(
                         line = line,
                         row = row,
                         isUrlContinuation = row in urlContinuationRows,
+                        urlContinuationEndCol = urlEndCol,
                         charWidth = baseCharWidth,
                         charHeight = baseCharHeight,
                         charBaseline = baseCharBaseline,
@@ -1259,6 +1272,7 @@ private fun DrawScope.drawLine(
     line: TerminalLine,
     row: Int,
     isUrlContinuation: Boolean = false,
+    urlContinuationEndCol: Int = 0,
     charWidth: Float,
     charHeight: Float,
     charBaseline: Float,
@@ -1277,9 +1291,11 @@ private fun DrawScope.drawLine(
         val isSelected = selectionManager.isCellSelected(row, col)
 
         // Check if this cell is part of a hyperlink.
-        // For URL continuation rows, underline all non-whitespace content.
+        // For URL continuation rows, only underline the leading URL-safe
+        // prefix (spaces are allowed at the left/right terminal margins
+        // where wrapping occurs, but a mid-line space ends the URL).
         val isHyperlink = line.getHyperlinkUrlAt(col) != null ||
-            (isUrlContinuation && cell.char != ' ')
+            (isUrlContinuation && col < urlContinuationEndCol)
 
         // Determine colors (handle reverse video and selection)
         val fgColor = if (cell.reverse) cell.bgColor else cell.fgColor
