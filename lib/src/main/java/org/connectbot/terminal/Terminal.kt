@@ -1076,6 +1076,7 @@ fun TerminalWithAccessibility(
                     val cur = screenState.getVisibleLine(row).text.trimStart()
                     if (prev.isNotEmpty() && cur.isNotEmpty() &&
                         prev.last().isUrlSafe() && cur.first().isUrlSafe()) {
+                        // Check that the chain traces back to a line with an actual URL
                         if ((row - 1) in urlContinuationRows ||
                             screenState.getVisibleLine(row - 1).autoDetectedUrls.isNotEmpty()) {
                             urlContinuationRows.add(row)
