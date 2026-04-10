@@ -16,6 +16,7 @@
  */
 package org.connectbot.terminal
 
+import java.text.Normalizer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -70,7 +71,9 @@ internal class KeyboardHandler(
         if (compose != null && compose.isActive) {
             when (key) {
                 Key.Enter -> {
-                    val text = compose.commit()
+                    val text = compose.commit()?.let {
+                        Normalizer.normalize(it, Normalizer.Form.NFC)
+                    }
                     text?.forEach { char ->
                         terminalEmulator.dispatchCharacter(0, char)
                     }
@@ -186,7 +189,7 @@ internal class KeyboardHandler(
         }
 
         val modifiers = getModifierMask()
-        val text = bytes.toString(Charsets.UTF_8)
+        val text = Normalizer.normalize(bytes.toString(Charsets.UTF_8), Normalizer.Form.NFC)
 
         text.forEach { char ->
             terminalEmulator.dispatchCharacter(modifiers, char)
