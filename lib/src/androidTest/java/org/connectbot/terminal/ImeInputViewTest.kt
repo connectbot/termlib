@@ -404,12 +404,11 @@ class ImeInputViewTest {
     }
 
     /**
-     * With TYPE_NULL, InputConnection.sendKeyEvent must deliver the key directly to the
-     * terminal without going through dispatchKeyEvent. This prevents Gboard's concurrent
-     * raw view key event from causing a double delivery.
+     * With TYPE_NULL, InputConnection.sendKeyEvent is ignored to prevent doubling with
+     * the raw view event that Gboard also fires.
      */
     @Test
-    fun testTypeNullSendKeyEventDeliversCharacter() {
+    fun testTypeNullSendKeyEventIsIgnored() {
         val (ic, _, outputs) = createNonComposeModeCapture()
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -417,16 +416,30 @@ class ImeInputViewTest {
         }
         drainMainLooper()
 
+        assertEquals("", effectiveText(outputs))
+    }
+
+    /**
+     * With TYPE_NULL, events delivered via View.dispatchKeyEvent (Gboard's raw path)
+     * must reach the terminal.
+     */
+    @Test
+    fun testTypeNullRawViewEventDeliversCharacter() {
+        val (_, view, outputs) = createNonComposeModeCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A))
+        }
+        drainMainLooper()
+
         assertEquals("a", effectiveText(outputs))
     }
 
     /**
-     * With TYPE_NULL, ENTER via InputConnection.sendKeyEvent must reach the terminal.
-     * This was broken by the previous isDispatchingFromIme approach which suppressed
-     * sendKeyEvent delivery and relied on a raw view event that Gboard does not always fire.
+     * With TYPE_NULL, ENTER via View.dispatchKeyEvent must reach the terminal.
      */
     @Test
-    fun testTypeNullSendKeyEventEnterReachesTerminal() {
+    fun testTypeNullRawViewEventEnterReachesTerminal() {
         val outputs = mutableListOf<ByteArray>()
         var enterDispatched = false
         val emulator = TerminalEmulatorFactory.create(
@@ -438,24 +451,24 @@ class ImeInputViewTest {
             }
         )
         val handler = KeyboardHandler(emulator)
-        var ic: InputConnection? = null
+        var view: ImeInputView? = null
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val view = ImeInputView(context, handler).also { v ->
+            view = ImeInputView(context, handler).also { v ->
                 v.setOnKeyListener { _, _, event ->
                     if (event.action == KeyEvent.ACTION_DOWN) v.resetImeBuffer()
                     handler.onKeyEvent(androidx.compose.ui.input.key.KeyEvent(event))
                 }
-                ic = v.onCreateInputConnection(EditorInfo())
+                v.onCreateInputConnection(EditorInfo())
             }
         }
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            ic!!.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            view!!.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
         }
         drainMainLooper()
 
-        assertTrue("ENTER via sendKeyEvent did not reach the terminal", enterDispatched)
+        assertTrue("ENTER via dispatchKeyEvent did not reach the terminal", enterDispatched)
     }
 
     /**
@@ -463,17 +476,82 @@ class ImeInputViewTest {
      * the terminal via setOnKeyListener, and does not double with the sendKeyEvent path.
      */
     @Test
-    fun testTypeNullRawViewEventAndSendKeyEventAreIndependent() {
+    fun testTypeNullRawViewEventAndCommitTextDeliverIndependently() {
         val (ic, view, outputs) = createNonComposeModeCapture()
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            // Simulate Gboard: sends via InputConnection AND fires a raw view event.
-            // Each path delivers the character once — two independent 'a's total.
-            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A))
+            // Simulate Gboard: sends via commitText AND fires a raw view event.
+            // Each path delivers a character — two independent 'a's total.
+            ic.commitText("a", 1)
             view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A))
         }
         drainMainLooper()
 
         assertEquals("aa", effectiveText(outputs))
+    }
+
+    @Test
+    fun testTypeNullCommitTextDeliversAccentedCharacterWithoutDuplication() {
+        val (ic, _, outputs) = createNonComposeModeCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText("ü", 1)
+            ic.commitText("a", 1)
+        }
+        drainMainLooper()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
+        assertEquals("üa", received)
+    }
+
+    /**
+     * With TYPE_NULL, KEYCODE_DEL delivered via View.dispatchKeyEvent (physical keyboard or
+     * Gboard's raw key path) must reach the terminal.
+     */
+    @Test
+    fun testTypeNullRawViewDelKeyReachesTerminal() {
+        val (_, view, outputs) = createNonComposeModeCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+        }
+        drainMainLooper()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("DEL via dispatchKeyEvent did not reach the terminal", received.contains(0x7F.toByte()))
+    }
+
+    /**
+     * With TYPE_NULL, soft-keyboard backspace arrives via deleteSurroundingText →
+     * sendKeyEvent(KEYCODE_DEL). Verify it reaches the terminal.
+     */
+    @Test
+    fun testTypeNullDeleteSurroundingTextDeliversBackspace() {
+        val (ic, _, outputs) = createNonComposeModeCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.deleteSurroundingText(1, 0)
+        }
+        drainMainLooper()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("DEL via deleteSurroundingText did not reach the terminal", received.contains(0x7F.toByte()))
+    }
+
+    /**
+     * With TYPE_NULL, soft-keyboard ENTER arrives via sendKeyEvent(KEYCODE_ENTER) — it is a
+     * non-printable key so there is no competing raw view event. Verify it reaches the terminal.
+     */
+    @Test
+    fun testTypeNullSendKeyEventEnterReachesTerminal() {
+        val (ic, _, outputs) = createNonComposeModeCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+        }
+        drainMainLooper()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("ENTER via sendKeyEvent did not reach the terminal", received.contains(0x0D.toByte()))
     }
 }
