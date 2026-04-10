@@ -60,7 +60,8 @@ package org.connectbot.terminal {
   public sealed nonexhaustive interface TerminalEmulator {
     method public void applyColorScheme(int[] ansiColors, int defaultForeground, int defaultBackground);
     method public void clearScreen();
-    method public void dispatchCharacter(int modifiers, char character);
+    method @Deprecated public default void dispatchCharacter(int modifiers, char ch);
+    method public void dispatchCharacter(int modifiers, int codepoint);
     method public void dispatchKey(int modifiers, int key);
     method @InaccessibleFromKotlin public org.connectbot.terminal.TerminalDimensions getDimensions();
     method public String? getLastCommandOutput();

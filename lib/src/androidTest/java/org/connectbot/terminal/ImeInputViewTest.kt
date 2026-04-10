@@ -30,6 +30,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.text.Normalizer
 
 @RunWith(AndroidJUnit4::class)
 class ImeInputViewTest {
@@ -312,6 +313,68 @@ class ImeInputViewTest {
         }
         drainMainLooper()
         assertEquals("x", effectiveText(outputs))
+    }
+
+    // === Unicode precomposition (NFC normalization) ===
+
+    /**
+     * Some IMEs send decomposed Unicode (NFD): a base character followed by a combining
+     * diacritic as separate code points. The terminal must send the precomposed NFC form
+     * so the remote host receives a single character (e.g. ä U+00E4) rather than two
+     * separate code points (a U+0061 + combining umlaut U+0308).
+     */
+    @Test
+    fun testDecomposedUmlautIsPrecomposed() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+        // NFD: 'a' (U+0061) + combining diaeresis (U+0308) → should arrive as NFC ä (U+00E4)
+        val nfdUmlaut = "a\u0308"
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText(nfdUmlaut, 1)
+        }
+        drainMainLooper()
+        val received = outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
+        val expected = Normalizer.normalize(nfdUmlaut, Normalizer.Form.NFC)
+        assertEquals(expected, received)
+    }
+
+    @Test
+    fun testDecomposedCircumflexIsPrecomposed() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+        // NFD: 'e' (U+0065) + combining circumflex (U+0302) → should arrive as NFC ê (U+00EA)
+        val nfdCircumflex = "e\u0302"
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText(nfdCircumflex, 1)
+        }
+        drainMainLooper()
+        val received = outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
+        val expected = Normalizer.normalize(nfdCircumflex, Normalizer.Form.NFC)
+        assertEquals(expected, received)
+    }
+
+    @Test
+    fun testAlreadyNfcTextIsUnchanged() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+        // NFC ä (U+00E4) should pass through unchanged
+        val nfcUmlaut = "\u00E4"
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText(nfcUmlaut, 1)
+        }
+        drainMainLooper()
+        val received = outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
+        assertEquals(nfcUmlaut, received)
+    }
+
+    @Test
+    fun testSurrogatePairSentAsOneCodepoint() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+        // U+1F600 GRINNING FACE — encoded as a surrogate pair in Java/Kotlin strings
+        val emoji = "\uD83D\uDE00"
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText(emoji, 1)
+        }
+        drainMainLooper()
+        val received = outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
+        assertEquals(emoji, received)
     }
 
     // === Soft-keyboard TYPE_NULL key event routing ===

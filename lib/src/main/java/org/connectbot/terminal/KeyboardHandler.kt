@@ -24,6 +24,7 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
+import java.text.Normalizer
 
 /**
  * Handles keyboard input conversion for terminal emulation.
@@ -71,8 +72,8 @@ internal class KeyboardHandler(
             when (key) {
                 Key.Enter -> {
                     val text = compose.commit()
-                    text?.forEach { char ->
-                        terminalEmulator.dispatchCharacter(0, char)
+                    text?.codePoints()?.forEach { codepoint ->
+                        terminalEmulator.dispatchCharacter(0, codepoint)
                     }
                     onInputProcessed?.invoke()
                 }
@@ -143,7 +144,7 @@ internal class KeyboardHandler(
         // Handle regular printable characters
         val char = getCharacterFromKey(key, shift || modifierManager?.isShiftActive() == true)
         if (char != null) {
-            terminalEmulator.dispatchCharacter(modifiers, char)
+            terminalEmulator.dispatchCharacter(modifiers, char.code)
             modifierManager?.clearTransients()
             onInputProcessed?.invoke()
             return true
@@ -165,7 +166,7 @@ internal class KeyboardHandler(
 
         val modifiers = buildModifierMask(ctrl, alt, false)
 
-        terminalEmulator.dispatchCharacter(modifiers, char)
+        terminalEmulator.dispatchCharacter(modifiers, char.code)
         modifierManager?.clearTransients()
         onInputProcessed?.invoke()
         return true
@@ -178,18 +179,20 @@ internal class KeyboardHandler(
     fun onTextInput(bytes: ByteArray) {
         if (bytes.isEmpty()) return
 
+        val raw = bytes.toString(Charsets.UTF_8)
+        val text = if (Normalizer.isNormalized(raw, Normalizer.Form.NFC)) raw
+                   else Normalizer.normalize(raw, Normalizer.Form.NFC)
+
         val compose = composeMode
         if (compose != null && compose.isActive) {
-            val text = bytes.toString(Charsets.UTF_8)
             compose.appendText(text)
             return
         }
 
         val modifiers = getModifierMask()
-        val text = bytes.toString(Charsets.UTF_8)
 
-        text.forEach { char ->
-            terminalEmulator.dispatchCharacter(modifiers, char)
+        text.codePoints().forEach { codepoint ->
+            terminalEmulator.dispatchCharacter(modifiers, codepoint)
         }
         modifierManager?.clearTransients()
         onInputProcessed?.invoke()

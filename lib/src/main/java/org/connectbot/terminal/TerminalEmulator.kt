@@ -56,7 +56,16 @@ sealed interface TerminalEmulator {
     /**
      * Dispatch a character to the terminal.
      */
-    fun dispatchCharacter(modifiers: Int, character: Char)
+    @Deprecated(
+        message = "Use dispatchCharacter(modifiers, codepoint) for full Unicode code point support",
+        replaceWith = ReplaceWith("dispatchCharacter(modifiers, ch.code)")
+    )
+    fun dispatchCharacter(modifiers: Int, ch: Char) = dispatchCharacter(modifiers, ch.code)
+
+    /**
+     * Dispatch a character to the terminal.
+     */
+    fun dispatchCharacter(modifiers: Int, codepoint: Int)
 
     /**
      * Clears the terminal emulator screen.
@@ -341,8 +350,8 @@ internal class TerminalEmulatorImpl(
     /**
      * Dispatch a character to the terminal.
      */
-    override fun dispatchCharacter(modifiers: Int, character: Char) {
-        terminalNative.dispatchCharacter(modifiers, character.code)
+    override fun dispatchCharacter(modifiers: Int, codepoint: Int) {
+        terminalNative.dispatchCharacter(modifiers, codepoint)
     }
 
     /**
