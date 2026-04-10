@@ -230,12 +230,13 @@ internal class ImeInputView(
                 }
                 return result
             } else {
-                // TYPE_NULL mode: deliver directly to keyboardHandler instead of going through
-                // dispatchKeyEvent. With TYPE_NULL, Gboard fires the same key as both an
-                // InputConnection.sendKeyEvent call AND a raw View.dispatchKeyEvent. By handling
-                // sendKeyEvent here directly (not via dispatchKeyEvent), the setOnKeyListener in
-                // Terminal.kt processes only the raw view event — exactly once.
-                if (event.action == KeyEvent.ACTION_DOWN) {
+                // TYPE_NULL mode: Gboard sends printable characters (a-z, etc.) via BOTH
+                // sendKeyEvent AND a raw View.dispatchKeyEvent. We ignore sendKeyEvent for
+                // those keys and rely on the raw view event to avoid doubling.
+                //
+                // Non-printable keys (DEL, ENTER, arrows, etc.) do NOT get a competing raw
+                // view event from the soft keyboard, so we must forward them here.
+                if (event.action == KeyEvent.ACTION_DOWN && !event.isPrintingKey && event.keyCode != KeyEvent.KEYCODE_SPACE) {
                     keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
                 }
                 return true
@@ -243,9 +244,23 @@ internal class ImeInputView(
         }
 
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
-            if (!fullEditor) return super.commitText(text, newCursorPosition)
-
             val committedText = text?.toString() ?: ""
+            if (!fullEditor) {
+                if (committedText.isNotEmpty()) {
+                    // When in TYPE_NULL mode, Gboard sends regular characters (a-z, etc.) via BOTH
+                    // sendKeyEvent AND a raw View.dispatchKeyEvent.
+                    //
+                    // We've modified sendKeyEvent to be a no-op in this mode to avoid doubling
+                    // with the raw View event. However, accented characters (ü, etc.) often
+                    // ONLY arrive via commitText because they have no direct KEYCODE.
+                    //
+                    // Deliver the text directly; this covers accented chars and any regular
+                    // chars sent via commitText rather than the sendKeyEvent/raw-view paths.
+                    sendTextInput(committedText)
+                }
+                return true
+            }
+
             // Save composingText before super.commitText() which internally calls
             // finishComposingText(), clearing composingText before we can use it.
             val previousComposingText = composingText
