@@ -115,6 +115,14 @@ sealed interface TerminalEmulator {
     val dimensions: TerminalDimensions
 
     /**
+     * Whether plain-text URL auto-detection is enabled.
+     *
+     * When true, [TerminalLine.getHyperlinkUrlAt] will scan line text for URLs in addition
+     * to OSC 8 hyperlink segments. When false, only OSC 8 segments are used.
+     */
+    val autoDetectUrls: Boolean
+
+    /**
      * Get the text output of the last completed command.
      *
      * Uses OSC 133 semantic segments to find the boundaries of the most recent
@@ -143,6 +151,9 @@ class TerminalEmulatorFactory {
          *                        The callback receives the decoded text to copy.
          * @param onProgressChange Optional callback for OSC 9;4 progress reporting.
          *                         The callback receives the progress state and percentage (0-100).
+         * @param autoDetectUrls Whether to scan terminal line text for plain-text URLs and expose
+         *                       them via [TerminalLine.getHyperlinkUrlAt] as a fallback when no
+         *                       OSC 8 hyperlink covers the column. Defaults to false.
          */
         fun create(
             looper: Looper = Looper.getMainLooper(),
@@ -154,7 +165,8 @@ class TerminalEmulatorFactory {
             onBell: (() -> Unit)? = null,
             onResize: ((TerminalDimensions) -> Unit)? = null,
             onClipboardCopy: ((String) -> Unit)? = null,
-            onProgressChange: ((ProgressState, Int) -> Unit)? = null
+            onProgressChange: ((ProgressState, Int) -> Unit)? = null,
+            autoDetectUrls: Boolean = false
         ): TerminalEmulator {
             return TerminalEmulatorImpl(
                 looper = looper,
@@ -166,7 +178,8 @@ class TerminalEmulatorFactory {
                 onBell = onBell,
                 onResize = onResize,
                 onClipboardCopy = onClipboardCopy,
-                onProgressChange = onProgressChange
+                onProgressChange = onProgressChange,
+                autoDetectUrls = autoDetectUrls
             )
         }
     }
@@ -212,7 +225,8 @@ internal class TerminalEmulatorImpl(
     private val onBell: (() -> Unit)? = null,
     private val onResize: ((TerminalDimensions) -> Unit)? = null,
     private val onClipboardCopy: ((String) -> Unit)? = null,
-    private val onProgressChange: ((ProgressState, Int) -> Unit)? = null
+    private val onProgressChange: ((ProgressState, Int) -> Unit)? = null,
+    override val autoDetectUrls: Boolean = false
 ) : TerminalEmulator, TerminalCallbacks {
 
     // Handler for escaping native mutex

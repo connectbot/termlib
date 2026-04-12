@@ -86,16 +86,22 @@ internal data class TerminalLine(
 
     /**
      * Get the hyperlink URL at a specific column, if any.
-     * Checks OSC 8 semantic segments first, then falls back to auto-detected plain-text URLs.
+     * Checks OSC 8 semantic segments first. If no OSC 8 segment covers the column and
+     * [autoDetectUrls] is true, falls back to plain-text URL auto-detection.
      * Returns null if no hyperlink covers that column.
+     *
+     * @param col The zero-based column index to query.
+     * @param autoDetectUrls Whether to fall back to auto-detected plain-text URLs when no
+     *                       OSC 8 segment is present. Defaults to false.
      */
-    fun getHyperlinkUrlAt(col: Int): String? {
+    fun getHyperlinkUrlAt(col: Int, autoDetectUrls: Boolean = false): String? {
         // OSC 8 segments take priority
         val osc8 = semanticSegments.firstOrNull {
             it.semanticType == SemanticType.HYPERLINK && it.contains(col)
         }?.metadata
         if (osc8 != null) return osc8
-        // Fallback: auto-detected plain-text URLs
+        // Fallback: auto-detected plain-text URLs (only when enabled)
+        if (!autoDetectUrls) return null
         return autoDetectedUrls.firstOrNull { col >= it.first && col < it.second }?.third
     }
 
