@@ -1,13 +1,12 @@
 package org.connectbot.terminal
 
+import androidx.compose.ui.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -192,7 +191,7 @@ class ShellIntegrationTest {
         impl.writeInput("\r\nEnd of test\r\n".toByteArray())
         impl.processPendingUpdates()
 
-        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
+        val snapshot = getSnapshot(emulator)
 
         // Row 0: No hyperlinks (just header text)
         assertTrue(
@@ -278,7 +277,7 @@ class ShellIntegrationTest {
         impl.writeInput("${osc8Start("https://link3.com")}Link3${osc8End()}\r\n".toByteArray())
         impl.processPendingUpdates()
 
-        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
+        val snapshot = getSnapshot(emulator)
 
         // After scrolling (7 lines, 5 rows = 3 scrolls), visible lines should be:
         // Row 0: "Plain text" (was line 3) - no hyperlink
