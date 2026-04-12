@@ -236,8 +236,17 @@ internal class ImeInputView(
                 //
                 // Non-printable keys (DEL, ENTER, arrows, etc.) do NOT get a competing raw
                 // view event from the soft keyboard, so we must forward them here.
-                if (event.action == KeyEvent.ACTION_DOWN && !event.isPrintingKey && event.keyCode != KeyEvent.KEYCODE_SPACE) {
-                    keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
+                //
+                // Exception: keys carrying Ctrl or Alt modifiers in metaState must always
+                // be forwarded here — keyboards like "Unexpected keyboard" and SwiftKey send
+                // Ctrl/Alt combos only via sendKeyEvent and do not fire a competing raw view
+                // event for them.
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    val hasCtrlOrAlt = (event.metaState and
+                        (KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK)) != 0
+                    if ((!event.isPrintingKey && event.keyCode != KeyEvent.KEYCODE_SPACE) || hasCtrlOrAlt) {
+                        keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
+                    }
                 }
                 return true
             }
