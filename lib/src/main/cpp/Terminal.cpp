@@ -190,9 +190,6 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
 
     // Set up OSC fallback handlers for shell integration
     VTermState* state = vterm_obtain_state(mVt);
-    // Match xterm's default boldColors behavior so applications that rely on
-    // bold-low-intensity colors promoting to the bright palette remain legible.
-    vterm_state_set_bold_highbright(state, 1);
     VTermStateFallbacks fallbacks = {
         .control = nullptr,
         .csi = nullptr,
@@ -321,6 +318,24 @@ int Terminal::setPaletteColors(const uint32_t* colors, int count) {
     }
 
     return colorCount;
+}
+
+int Terminal::setBoldHighbright(int enabled) {
+    std::lock_guard<std::recursive_mutex> lock(mLock);
+
+    if (!mVt) {
+        LOGE("setBoldHighbright: VTerm not initialized");
+        return -1;
+    }
+
+    VTermState* state = vterm_obtain_state(mVt);
+    if (!state) {
+        LOGE("setBoldHighbright: Failed to obtain VTermState");
+        return -1;
+    }
+
+    vterm_state_set_bold_highbright(state, enabled);
+    return 0;
 }
 
 int Terminal::setDefaultColors(uint32_t fgColor, uint32_t bgColor) {
@@ -1177,6 +1192,13 @@ Java_org_connectbot_terminal_TerminalNative_nativeGetLineContinuation(JNIEnv* /*
                                                                        jlong ptr, jint row) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->getLineContinuation(row);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeSetBoldHighbright(JNIEnv* /* env */, jobject /* thiz */,
+                                                                     jlong ptr, jboolean enabled) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->setBoldHighbright(enabled ? 1 : 0);
 }
 
 } // extern "C"
