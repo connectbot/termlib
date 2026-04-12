@@ -1024,7 +1024,7 @@ fun TerminalWithAccessibility(
                                     val tapRow = (down.position.y / baseCharHeight).toInt()
                                         .coerceIn(0, screenState.snapshot.rows - 1)
                                     val line = screenState.getVisibleLine(tapRow)
-                                    val hyperlinkUrl = line.getHyperlinkUrlAt(tapCol)
+                                    val hyperlinkUrl = line.getHyperlinkUrlAt(tapCol, terminalEmulator.autoDetectUrls)
 
                                     if (hyperlinkUrl != null) {
                                         // User tapped on a hyperlink
@@ -1077,7 +1077,8 @@ fun TerminalWithAccessibility(
                         textPaint = textPaint,
                         defaultFg = foregroundColor,
                         defaultBg = backgroundColor,
-                        selectionManager = selectionManager
+                        selectionManager = selectionManager,
+                        autoDetectUrls = terminalEmulator.autoDetectUrls
                     )
                 }
 
@@ -1167,7 +1168,8 @@ fun TerminalWithAccessibility(
                 textPaint = textPaint,
                 backgroundColor = backgroundColor,
                 foregroundColor = foregroundColor,
-                selectionManager = selectionManager
+                selectionManager = selectionManager,
+                autoDetectUrls = terminalEmulator.autoDetectUrls
             )
         }
 
@@ -1246,7 +1248,8 @@ private fun DrawScope.drawLine(
     textPaint: TextPaint,
     defaultFg: Color,
     defaultBg: Color,
-    selectionManager: SelectionManager
+    selectionManager: SelectionManager,
+    autoDetectUrls: Boolean = false
 ) {
     val y = row * charHeight
     var x = 0f
@@ -1258,7 +1261,7 @@ private fun DrawScope.drawLine(
         val isSelected = selectionManager.isCellSelected(row, col)
 
         // Check if this cell is part of a hyperlink
-        val isHyperlink = line.getHyperlinkUrlAt(col) != null
+        val isHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
 
         // Determine colors (handle reverse video and selection)
         val fgColor = if (cell.reverse) cell.bgColor else cell.fgColor
@@ -1498,7 +1501,8 @@ private fun MagnifyingGlass(
     textPaint: TextPaint,
     backgroundColor: Color,
     foregroundColor: Color,
-    selectionManager: SelectionManager
+    selectionManager: SelectionManager,
+    autoDetectUrls: Boolean = false
 ) {
     val magnifierSize = MAGNIFIER_SIZE_DP.dp
     val magnifierScale = MAGNIFIER_SCALE
@@ -1562,7 +1566,8 @@ private fun MagnifyingGlass(
                             textPaint = textPaint,
                             defaultFg = foregroundColor,
                             defaultBg = backgroundColor,
-                            selectionManager = selectionManager
+                            selectionManager = selectionManager,
+                            autoDetectUrls = autoDetectUrls
                         )
                     }
                 }

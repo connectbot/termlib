@@ -233,13 +233,20 @@ class SemanticTypeTest {
 
     @Test
     fun testGetHyperlinkUrlAtFallsBackToAutoDetect() {
-        // No OSC 8 segments — should fall back to auto-detected URL
+        // No OSC 8 segments — should fall back to auto-detected URL when enabled
         val line = TerminalLine(row = 0, cells = buildTestCells("go to https://example.com ok"))
         // "https://example.com" starts at col 6
-        assertNull(line.getHyperlinkUrlAt(0))
-        assertEquals("https://example.com", line.getHyperlinkUrlAt(6))
-        assertEquals("https://example.com", line.getHyperlinkUrlAt(24)) // last char 'm'
-        assertNull(line.getHyperlinkUrlAt(25))
+        assertNull(line.getHyperlinkUrlAt(0, autoDetectUrls = true))
+        assertEquals("https://example.com", line.getHyperlinkUrlAt(6, autoDetectUrls = true))
+        assertEquals("https://example.com", line.getHyperlinkUrlAt(24, autoDetectUrls = true)) // last char 'm'
+        assertNull(line.getHyperlinkUrlAt(25, autoDetectUrls = true))
+    }
+
+    @Test
+    fun testGetHyperlinkUrlAtDoesNotAutoDetectWhenDisabled() {
+        val line = TerminalLine(row = 0, cells = buildTestCells("go to https://example.com ok"))
+        assertNull(line.getHyperlinkUrlAt(6, autoDetectUrls = false))
+        assertNull(line.getHyperlinkUrlAt(6))
     }
 
     @Test
