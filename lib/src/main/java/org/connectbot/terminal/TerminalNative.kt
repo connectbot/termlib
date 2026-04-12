@@ -168,6 +168,20 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     }
 
     /**
+     * Enable or disable bold-as-bright color promotion.
+     *
+     * When enabled, bold text using low-intensity ANSI colors (0–7) promotes
+     * to the corresponding bright palette color (8–15), matching xterm behavior.
+     *
+     * @param enabled true to enable bold-as-bright, false to disable
+     * @return 0 on success, -1 on error
+     */
+    fun setBoldHighbright(enabled: Boolean): Int {
+        checkNotClosed()
+        return nativeSetBoldHighbright(nativePtr, enabled)
+    }
+
+    /**
      * Close the terminal and release native resources.
      * After calling this, the Terminal instance cannot be used.
      */
@@ -202,6 +216,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int
     private external fun nativeGetLineContinuation(ptr: Long, row: Int): Boolean
+    private external fun nativeSetBoldHighbright(ptr: Long, enabled: Boolean): Int
 
     companion object {
         init {

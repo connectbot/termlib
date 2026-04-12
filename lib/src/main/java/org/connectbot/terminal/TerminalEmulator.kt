@@ -17,6 +17,7 @@
 package org.connectbot.terminal
 
 import android.icu.lang.UCharacter
+import android.util.Log
 import android.icu.lang.UProperty
 import android.os.Handler
 import android.os.Looper
@@ -123,6 +124,12 @@ sealed interface TerminalEmulator {
     val autoDetectUrls: Boolean
 
     /**
+     * Whether bold text using low-intensity ANSI colors (0–7) promotes to the
+     * corresponding bright palette color (8–15), matching xterm's boldColors behavior.
+     */
+    val boldAsBright: Boolean
+
+    /**
      * Get the text output of the last completed command.
      *
      * Uses OSC 133 semantic segments to find the boundaries of the most recent
@@ -154,6 +161,9 @@ class TerminalEmulatorFactory {
          * @param autoDetectUrls Whether to scan terminal line text for plain-text URLs and expose
          *                       them via [TerminalLine.getHyperlinkUrlAt] as a fallback when no
          *                       OSC 8 hyperlink covers the column. Defaults to false.
+         * @param boldAsBright Whether bold text using low-intensity ANSI colors (0–7) promotes to
+         *                     the corresponding bright palette color (8–15), matching xterm's
+         *                     default boldColors behavior. Defaults to true.
          */
         fun create(
             looper: Looper = Looper.getMainLooper(),
@@ -166,7 +176,8 @@ class TerminalEmulatorFactory {
             onResize: ((TerminalDimensions) -> Unit)? = null,
             onClipboardCopy: ((String) -> Unit)? = null,
             onProgressChange: ((ProgressState, Int) -> Unit)? = null,
-            autoDetectUrls: Boolean = false
+            autoDetectUrls: Boolean = false,
+            boldAsBright: Boolean = true
         ): TerminalEmulator {
             return TerminalEmulatorImpl(
                 looper = looper,
@@ -179,7 +190,8 @@ class TerminalEmulatorFactory {
                 onResize = onResize,
                 onClipboardCopy = onClipboardCopy,
                 onProgressChange = onProgressChange,
-                autoDetectUrls = autoDetectUrls
+                autoDetectUrls = autoDetectUrls,
+                boldAsBright = boldAsBright
             )
         }
     }
@@ -226,7 +238,8 @@ internal class TerminalEmulatorImpl(
     private val onResize: ((TerminalDimensions) -> Unit)? = null,
     private val onClipboardCopy: ((String) -> Unit)? = null,
     private val onProgressChange: ((ProgressState, Int) -> Unit)? = null,
-    override val autoDetectUrls: Boolean = false
+    override val autoDetectUrls: Boolean = false,
+    override val boldAsBright: Boolean = true
 ) : TerminalEmulator, TerminalCallbacks {
 
     // Handler for escaping native mutex
@@ -291,6 +304,9 @@ internal class TerminalEmulatorImpl(
     private val terminalNative by lazy {
         TerminalNative(this).apply {
             resize(initialRows, initialCols)
+            if (setBoldHighbright(boldAsBright) != 0) {
+                Log.e(TAG, "Failed to set boldAsBright=$boldAsBright")
+            }
         }
     }
 
@@ -1069,6 +1085,10 @@ internal class TerminalEmulatorImpl(
         val eastAsianWidth = UCharacter.getIntPropertyValue(codepoint, UProperty.EAST_ASIAN_WIDTH)
         return eastAsianWidth == UCharacter.EastAsianWidth.FULLWIDTH ||
                eastAsianWidth == UCharacter.EastAsianWidth.WIDE
+    }
+
+    companion object {
+        private const val TAG = "TerminalEmulatorImpl"
     }
 }
 

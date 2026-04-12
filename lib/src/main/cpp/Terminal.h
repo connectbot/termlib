@@ -70,6 +70,9 @@ public:
     int setPaletteColors(const uint32_t* colors, int count);
     int setDefaultColors(uint32_t fgColor, uint32_t bgColor);
 
+    // Terminal behavior options
+    int setBoldHighbright(int enabled);
+
 private:
     // libvterm screen callbacks (called by libvterm)
     static int termDamage(VTermRect rect, void* user);
