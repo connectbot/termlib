@@ -190,6 +190,9 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
 
     // Set up OSC fallback handlers for shell integration
     VTermState* state = vterm_obtain_state(mVt);
+    // Match xterm's default boldColors behavior so applications that rely on
+    // bold-low-intensity colors promoting to the bright palette remain legible.
+    vterm_state_set_bold_highbright(state, 1);
     VTermStateFallbacks fallbacks = {
         .control = nullptr,
         .csi = nullptr,

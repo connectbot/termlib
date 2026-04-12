@@ -2,9 +2,11 @@ package org.connectbot.terminal
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,6 +34,7 @@ class ShellIntegrationTest {
     }
 
     private fun osc8End(): String = "\u001B]8;;\u001B\\"
+
     @Test
     fun testOsc133PromptMarker() = runBlocking {
         val emulator = TerminalEmulatorFactory.create(
@@ -105,6 +108,24 @@ class ShellIntegrationTest {
 
         val segment = annotatedLine!!.getSegmentsOfType(SemanticType.ANNOTATION).first()
         assertEquals(annotationMsg, segment.metadata)
+    }
+
+    @Test
+    fun testBoldBlackUsesBrightPaletteForIndexedColor() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 5,
+            initialCols = 20
+        )
+
+        // Kismet uses indexed black on black plus bold, expecting xterm-style
+        // "bold as bright" behavior so the foreground becomes bright black.
+        emulator.writeInput("\u001B[38;5;0m\u001B[48;5;0m\u001B[1mX".toByteArray())
+
+        val snapshot = getSnapshot(emulator as TerminalEmulatorImpl)
+        val cell = snapshot.lines[0].cells[0]
+
+        assertEquals(Color.Black, cell.bgColor)
+        assertNotEquals("Bold black should promote to bright black", cell.bgColor, cell.fgColor)
     }
 
     @Test
