@@ -63,6 +63,8 @@ package org.connectbot.terminal {
     method @Deprecated public default void dispatchCharacter(int modifiers, char ch);
     method public void dispatchCharacter(int modifiers, int codepoint);
     method public void dispatchKey(int modifiers, int key);
+    method @InaccessibleFromKotlin public boolean getAutoDetectUrls();
+    method @InaccessibleFromKotlin public boolean getBoldAsBright();
     method @InaccessibleFromKotlin public org.connectbot.terminal.TerminalDimensions getDimensions();
     method public String? getLastCommandOutput();
     method public void resize(int newRows, int newCols);
@@ -70,6 +72,8 @@ package org.connectbot.terminal {
     method public int setDefaultColors(int foreground, int background);
     method public void writeInput(byte[] data, optional int offset, optional int length);
     method public void writeInput(java.nio.ByteBuffer buffer, int length);
+    property public abstract boolean autoDetectUrls;
+    property public abstract boolean boldAsBright;
     property public abstract org.connectbot.terminal.TerminalDimensions dimensions;
   }
 
@@ -79,7 +83,7 @@ package org.connectbot.terminal {
   }
 
   public static final class TerminalEmulatorFactory.Companion {
-    method @KotlinOnly public org.connectbot.terminal.TerminalEmulator create(optional android.os.Looper looper, optional int initialRows, optional int initialCols, optional androidx.compose.ui.graphics.Color defaultForeground, optional androidx.compose.ui.graphics.Color defaultBackground, optional kotlin.jvm.functions.Function1<byte[],kotlin.Unit> onKeyboardInput, optional kotlin.jvm.functions.Function0<kotlin.Unit>? onBell, optional kotlin.jvm.functions.Function1<org.connectbot.terminal.TerminalDimensions,kotlin.Unit>? onResize, optional kotlin.jvm.functions.Function1<java.lang.String,kotlin.Unit>? onClipboardCopy, optional kotlin.jvm.functions.Function2<org.connectbot.terminal.ProgressState,java.lang.Integer,kotlin.Unit>? onProgressChange);
+    method @KotlinOnly public org.connectbot.terminal.TerminalEmulator create(optional android.os.Looper looper, optional int initialRows, optional int initialCols, optional androidx.compose.ui.graphics.Color defaultForeground, optional androidx.compose.ui.graphics.Color defaultBackground, optional kotlin.jvm.functions.Function1<byte[],kotlin.Unit> onKeyboardInput, optional kotlin.jvm.functions.Function0<kotlin.Unit>? onBell, optional kotlin.jvm.functions.Function1<org.connectbot.terminal.TerminalDimensions,kotlin.Unit>? onResize, optional kotlin.jvm.functions.Function1<java.lang.String,kotlin.Unit>? onClipboardCopy, optional kotlin.jvm.functions.Function2<org.connectbot.terminal.ProgressState,java.lang.Integer,kotlin.Unit>? onProgressChange, optional boolean autoDetectUrls, optional boolean boldAsBright);
   }
 
   public final class TerminalKt {
