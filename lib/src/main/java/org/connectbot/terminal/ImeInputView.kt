@@ -230,23 +230,16 @@ internal class ImeInputView(
                 }
                 return result
             } else {
-                // TYPE_NULL mode: Gboard sends printable characters (a-z, etc.) via BOTH
-                // sendKeyEvent AND a raw View.dispatchKeyEvent. We ignore sendKeyEvent for
-                // those keys and rely on the raw view event to avoid doubling.
+                // TYPE_NULL mode: forward the key directly to keyboardHandler.
                 //
-                // Non-printable keys (DEL, ENTER, arrows, etc.) do NOT get a competing raw
-                // view event from the soft keyboard, so we must forward them here.
+                // Some IMEs (e.g. Gboard) also fire a concurrent raw View.dispatchKeyEvent
+                // for the same key, but since we call keyboardHandler directly here (not via
+                // dispatchKeyEvent), setOnKeyListener is never triggered — no duplication.
                 //
-                // Exception: keys carrying Ctrl or Alt modifiers in metaState must always
-                // be forwarded here — keyboards like "Unexpected keyboard" and SwiftKey send
-                // Ctrl/Alt combos only via sendKeyEvent and do not fire a competing raw view
-                // event for them.
+                // Other IMEs (e.g. Hacker's Keyboard) only use sendKeyEvent and fire no raw
+                // view event, so forwarding here is the only way their keys reach the terminal.
                 if (event.action == KeyEvent.ACTION_DOWN) {
-                    val hasCtrlOrAlt = (event.metaState and
-                        (KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK)) != 0
-                    if ((!event.isPrintingKey && event.keyCode != KeyEvent.KEYCODE_SPACE) || hasCtrlOrAlt) {
-                        keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
-                    }
+                    keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
                 }
                 return true
             }
@@ -298,4 +291,5 @@ internal class ImeInputView(
             }
         }
     }
+
 }

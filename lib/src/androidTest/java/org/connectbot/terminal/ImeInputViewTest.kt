@@ -392,7 +392,6 @@ class ImeInputViewTest {
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view = ImeInputView(context, handler).also { v ->
-                // isComposeModeActive = false → TYPE_NULL path
                 v.setOnKeyListener { _, _, event ->
                     if (event.action == KeyEvent.ACTION_DOWN) v.resetImeBuffer()
                     handler.onKeyEvent(androidx.compose.ui.input.key.KeyEvent(event))
@@ -404,11 +403,10 @@ class ImeInputViewTest {
     }
 
     /**
-     * With TYPE_NULL, InputConnection.sendKeyEvent is ignored to prevent doubling with
-     * the raw view event that Gboard also fires.
+     * With TYPE_NULL, InputConnection.sendKeyEvent delivers the key directly to the terminal.
      */
     @Test
-    fun testTypeNullSendKeyEventIsIgnored() {
+    fun testTypeNullSendKeyEventDeliversCharacter() {
         val (ic, _, outputs) = createNonComposeModeCapture()
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -416,12 +414,12 @@ class ImeInputViewTest {
         }
         drainMainLooper()
 
-        assertEquals("", effectiveText(outputs))
+        assertEquals("a", effectiveText(outputs))
     }
 
     /**
-     * With TYPE_NULL, events delivered via View.dispatchKeyEvent (Gboard's raw path)
-     * must reach the terminal.
+     * With TYPE_NULL, a raw view event (e.g. physical keyboard) that arrives independently
+     * of sendKeyEvent still reaches the terminal via setOnKeyListener.
      */
     @Test
     fun testTypeNullRawViewEventDeliversCharacter() {
@@ -472,8 +470,8 @@ class ImeInputViewTest {
     }
 
     /**
-     * With TYPE_NULL, a raw view key event (Gboard's concurrent dispatch path) still reaches
-     * the terminal via setOnKeyListener, and does not double with the sendKeyEvent path.
+     * Gboard sends via commitText AND fires a concurrent raw view event. The commitText
+     * path delivers the character; the raw view event is independent. Two 'a's total.
      */
     @Test
     fun testTypeNullRawViewEventAndCommitTextDeliverIndependently() {
@@ -556,10 +554,9 @@ class ImeInputViewTest {
     }
 
     // === Ctrl/Alt modifier key routing from soft keyboards (issue-2050) ===
-    // Keyboards like "Unexpected keyboard" and SwiftKey send Ctrl/Alt combos via
-    // sendKeyEvent with metaState set. Unlike plain printable keys (which are dropped
-    // here to avoid doubling with Gboard's concurrent raw view event), modifier-carrying
-    // events must be forwarded since no competing raw view event is fired for them.
+    // Keyboards like "Unexpected keyboard", SwiftKey, and Hacker's Keyboard send Ctrl/Alt
+    // combos via sendKeyEvent (with or without metaState). All sendKeyEvent calls are
+    // forwarded directly to keyboardHandler.
 
     /**
      * Ctrl+A via sendKeyEvent (metaState=META_CTRL_ON) must reach the terminal as 0x01.
@@ -618,11 +615,11 @@ class ImeInputViewTest {
     }
 
     /**
-     * A plain printable key via sendKeyEvent (no modifier) must still be dropped to prevent
-     * doubling with Gboard's concurrent raw view event. This is a regression guard.
+     * Plain printable key via sendKeyEvent (no modifier) delivers the character.
+     * Hacker's Keyboard uses this path for number keys.
      */
     @Test
-    fun testTypeNullSendKeyEventPlainPrintableIsStillIgnored() {
+    fun testTypeNullSendKeyEventPlainPrintableDeliversCharacter() {
         val (ic, _, outputs) = createNonComposeModeCapture()
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -630,17 +627,16 @@ class ImeInputViewTest {
         }
         drainMainLooper()
 
-        assertEquals("Plain printable key via sendKeyEvent should be dropped", "", effectiveText(outputs))
+        assertEquals("b", effectiveText(outputs))
     }
 
     /**
-     * Space via sendKeyEvent (no modifier) must be dropped even though isPrintingKey() returns
-     * false for KEYCODE_SPACE (KeyCharacterMap classifies ' ' as SPACE_SEPARATOR, not printable).
-     * Gboard fires a concurrent raw View.dispatchKeyEvent for space; forwarding sendKeyEvent
-     * as well would cause a duplicate space.
+     * Space via sendKeyEvent delivers a space. KEYCODE_SPACE has isPrintingKey()=false
+     * (KeyCharacterMap classifies ' ' as SPACE_SEPARATOR), but it is still forwarded like
+     * all other sendKeyEvent keys.
      */
     @Test
-    fun testTypeNullSendKeyEventPlainSpaceIsIgnored() {
+    fun testTypeNullSendKeyEventSpaceDeliversSpace() {
         val (ic, _, outputs) = createNonComposeModeCapture()
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -648,30 +644,7 @@ class ImeInputViewTest {
         }
         drainMainLooper()
 
-        assertEquals("Plain space via sendKeyEvent should be dropped", "", effectiveText(outputs))
+        assertEquals(" ", effectiveText(outputs))
     }
 
-    /**
-     * Ctrl modifier delivered via sendKeyEvent must not double when the same key is also
-     * delivered via raw View.dispatchKeyEvent without a modifier. The two events are
-     * independent: one carries the Ctrl combo, the other is a plain key press.
-     */
-    @Test
-    fun testTypeNullCtrlSendKeyEventAndPlainRawViewAreIndependent() {
-        val (ic, view, outputs) = createNonComposeModeCapture()
-
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            // Ctrl+A via sendKeyEvent → 0x01
-            ic.sendKeyEvent(
-                KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A, 0, KeyEvent.META_CTRL_ON)
-            )
-            // Plain 'a' via raw view dispatch → 'a'
-            view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A))
-        }
-        drainMainLooper()
-
-        val received = outputs.flatMap { it.toList() }.toByteArray()
-        assertTrue("Ctrl+A control char (0x01) missing", received.contains(0x01.toByte()))
-        assertTrue("Plain 'a' missing", received.contains('a'.code.toByte()))
-    }
 }
