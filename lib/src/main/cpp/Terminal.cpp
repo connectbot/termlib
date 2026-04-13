@@ -25,6 +25,13 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
+#define JNI_CHECK_EXCEPTION_RETURN(env, retval) \
+    do { if ((env)->ExceptionCheck()) { (env)->ExceptionDescribe(); (env)->ExceptionClear(); return (retval); } } while (0)
+#define JNI_CHECK_EXCEPTION_RETURN_VOID(env) \
+    do { if ((env)->ExceptionCheck()) { (env)->ExceptionDescribe(); (env)->ExceptionClear(); return; } } while (0)
+#define JNI_CHECK_EXCEPTION(env) \
+    do { if ((env)->ExceptionCheck()) { (env)->ExceptionDescribe(); (env)->ExceptionClear(); } } while (0)
+
 // Thread-local CharArray pool to eliminate per-frame allocations
 // Each thread gets one reusable CharArray, sized to handle typical cell runs
 static thread_local jcharArray tls_charArray = nullptr;
@@ -663,6 +670,7 @@ void Terminal::invokeDamage(int startRow, int endRow, int startCol, int endCol) 
     }
 
     env->CallIntMethod(mCallbacks, mDamageMethod, startRow, endRow, startCol, endCol);
+    JNI_CHECK_EXCEPTION(env);
 }
 
 int Terminal::invokeMoverect(VTermRect dest, VTermRect src) {
@@ -680,7 +688,9 @@ int Terminal::invokeMoverect(VTermRect dest, VTermRect src) {
     ScopedLocalRef<jobject> srcObj(env, env->NewObject(mTermRectClass, mTermRectConstructor,
         src.start_row, src.end_row, src.start_col, src.end_col));
 
-    return env->CallIntMethod(mCallbacks, mMoverectMethod, destObj.get(), srcObj.get());
+    jint result = env->CallIntMethod(mCallbacks, mMoverectMethod, destObj.get(), srcObj.get());
+    JNI_CHECK_EXCEPTION_RETURN(env, 0);
+    return result;
 }
 
 void Terminal::invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool visible) {
@@ -697,6 +707,7 @@ void Terminal::invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool v
     ScopedLocalRef<jobject> oldPosObj(env, env->NewObject(mCursorPositionClass, mCursorPositionConstructor, oldRow, oldCol));
 
     env->CallIntMethod(mCallbacks, mMoveCursorMethod, posObj.get(), oldPosObj.get(), visible);
+    JNI_CHECK_EXCEPTION(env);
 }
 
 void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
@@ -742,6 +753,7 @@ void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
 
     if (propValue.get()) {
         env->CallIntMethod(mCallbacks, mSetTermPropMethod, prop, propValue.get());
+        JNI_CHECK_EXCEPTION(env);
     }
 }
 
@@ -756,6 +768,7 @@ void Terminal::invokeBell() {
     }
 
     env->CallIntMethod(mCallbacks, mBellMethod);
+    JNI_CHECK_EXCEPTION(env);
 }
 
 void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, bool softWrapped) {
@@ -770,6 +783,11 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, 
 
     // Build a list to hold actual cells (excluding fullwidth placeholders)
     std::vector<ScopedLocalRef<jobject>> screenCells;
+
+#define CELL_JNI_EXCEPTION_CONTINUE(env) \
+    do { if ((env)->ExceptionCheck()) { (env)->ExceptionDescribe(); (env)->ExceptionClear(); continue; } } while (0)
+#define CELL_JNI_EXCEPTION_BREAK(env) \
+    do { if ((env)->ExceptionCheck()) { (env)->ExceptionDescribe(); (env)->ExceptionClear(); break; } } while (0)
 
     for (int i = 0; i < cols; i++) {
         const VTermScreenCell& cell = cells[i];
@@ -791,7 +809,9 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, 
                 jchar lowSurrogate = (jchar)(0xDC00 + (codepoint & 0x3FF));  // Low surrogate
 
                 ScopedLocalRef<jobject> lowSurrogateObj(env, env->CallStaticObjectMethod(mCharacterClass, mCharacterValueOf, lowSurrogate));
+                CELL_JNI_EXCEPTION_CONTINUE(env);  // Orphaned high surrogate; skip cell
                 env->CallBooleanMethod(combiningList, mArrayListAdd, lowSurrogateObj.get());
+                CELL_JNI_EXCEPTION_CONTINUE(env);  // Inconsistent combining list; skip cell
             }
 
             // Add any actual combining characters (chars[1] onwards)
@@ -800,7 +820,9 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, 
 
                 if (combiningCodepoint <= 0xFFFF) {
                     ScopedLocalRef<jobject> charObj(env, env->CallStaticObjectMethod(mCharacterClass, mCharacterValueOf, (jchar)combiningCodepoint));
+                    CELL_JNI_EXCEPTION_BREAK(env);
                     env->CallBooleanMethod(combiningList, mArrayListAdd, charObj.get());
+                    CELL_JNI_EXCEPTION_BREAK(env);
                 } else {
                     // Combining character is also a surrogate pair
                     combiningCodepoint -= 0x10000;
@@ -808,10 +830,14 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, 
                     jchar lowSurr = (jchar)(0xDC00 + (combiningCodepoint & 0x3FF));
 
                     ScopedLocalRef<jobject> highObj(env, env->CallStaticObjectMethod(mCharacterClass, mCharacterValueOf, highSurr));
+                    CELL_JNI_EXCEPTION_BREAK(env);
                     env->CallBooleanMethod(combiningList, mArrayListAdd, highObj.get());
+                    CELL_JNI_EXCEPTION_BREAK(env);
 
                     ScopedLocalRef<jobject> lowObj(env, env->CallStaticObjectMethod(mCharacterClass, mCharacterValueOf, lowSurr));
+                    CELL_JNI_EXCEPTION_BREAK(env);
                     env->CallBooleanMethod(combiningList, mArrayListAdd, lowObj.get());
+                    CELL_JNI_EXCEPTION_BREAK(env);
                 }
             }
         }
@@ -851,6 +877,9 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, 
         }
     }
 
+#undef CELL_JNI_EXCEPTION_CONTINUE
+#undef CELL_JNI_EXCEPTION_BREAK
+
     // Create array with actual cell count
     int actualCells = screenCells.size();
     ScopedLocalRef<jobjectArray> actualCellArray(env, env->NewObjectArray(actualCells, mScreenCellClass, nullptr));
@@ -860,6 +889,7 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, 
 
     // Call the Java callback with actual cell count and soft wrap status
     env->CallIntMethod(mCallbacks, mPushScrollbackMethod, actualCells, actualCellArray.get(), (jboolean)softWrapped);
+    JNI_CHECK_EXCEPTION(env);
 }
 
 int Terminal::invokePopScrollbackLine(int cols, VTermScreenCell* cells) {
@@ -885,6 +915,7 @@ int Terminal::invokePopScrollbackLine(int cols, VTermScreenCell* cells) {
     }
 
     jint result = env->CallIntMethod(mCallbacks, mPopScrollbackMethod, cols, cellArray.get());
+    JNI_CHECK_EXCEPTION_RETURN(env, 0);
 
     if (result == 0) {
         return 0;
@@ -944,10 +975,13 @@ int Terminal::invokePopScrollbackLine(int cols, VTermScreenCell* cells) {
         int charIndex = 1;
         if (combiningList.get()) {
             jint listLen = env->CallIntMethod(combiningList, listSize);
+            JNI_CHECK_EXCEPTION_RETURN(env, 0);
             for (int j = 0; j < listLen && charIndex < VTERM_MAX_CHARS_PER_CELL; j++) {
                 ScopedLocalRef<jobject> charObj(env, env->CallObjectMethod(combiningList, listGet, j));
+                JNI_CHECK_EXCEPTION_RETURN(env, 0);
                 if (charObj.get()) {
                     cell.chars[charIndex++] = env->CallCharMethod(charObj, charValue);
+                    JNI_CHECK_EXCEPTION_RETURN(env, 0);
                 }
             }
         }
@@ -992,6 +1026,7 @@ void Terminal::invokeKeyboardOutput(const char* data, size_t len) {
     env->SetByteArrayRegion(array, 0, len, reinterpret_cast<const jbyte*>(data));
 
     env->CallIntMethod(mCallbacks, mKeyboardInputMethod, array.get());
+    JNI_CHECK_EXCEPTION(env);
 }
 
 int Terminal::invokeOscSequence(int command, const std::string& payload, int cursorRow, int cursorCol) {
@@ -1016,6 +1051,7 @@ int Terminal::invokeOscSequence(int command, const std::string& payload, int cur
     }
 
     jint result = env->CallIntMethod(mCallbacks, mOscSequenceMethod, command, payloadStr.get(), cursorRow, cursorCol);
+    JNI_CHECK_EXCEPTION_RETURN(env, 0);
     LOGD("invokeOscSequence: Java callback returned %d", result);
 
     return result;
