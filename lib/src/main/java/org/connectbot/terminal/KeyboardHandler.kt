@@ -16,6 +16,8 @@
  */
 package org.connectbot.terminal
 
+import android.view.KeyCharacterMap
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -81,9 +83,14 @@ internal class KeyboardHandler(
                 Key.Backspace -> compose.deleteLastChar()
                 else -> {
                     if (!ctrl && !alt) {
-                        val char = getCharacterFromKey(key, shift)
-                        if (char != null) {
-                            compose.appendChar(char)
+                        val codepoint = getCodePointFromKeyEvent(event)
+                        if (codepoint != null) {
+                            if (Character.isBmpCodePoint(codepoint)) {
+                                compose.appendChar(codepoint.toChar())
+                            } else {
+                                compose.appendChar(Character.highSurrogate(codepoint))
+                                compose.appendChar(Character.lowSurrogate(codepoint))
+                            }
                         }
                     }
                 }
@@ -142,9 +149,10 @@ internal class KeyboardHandler(
         }
 
         // Handle regular printable characters
-        val char = getCharacterFromKey(key, shift || modifierManager?.isShiftActive() == true)
-        if (char != null) {
-            terminalEmulator.dispatchCharacter(modifiers, char.code)
+        val stickyShift = modifierManager?.isShiftActive() == true
+        val codepoint = getCodePointFromKeyEvent(event, extraShift = stickyShift)
+        if (codepoint != null) {
+            terminalEmulator.dispatchCharacter(modifiers, codepoint)
             modifierManager?.clearTransients()
             onInputProcessed?.invoke()
             return true
@@ -233,67 +241,22 @@ internal class KeyboardHandler(
     }
 
     /**
-     * Convert a Compose Key to its character representation.
-     * Returns null if not a printable character.
+     * Convert a Compose KeyEvent to its Unicode codepoint.
+     * Returns null if not a printable character or if the key is a dead key.
+     *
+     * Uses the Android KeyCharacterMap to handle all key layouts and shift states correctly,
+     * including keys not present in the static mapping (e.g. Key.At, non-US layouts).
+     *
+     * @param extraShift if true, adds META_SHIFT_ON to the meta state (for sticky shift)
      */
-    private fun getCharacterFromKey(key: Key, shift: Boolean): Char? {
-        return when (key) {
-            // Letters
-            Key.A -> if (shift) 'A' else 'a'
-            Key.B -> if (shift) 'B' else 'b'
-            Key.C -> if (shift) 'C' else 'c'
-            Key.D -> if (shift) 'D' else 'd'
-            Key.E -> if (shift) 'E' else 'e'
-            Key.F -> if (shift) 'F' else 'f'
-            Key.G -> if (shift) 'G' else 'g'
-            Key.H -> if (shift) 'H' else 'h'
-            Key.I -> if (shift) 'I' else 'i'
-            Key.J -> if (shift) 'J' else 'j'
-            Key.K -> if (shift) 'K' else 'k'
-            Key.L -> if (shift) 'L' else 'l'
-            Key.M -> if (shift) 'M' else 'm'
-            Key.N -> if (shift) 'N' else 'n'
-            Key.O -> if (shift) 'O' else 'o'
-            Key.P -> if (shift) 'P' else 'p'
-            Key.Q -> if (shift) 'Q' else 'q'
-            Key.R -> if (shift) 'R' else 'r'
-            Key.S -> if (shift) 'S' else 's'
-            Key.T -> if (shift) 'T' else 't'
-            Key.U -> if (shift) 'U' else 'u'
-            Key.V -> if (shift) 'V' else 'v'
-            Key.W -> if (shift) 'W' else 'w'
-            Key.X -> if (shift) 'X' else 'x'
-            Key.Y -> if (shift) 'Y' else 'y'
-            Key.Z -> if (shift) 'Z' else 'z'
-
-            // Numbers (top row)
-            Key.Zero -> if (shift) ')' else '0'
-            Key.One -> if (shift) '!' else '1'
-            Key.Two -> if (shift) '@' else '2'
-            Key.Three -> if (shift) '#' else '3'
-            Key.Four -> if (shift) '$' else '4'
-            Key.Five -> if (shift) '%' else '5'
-            Key.Six -> if (shift) '^' else '6'
-            Key.Seven -> if (shift) '&' else '7'
-            Key.Eight -> if (shift) '*' else '8'
-            Key.Nine -> if (shift) '(' else '9'
-
-            // Symbols
-            Key.Spacebar -> ' '
-            Key.Minus -> if (shift) '_' else '-'
-            Key.Equals -> if (shift) '+' else '='
-            Key.LeftBracket -> if (shift) '{' else '['
-            Key.RightBracket -> if (shift) '}' else ']'
-            Key.Backslash -> if (shift) '|' else '\\'
-            Key.Semicolon -> if (shift) ':' else ';'
-            Key.Apostrophe -> if (shift) '"' else '\''
-            Key.Grave -> if (shift) '~' else '`'
-            Key.Comma -> if (shift) '<' else ','
-            Key.Period -> if (shift) '>' else '.'
-            Key.Slash -> if (shift) '?' else '/'
-
-            else -> null
-        }
+    private fun getCodePointFromKeyEvent(event: ComposeKeyEvent, extraShift: Boolean = false): Int? {
+        val nativeEvent = event.nativeKeyEvent
+        val stripMask = (AndroidKeyEvent.META_CTRL_MASK or AndroidKeyEvent.META_ALT_MASK).inv()
+        var metaState = nativeEvent.metaState and stripMask
+        if (extraShift) metaState = metaState or AndroidKeyEvent.META_SHIFT_ON
+        val codepoint = nativeEvent.getUnicodeChar(metaState)
+        if (codepoint == 0 || codepoint and KeyCharacterMap.COMBINING_ACCENT != 0) return null
+        return codepoint
     }
 
     /**
