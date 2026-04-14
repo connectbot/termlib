@@ -67,6 +67,7 @@ package org.connectbot.terminal {
     method @InaccessibleFromKotlin public boolean getBoldAsBright();
     method @InaccessibleFromKotlin public org.connectbot.terminal.TerminalDimensions getDimensions();
     method public String? getLastCommandOutput();
+    method public void paste(String text);
     method public void resize(int newRows, int newCols);
     method public int setAnsiPalette(int[] ansiColors);
     method public int setDefaultColors(int foreground, int background);
