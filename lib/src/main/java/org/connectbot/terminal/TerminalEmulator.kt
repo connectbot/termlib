@@ -685,10 +685,10 @@ internal class TerminalEmulatorImpl(
         return 0
     }
 
-    override fun onOscSequence(command: Int, payload: String, nativeCursorRow: Int, nativeCursorCol: Int): Int {
+    override fun onOscSequence(command: Int, payload: String, cursorRow: Int, cursorCol: Int): Int {
         // Use the native cursor position from libvterm for OSC sequence processing
         val actions = synchronized(damageLock) {
-            oscParser.parse(command, payload, nativeCursorRow, nativeCursorCol, cols)
+            oscParser.parse(command, payload, cursorRow, cursorCol, cols)
         }
 
         synchronized(damageLock) {
