@@ -17,6 +17,7 @@
 package org.connectbot.terminal
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,12 +31,20 @@ class BracketedPasteTest {
             onKeyboardInput = { bytes -> sink.append(bytes.toString(Charsets.UTF_8)) }
         )
 
+    // The keyboard-output callback is dispatched via a Handler on the main
+    // Looper (see TerminalEmulatorImpl.onKeyboardInput), so drain that queue
+    // before asserting.
+    private fun drainMainLooper() {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+    }
+
     @Test
     fun pasteWithoutBracketedModeSendsTextRaw() {
         val out = StringBuilder()
         val term = newEmulator(out)
 
         term.paste("hello")
+        drainMainLooper()
 
         assertEquals("hello", out.toString())
     }
@@ -49,6 +58,7 @@ class BracketedPasteTest {
         term.writeInput("\u001B[?2004h".toByteArray(Charsets.UTF_8))
 
         term.paste("hello\nworld")
+        drainMainLooper()
 
         assertEquals("\u001B[200~hello\nworld\u001B[201~", out.toString())
     }
@@ -60,11 +70,13 @@ class BracketedPasteTest {
 
         term.writeInput("\u001B[?2004h".toByteArray(Charsets.UTF_8))
         term.paste("first")
+        drainMainLooper()
         val afterEnabled = out.toString()
 
         out.clear()
         term.writeInput("\u001B[?2004l".toByteArray(Charsets.UTF_8))
         term.paste("second")
+        drainMainLooper()
 
         assertEquals("\u001B[200~first\u001B[201~", afterEnabled)
         assertEquals("second", out.toString())
@@ -77,6 +89,7 @@ class BracketedPasteTest {
 
         term.writeInput("\u001B[?2004h".toByteArray(Charsets.UTF_8))
         term.paste("café 🚀")
+        drainMainLooper()
 
         assertEquals("\u001B[200~café 🚀\u001B[201~", out.toString())
     }
