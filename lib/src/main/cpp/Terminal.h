@@ -60,6 +60,11 @@ public:
     bool dispatchKey(int modifiers, int key);
     bool dispatchCharacter(int modifiers, int codepoint);
 
+    // Bracketed paste bracketing - emits ESC[200~ / ESC[201~ only when
+    // DEC mode 2004 is enabled on the terminal; otherwise a no-op.
+    void startPaste();
+    void endPaste();
+
     // Cell data retrieval for rendering
     int getCellRun(JNIEnv* env, int row, int col, jobject runObject);
 

@@ -182,6 +182,26 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     }
 
     /**
+     * Emit the bracketed-paste start marker (ESC[200~) if DEC mode 2004 is
+     * currently enabled on the terminal. No-op otherwise. The bytes are
+     * delivered to the caller via the onKeyboardInput callback, like any
+     * other keyboard output.
+     */
+    fun startPaste() {
+        checkNotClosed()
+        nativeStartPaste(nativePtr)
+    }
+
+    /**
+     * Emit the bracketed-paste end marker (ESC[201~) if DEC mode 2004 is
+     * currently enabled on the terminal. No-op otherwise.
+     */
+    fun endPaste() {
+        checkNotClosed()
+        nativeEndPaste(nativePtr)
+    }
+
+    /**
      * Close the terminal and release native resources.
      * After calling this, the Terminal instance cannot be used.
      */
@@ -217,6 +237,8 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int
     private external fun nativeGetLineContinuation(ptr: Long, row: Int): Boolean
     private external fun nativeSetBoldHighbright(ptr: Long, enabled: Boolean): Int
+    private external fun nativeStartPaste(ptr: Long)
+    private external fun nativeEndPaste(ptr: Long)
 
     companion object {
         init {

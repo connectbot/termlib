@@ -69,6 +69,17 @@ sealed interface TerminalEmulator {
     fun dispatchCharacter(modifiers: Int, codepoint: Int)
 
     /**
+     * Send pasted text to the host as keyboard output, bracketing it with
+     * ESC[200~ / ESC[201~ when the remote side has enabled DEC mode 2004
+     * (bracketed paste). When the mode is off, the text is sent as if each
+     * character were typed, matching historical behavior.
+     *
+     * Code points are dispatched one by one so the host sees UTF-8 bytes;
+     * newlines arrive as literal LF (0x0A) rather than Return keystrokes.
+     */
+    fun paste(text: String)
+
+    /**
      * Clears the terminal emulator screen.
      */
     fun clearScreen()
@@ -382,6 +393,17 @@ internal class TerminalEmulatorImpl(
      */
     override fun dispatchCharacter(modifiers: Int, codepoint: Int) {
         terminalNative.dispatchCharacter(modifiers, codepoint)
+    }
+
+    override fun paste(text: String) {
+        terminalNative.startPaste()
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i)
+            terminalNative.dispatchCharacter(0, cp)
+            i += Character.charCount(cp)
+        }
+        terminalNative.endPaste()
     }
 
     /**

@@ -411,6 +411,22 @@ bool Terminal::dispatchCharacter(int modifiers, int codepoint) {
     return true;
 }
 
+void Terminal::startPaste() {
+    std::lock_guard<std::recursive_mutex> lock(mLock);
+    if (!mVt) {
+        return;
+    }
+    vterm_keyboard_start_paste(mVt);
+}
+
+void Terminal::endPaste() {
+    std::lock_guard<std::recursive_mutex> lock(mLock);
+    if (!mVt) {
+        return;
+    }
+    vterm_keyboard_end_paste(mVt);
+}
+
 // Cell run retrieval
 int Terminal::getCellRun(JNIEnv* env, int row, int col, jobject runObject) {
     std::lock_guard<std::recursive_mutex> lock(mLock);
@@ -1235,6 +1251,20 @@ Java_org_connectbot_terminal_TerminalNative_nativeSetBoldHighbright(JNIEnv* /* e
                                                                      jlong ptr, jboolean enabled) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->setBoldHighbright(enabled ? 1 : 0);
+}
+
+JNIEXPORT void JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeStartPaste(JNIEnv* /* env */, jobject /* thiz */,
+                                                              jlong ptr) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    term->startPaste();
+}
+
+JNIEXPORT void JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeEndPaste(JNIEnv* /* env */, jobject /* thiz */,
+                                                            jlong ptr) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    term->endPaste();
 }
 
 } // extern "C"
