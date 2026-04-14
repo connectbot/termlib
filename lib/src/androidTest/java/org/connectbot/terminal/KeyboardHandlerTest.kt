@@ -16,13 +16,18 @@
  */
 package org.connectbot.terminal
 
+import android.view.KeyCharacterMap
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.NativeKeyEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -172,12 +177,12 @@ class KeyboardHandlerTest {
 
     private fun createKeyEvent(key: Key, type: KeyEventType): KeyEvent {
         return KeyEvent(
-            androidx.compose.ui.input.key.NativeKeyEvent(
-                android.view.KeyEvent(
+            NativeKeyEvent(
+                AndroidKeyEvent(
                     if (type == KeyEventType.KeyDown)
-                        android.view.KeyEvent.ACTION_DOWN
+                        AndroidKeyEvent.ACTION_DOWN
                     else
-                        android.view.KeyEvent.ACTION_UP,
+                        AndroidKeyEvent.ACTION_UP,
                     keyToAndroidKeyCode(key)
                 )
             )
@@ -314,17 +319,145 @@ class KeyboardHandlerTest {
         assertEquals(0, inputProcessedCallCount)
     }
 
+    // === Dead Key Tests ===
+
+    // Fake keycodes used exclusively in dead-key tests.
+    private val FAKE_DEAD_GRAVE   = 900  // returns COMBINING_ACCENT | '`' (U+0060, grave accent)
+    private val FAKE_KEY_A        = 901  // returns 'a' — combines with grave → 'à' (U+00E0)
+    private val FAKE_KEY_B        = 902  // returns 'b' — does NOT combine with grave
+    private val FAKE_ACCENT_GRAVE = '`'.code  // spacing form of the grave accent
+
+    /**
+     * A [KeyboardHandler.unicodeCharLookup] that simulates a keyboard with a dead grave key.
+     *
+     * Keycodes:
+     *  - [FAKE_DEAD_GRAVE] → COMBINING_ACCENT | grave (dead key)
+     *  - [FAKE_KEY_A]      → 'a' (combines with grave → 'à')
+     *  - [FAKE_KEY_B]      → 'b' (no composition with grave)
+     *  - [AndroidKeyEvent.KEYCODE_A] → 'a' (used by non-dead-key tests)
+     *  - all others        → 0
+     */
+    private val fakeDeadKeyLookup: (Int, Int) -> Int = { keyCode, _ ->
+        when (keyCode) {
+            FAKE_DEAD_GRAVE -> KeyCharacterMap.COMBINING_ACCENT or FAKE_ACCENT_GRAVE
+            FAKE_KEY_A      -> 'a'.code
+            FAKE_KEY_B      -> 'b'.code
+            AndroidKeyEvent.KEYCODE_A -> 'a'.code
+            else            -> 0
+        }
+    }
+
+    /** Creates a KeyEvent directly from an Android keycode (no Compose Key mapping needed). */
+    private fun createRawKeyEvent(keycode: Int): KeyEvent {
+        return KeyEvent(
+            NativeKeyEvent(
+                AndroidKeyEvent(AndroidKeyEvent.ACTION_DOWN, keycode)
+            )
+        )
+    }
+
+    /**
+     * Send [events] through a fresh KeyboardHandler (with [lookup] installed) and return
+     * the bytes written to the PTY decoded as a UTF-8 string.
+     */
+    private fun collectOutput(events: List<KeyEvent>, lookup: (Int, Int) -> Int = fakeDeadKeyLookup): String {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+        )
+        val handler = KeyboardHandler(emulator, unicodeCharLookup = lookup)
+        for (event in events) handler.onKeyEvent(event)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        return outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
+    }
+
+    @Test
+    fun testDeadKeyFollowedByCombinableBaseProducesComposedChar() {
+        // dead grave + 'a' → 'à' (U+00E0)
+        val expected = KeyCharacterMap.getDeadChar(FAKE_ACCENT_GRAVE, 'a'.code)
+
+        val output = collectOutput(listOf(
+            createRawKeyEvent(FAKE_DEAD_GRAVE),
+            createRawKeyEvent(FAKE_KEY_A)
+        ))
+
+        assertEquals(String(Character.toChars(expected)), output)
+    }
+
+    @Test
+    fun testDeadKeyFollowedByNonCombinableBaseEmitsBothChars() {
+        // dead grave + 'b' → no composition: emit '`' then 'b'
+        val combined = KeyCharacterMap.getDeadChar(FAKE_ACCENT_GRAVE, 'b'.code)
+        assumeTrue("grave + b unexpectedly combines", combined == 0)
+
+        val output = collectOutput(listOf(
+            createRawKeyEvent(FAKE_DEAD_GRAVE),
+            createRawKeyEvent(FAKE_KEY_B)
+        ))
+
+        assertEquals("`b", output)
+    }
+
+    @Test
+    fun testSameDeadKeyTwiceEmitsSpacingAccent() {
+        // dead grave + dead grave → '`'
+        val output = collectOutput(listOf(
+            createRawKeyEvent(FAKE_DEAD_GRAVE),
+            createRawKeyEvent(FAKE_DEAD_GRAVE)
+        ))
+
+        assertEquals("`", output)
+    }
+
+    @Test
+    fun testDeadKeyStateClearedByNonPrintableKey() {
+        // dead grave then Enter: accent is discarded; 'a' after should be plain 'a'
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+        )
+        val handler = KeyboardHandler(emulator, unicodeCharLookup = fakeDeadKeyLookup)
+        handler.onKeyEvent(createRawKeyEvent(FAKE_DEAD_GRAVE))
+        handler.onKeyEvent(createRawKeyEvent(AndroidKeyEvent.KEYCODE_ENTER))
+        handler.onKeyEvent(createRawKeyEvent(AndroidKeyEvent.KEYCODE_A))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        val allOutput = outputs.flatMap { it.toList() }.toByteArray()
+        val text = allOutput.filter { it >= 0x20 }.toByteArray().toString(Charsets.UTF_8)
+        assertEquals("a", text)
+    }
+
+    @Test
+    fun testDeadKeyInComposeModeProducesComposedChar() {
+        // dead grave + 'a' → 'à' in compose buffer
+        val expected = KeyCharacterMap.getDeadChar(FAKE_ACCENT_GRAVE, 'a'.code)
+
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.unicodeCharLookup = fakeDeadKeyLookup
+        keyboardHandler.composeMode = composeMode
+
+        keyboardHandler.onKeyEvent(createRawKeyEvent(FAKE_DEAD_GRAVE))
+        keyboardHandler.onKeyEvent(createRawKeyEvent(FAKE_KEY_A))
+
+        assertEquals(String(Character.toChars(expected)), composeMode.buffer)
+    }
+
     private fun keyToAndroidKeyCode(key: Key): Int {
         return when (key) {
-            Key.A -> android.view.KeyEvent.KEYCODE_A
-            Key.B -> android.view.KeyEvent.KEYCODE_B
-            Key.C -> android.view.KeyEvent.KEYCODE_C
-            Key.Enter -> android.view.KeyEvent.KEYCODE_ENTER
-            Key.Spacebar -> android.view.KeyEvent.KEYCODE_SPACE
-            Key.Backspace -> android.view.KeyEvent.KEYCODE_DEL
-            Key.Tab -> android.view.KeyEvent.KEYCODE_TAB
-            Key.Escape -> android.view.KeyEvent.KEYCODE_ESCAPE
-            else -> android.view.KeyEvent.KEYCODE_UNKNOWN
+            Key.A -> AndroidKeyEvent.KEYCODE_A
+            Key.B -> AndroidKeyEvent.KEYCODE_B
+            Key.C -> AndroidKeyEvent.KEYCODE_C
+            Key.Enter -> AndroidKeyEvent.KEYCODE_ENTER
+            Key.Spacebar -> AndroidKeyEvent.KEYCODE_SPACE
+            Key.Backspace -> AndroidKeyEvent.KEYCODE_DEL
+            Key.Tab -> AndroidKeyEvent.KEYCODE_TAB
+            Key.Escape -> AndroidKeyEvent.KEYCODE_ESCAPE
+            else -> AndroidKeyEvent.KEYCODE_UNKNOWN
         }
     }
 }

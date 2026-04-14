@@ -50,9 +50,21 @@ internal class KeyboardHandler(
     private val terminalEmulator: TerminalEmulator,
     var modifierManager: ModifierManager? = null,
     var selectionController: SelectionController? = null,
-    var onInputProcessed: (() -> Unit)? = null
+    var onInputProcessed: (() -> Unit)? = null,
+    /**
+     * Resolves a (keyCode, metaState) pair to a raw Unicode value as returned by
+     * [android.view.KeyEvent.getUnicodeChar]. Injectable for testing dead-key logic without
+     * requiring a physical keyboard with dead keys.
+     */
+    internal var unicodeCharLookup: (keyCode: Int, metaState: Int) -> Int =
+        { keyCode, metaState ->
+            KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD)
+                .get(keyCode, metaState)
+        }
 ) {
     var composeMode: ComposeMode? = null
+
+    private var pendingDeadChar: Int = 0
 
     /**
      * Process a Compose KeyEvent and send to terminal.
@@ -85,11 +97,13 @@ internal class KeyboardHandler(
                     if (!ctrl && !alt) {
                         val codepoint = getCodePointFromKeyEvent(event)
                         if (codepoint != null) {
-                            if (Character.isBmpCodePoint(codepoint)) {
-                                compose.appendChar(codepoint.toChar())
-                            } else {
-                                compose.appendChar(Character.highSurrogate(codepoint))
-                                compose.appendChar(Character.lowSurrogate(codepoint))
+                            dispatchCodePoint(codepoint) { cp ->
+                                if (Character.isBmpCodePoint(cp)) {
+                                    compose.appendChar(cp.toChar())
+                                } else {
+                                    compose.appendChar(Character.highSurrogate(cp))
+                                    compose.appendChar(Character.lowSurrogate(cp))
+                                }
                             }
                         }
                     }
@@ -142,6 +156,7 @@ internal class KeyboardHandler(
         // Check if this is a special key that libvterm handles
         val vtermKey = mapToVTermKey(key)
         if (vtermKey != null) {
+            pendingDeadChar = 0
             terminalEmulator.dispatchKey(modifiers, vtermKey)
             modifierManager?.clearTransients()
             onInputProcessed?.invoke()
@@ -152,7 +167,7 @@ internal class KeyboardHandler(
         val stickyShift = modifierManager?.isShiftActive() == true
         val codepoint = getCodePointFromKeyEvent(event, extraShift = stickyShift)
         if (codepoint != null) {
-            terminalEmulator.dispatchCharacter(modifiers, codepoint)
+            dispatchCodePoint(codepoint) { cp -> terminalEmulator.dispatchCharacter(modifiers, cp) }
             modifierManager?.clearTransients()
             onInputProcessed?.invoke()
             return true
@@ -241,22 +256,73 @@ internal class KeyboardHandler(
     }
 
     /**
-     * Convert a Compose KeyEvent to its Unicode codepoint.
-     * Returns null if not a printable character or if the key is a dead key.
+     * Convert a Compose KeyEvent to its Unicode codepoint, handling dead-key composition.
      *
      * Uses the Android KeyCharacterMap to handle all key layouts and shift states correctly,
      * including keys not present in the static mapping (e.g. Key.At, non-US layouts).
      *
+     * Dead keys (combining accents) are tracked across calls:
+     * - On a dead key, the accent is saved and null is returned (the key is silently consumed).
+     * - On the next printable key, [KeyCharacterMap.getDeadChar] combines them. If the
+     *   combination is valid, the composed character is returned. If not (e.g. ´ + z on a
+     *   layout with no ź), the pending accent is emitted first and then the base character,
+     *   so neither is lost.
+     * - A second consecutive dead key of the same type emits the spacing version of the accent
+     *   (standard terminal behaviour).
+     *
      * @param extraShift if true, adds META_SHIFT_ON to the meta state (for sticky shift)
+     * @return the resolved codepoint, or null if the event was a dead key that has been buffered
      */
     private fun getCodePointFromKeyEvent(event: ComposeKeyEvent, extraShift: Boolean = false): Int? {
         val nativeEvent = event.nativeKeyEvent
         val stripMask = (AndroidKeyEvent.META_CTRL_MASK or AndroidKeyEvent.META_ALT_MASK).inv()
         var metaState = nativeEvent.metaState and stripMask
         if (extraShift) metaState = metaState or AndroidKeyEvent.META_SHIFT_ON
-        val codepoint = nativeEvent.getUnicodeChar(metaState)
-        if (codepoint == 0 || codepoint and KeyCharacterMap.COMBINING_ACCENT != 0) return null
-        return codepoint
+        val raw = unicodeCharLookup(nativeEvent.keyCode, metaState)
+
+        if (raw == 0) {
+            pendingDeadChar = 0
+            return null
+        }
+
+        if (raw and KeyCharacterMap.COMBINING_ACCENT != 0) {
+            val accent = raw and KeyCharacterMap.COMBINING_ACCENT_MASK
+            if (pendingDeadChar == accent) {
+                // Same dead key twice: emit the spacing (non-combining) version of the accent.
+                pendingDeadChar = 0
+                return accent
+            }
+            pendingDeadChar = accent
+            return null
+        }
+
+        val dead = pendingDeadChar
+        pendingDeadChar = 0
+        if (dead != 0) {
+            val composed = KeyCharacterMap.getDeadChar(dead, raw)
+            if (composed != 0) return composed
+            // Combination not possible: the caller will emit `dead` first, then we return `raw`.
+            // We signal this by returning a negative sentinel; the caller unpacks both values.
+            return -(dead shl 21 or raw)
+        }
+
+        return raw
+    }
+
+    /**
+     * Dispatch one or two codepoints produced by [getCodePointFromKeyEvent].
+     *
+     * A negative return value encodes a failed dead-key combination as -(accent<<21 | base).
+     * This helper unpacks that and dispatches both characters.
+     */
+    private fun dispatchCodePoint(codepoint: Int, dispatch: (Int) -> Unit) {
+        if (codepoint >= 0) {
+            dispatch(codepoint)
+        } else {
+            val packed = -codepoint
+            dispatch(packed ushr 21)          // the stranded accent
+            dispatch(packed and 0x1FFFFF)     // the base character
+        }
     }
 
     /**
@@ -288,7 +354,7 @@ internal class KeyboardHandler(
             // Editing keys
             Key.Insert -> VTermKey.INS
             Key.Delete -> VTermKey.DEL
-            Key.Home -> VTermKey.HOME
+            Key.MoveHome -> VTermKey.HOME
             Key.MoveEnd -> VTermKey.END
             Key.PageUp -> VTermKey.PAGEUP
             Key.PageDown -> VTermKey.PAGEDOWN
