@@ -337,7 +337,7 @@ class KeyboardHandlerTest {
      *  - [AndroidKeyEvent.KEYCODE_A] → 'a' (used by non-dead-key tests)
      *  - all others        → 0
      */
-    private val fakeDeadKeyLookup: (Int, Int) -> Int = { keyCode, _ ->
+    private val fakeDeadKeyLookup: (Int, Int, Int) -> Int = { _, keyCode, _ ->
         when (keyCode) {
             FAKE_DEAD_GRAVE -> KeyCharacterMap.COMBINING_ACCENT or FAKE_ACCENT_GRAVE
             FAKE_KEY_A      -> 'a'.code
