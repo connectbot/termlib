@@ -52,14 +52,22 @@ internal class KeyboardHandler(
     var selectionController: SelectionController? = null,
     var onInputProcessed: (() -> Unit)? = null,
     /**
-     * Resolves a (keyCode, metaState) pair to a raw Unicode value as returned by
+     * Resolves a (deviceId, keyCode, metaState) triple to a raw Unicode value as returned by
      * [android.view.KeyEvent.getUnicodeChar]. Injectable for testing dead-key logic without
      * requiring a physical keyboard with dead keys.
+     *
+     * The [deviceId] is the keyboard device ID from the [android.view.KeyEvent] and is used to
+     * load the correct [KeyCharacterMap] so that physical keyboard layouts (e.g. German) are
+     * honored. Falls back to [KeyCharacterMap.VIRTUAL_KEYBOARD] if the device map is
+     * unavailable.
      */
-    internal var unicodeCharLookup: (keyCode: Int, metaState: Int) -> Int =
-        { keyCode, metaState ->
-            KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD)
-                .get(keyCode, metaState)
+    internal var unicodeCharLookup: (deviceId: Int, keyCode: Int, metaState: Int) -> Int =
+        { deviceId, keyCode, metaState ->
+            try {
+                KeyCharacterMap.load(deviceId).get(keyCode, metaState)
+            } catch (_: KeyCharacterMap.UnavailableException) {
+                KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD).get(keyCode, metaState)
+            }
         }
 ) {
     var composeMode: ComposeMode? = null
@@ -278,7 +286,7 @@ internal class KeyboardHandler(
         val stripMask = (AndroidKeyEvent.META_CTRL_MASK or AndroidKeyEvent.META_ALT_MASK).inv()
         var metaState = nativeEvent.metaState and stripMask
         if (extraShift) metaState = metaState or AndroidKeyEvent.META_SHIFT_ON
-        val raw = unicodeCharLookup(nativeEvent.keyCode, metaState)
+        val raw = unicodeCharLookup(nativeEvent.deviceId, nativeEvent.keyCode, metaState)
 
         if (raw == 0) {
             pendingDeadChar = 0
