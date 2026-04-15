@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.ceil
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -486,13 +487,15 @@ fun TerminalWithAccessibility(
         textPaint.measureText("M")
     }
 
+    // Snap to integer pixels so adjacent rows share a pixel boundary; otherwise
+    // fractional row pitch leaves a gap between background rects (issue #2069).
     val baseCharHeight = remember(textPaint) {
         val metrics = textPaint.fontMetrics
-        metrics.descent - metrics.ascent
+        ceil(metrics.descent - metrics.ascent)
     }
 
     val baseCharBaseline = remember(textPaint) {
-        -textPaint.fontMetrics.ascent
+        ceil(-textPaint.fontMetrics.ascent)
     }
 
     // Scroll animation state
@@ -1474,8 +1477,8 @@ private fun TerminalPreview(
             textSize = 14f * density
         }
         val metrics = textPaint.fontMetrics
-        val lineHeight = metrics.descent - metrics.ascent
-        val baseline = -metrics.ascent
+        val lineHeight = ceil(metrics.descent - metrics.ascent)
+        val baseline = ceil(-metrics.ascent)
 
         previewLines.forEachIndexed { index, line ->
             drawContext.canvas.nativeCanvas.drawText(
@@ -1775,7 +1778,7 @@ private fun calculateDimensions(
 
     val charWidth = textPaint.measureText("M")
     val metrics = textPaint.fontMetrics
-    val charHeight = metrics.descent - metrics.ascent
+    val charHeight = ceil(metrics.descent - metrics.ascent)
 
     val width = cols * charWidth
     val height = rows * charHeight
