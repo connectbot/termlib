@@ -360,7 +360,7 @@ class KeyboardHandlerTest {
      * Send [events] through a fresh KeyboardHandler (with [lookup] installed) and return
      * the bytes written to the PTY decoded as a UTF-8 string.
      */
-    private fun collectOutput(events: List<KeyEvent>, lookup: (Int, Int) -> Int = fakeDeadKeyLookup): String {
+    private fun collectOutput(events: List<KeyEvent>, lookup: (Int, Int, Int) -> Int = fakeDeadKeyLookup): String {
         val outputs = mutableListOf<ByteArray>()
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
@@ -445,6 +445,44 @@ class KeyboardHandlerTest {
         keyboardHandler.onKeyEvent(createRawKeyEvent(FAKE_KEY_A))
 
         assertEquals(String(Character.toChars(expected)), composeMode.buffer)
+    }
+
+    /** Creates a KeyEvent with an explicit [deviceId] for testing device-specific lookup. */
+    private fun createRawKeyEventWithDeviceId(keycode: Int, deviceId: Int): KeyEvent {
+        return KeyEvent(
+            NativeKeyEvent(
+                AndroidKeyEvent(
+                    /* downTime = */ 0L,
+                    /* eventTime = */ 0L,
+                    AndroidKeyEvent.ACTION_DOWN,
+                    keycode,
+                    /* repeat = */ 0,
+                    /* metaState = */ 0,
+                    deviceId,
+                    /* scancode = */ 0,
+                )
+            )
+        )
+    }
+
+    @Test
+    fun testUnicodeCharLookupReceivesDeviceIdFromKeyEvent() {
+        val expectedDeviceId = 42
+        var capturedDeviceId: Int? = null
+
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+        )
+        val handler = KeyboardHandler(emulator) {
+            deviceId, keyCode, metaState ->
+            capturedDeviceId = deviceId
+            if (keyCode == AndroidKeyEvent.KEYCODE_A) 'a'.code else 0
+        }
+        handler.onKeyEvent(createRawKeyEventWithDeviceId(AndroidKeyEvent.KEYCODE_A, expectedDeviceId))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        assertEquals(expectedDeviceId, capturedDeviceId)
     }
 
     private fun keyToAndroidKeyCode(key: Key): Int {
