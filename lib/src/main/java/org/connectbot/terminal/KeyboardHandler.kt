@@ -27,7 +27,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 import java.text.Normalizer
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Handles keyboard input conversion for terminal emulation.
@@ -64,12 +63,10 @@ internal class KeyboardHandler(
      */
     internal var unicodeCharLookup: (deviceId: Int, keyCode: Int, metaState: Int) -> Int =
         { deviceId, keyCode, metaState ->
-            keyCharacterMapCache.getOrPut(deviceId) {
-                try {
-                    KeyCharacterMap.load(deviceId)
-                } catch (_: KeyCharacterMap.UnavailableException) {
-                    KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD)
-                }
+            try {
+                KeyCharacterMap.load(deviceId)
+            } catch (_: KeyCharacterMap.UnavailableException) {
+                KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD)
             }.get(keyCode, metaState)
         }
 ) {
@@ -398,15 +395,6 @@ internal class KeyboardHandler(
 
             else -> null
         }
-    }
-
-    companion object {
-        /**
-         * Process-wide cache of [KeyCharacterMap] instances keyed by input device ID.
-         * Avoids reloading (and potentially throwing) on every keystroke when a device's map
-         * is unavailable; the fallback to [KeyCharacterMap.VIRTUAL_KEYBOARD] is recorded once.
-         */
-        private val keyCharacterMapCache = ConcurrentHashMap<Int, KeyCharacterMap>()
     }
 
 }
