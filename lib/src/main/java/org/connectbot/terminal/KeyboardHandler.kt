@@ -93,13 +93,30 @@ internal class KeyboardHandler(
         if (compose != null && compose.isActive) {
             when (key) {
                 Key.Enter -> {
+                    // Flush any IME-composed text, then dispatch a real Enter so the shell
+                    // sees a newline. Compose mode stays active (sticky toggle).
                     val text = compose.commit()
                     text?.codePoints()?.forEach { codepoint ->
                         terminalEmulator.dispatchCharacter(0, codepoint)
                     }
+                    val modifiers = buildModifierMask(ctrl, alt, shift)
+                    terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
+                    modifierManager?.clearTransients()
                     onInputProcessed?.invoke()
                 }
-                Key.Escape -> compose.cancel()
+                Key.Escape -> {
+                    // If a composition is in progress, Esc just cancels it (vim-like). With
+                    // an empty buffer, Esc passes through to the shell. Compose mode stays
+                    // active either way.
+                    if (compose.buffer.isNotEmpty()) {
+                        compose.cancel()
+                    } else {
+                        val modifiers = buildModifierMask(ctrl, alt, shift)
+                        terminalEmulator.dispatchKey(modifiers, VTermKey.ESCAPE)
+                        modifierManager?.clearTransients()
+                        onInputProcessed?.invoke()
+                    }
+                }
                 Key.Backspace -> compose.deleteLastChar()
                 else -> {
                     if (!ctrl && !alt) {

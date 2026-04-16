@@ -140,7 +140,7 @@ class ComposeModeTest {
         val result = composeMode.commit()
 
         assertEquals("hello", result)
-        assertFalse(composeMode.isActive)
+        assertTrue(composeMode.isActive)
         assertEquals("", composeMode.buffer)
     }
 
@@ -150,7 +150,7 @@ class ComposeModeTest {
         val result = composeMode.commit()
 
         assertNull(result)
-        assertFalse(composeMode.isActive)
+        assertTrue(composeMode.isActive)
     }
 
     @Test
@@ -167,7 +167,7 @@ class ComposeModeTest {
         composeMode.appendText("hello")
         composeMode.cancel()
 
-        assertFalse(composeMode.isActive)
+        assertTrue(composeMode.isActive)
         assertEquals("", composeMode.buffer)
     }
 

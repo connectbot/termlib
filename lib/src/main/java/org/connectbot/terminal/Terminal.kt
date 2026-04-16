@@ -588,7 +588,7 @@ fun TerminalWithAccessibility(
             }
 
             override fun stopComposeMode() {
-                composeMode.cancel()
+                composeMode.deactivate()
             }
 
             override fun toggleComposeMode() {
