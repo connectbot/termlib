@@ -220,25 +220,61 @@ class KeyboardHandlerTest {
         val composeMode = ComposeMode()
         composeMode.activate()
         keyboardHandler.composeMode = composeMode
+        keyboardHandler.onInputProcessed = { inputProcessedCallCount++ }
 
         keyboardHandler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
         keyboardHandler.onKeyEvent(createKeyEvent(Key.B, KeyEventType.KeyDown))
         keyboardHandler.onKeyEvent(createKeyEvent(Key.Backspace, KeyEventType.KeyDown))
 
         assertEquals("a", composeMode.buffer)
+        // Backspace with non-empty buffer just edits the buffer; no terminal dispatch.
+        assertEquals(0, inputProcessedCallCount)
     }
 
     @Test
-    fun testComposeModeEscapeCancels() {
+    fun testComposeModeBackspacePassesThroughWhenBufferEmpty() {
         val composeMode = ComposeMode()
         composeMode.activate()
         keyboardHandler.composeMode = composeMode
+        keyboardHandler.onInputProcessed = { inputProcessedCallCount++ }
+
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.Backspace, KeyEventType.KeyDown))
+
+        assertTrue(composeMode.isActive)
+        assertEquals("", composeMode.buffer)
+        // Backspace with empty buffer is dispatched to the terminal as a real Backspace.
+        assertEquals(1, inputProcessedCallCount)
+    }
+
+    @Test
+    fun testComposeModeEscapeCancelsCompositionInProgress() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+        keyboardHandler.onInputProcessed = { inputProcessedCallCount++ }
 
         keyboardHandler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
         keyboardHandler.onKeyEvent(createKeyEvent(Key.Escape, KeyEventType.KeyDown))
 
-        assertFalse(composeMode.isActive)
+        assertTrue(composeMode.isActive)
         assertEquals("", composeMode.buffer)
+        // Esc with non-empty buffer just cancels the composition; no terminal dispatch.
+        assertEquals(0, inputProcessedCallCount)
+    }
+
+    @Test
+    fun testComposeModeEscapePassesThroughWhenBufferEmpty() {
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        keyboardHandler.composeMode = composeMode
+        keyboardHandler.onInputProcessed = { inputProcessedCallCount++ }
+
+        keyboardHandler.onKeyEvent(createKeyEvent(Key.Escape, KeyEventType.KeyDown))
+
+        assertTrue(composeMode.isActive)
+        assertEquals("", composeMode.buffer)
+        // Esc with empty buffer is dispatched to the terminal as a real Escape key.
+        assertEquals(1, inputProcessedCallCount)
     }
 
     @Test
@@ -252,7 +288,8 @@ class KeyboardHandlerTest {
         keyboardHandler.onKeyEvent(createKeyEvent(Key.B, KeyEventType.KeyDown))
         keyboardHandler.onKeyEvent(createKeyEvent(Key.Enter, KeyEventType.KeyDown))
 
-        assertFalse(composeMode.isActive)
+        assertTrue(composeMode.isActive)
+        assertEquals("", composeMode.buffer)
         assertEquals(1, inputProcessedCallCount)
     }
 
