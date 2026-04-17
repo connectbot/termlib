@@ -450,6 +450,42 @@ class ImeInputViewTest {
         assertEquals(1, capture.restartRequests.size)
     }
 
+    @Test
+    fun testTrailingSetComposingReplayAfterEnterDoesNotRefillComposeBuffer() {
+        val capture = createComposeReplayCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            capture.ic.setComposingText("a", 1)
+            capture.ic.setComposingText("あ", 1)
+            capture.ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            capture.ic.setComposingText("あ", 1)
+        }
+        drainMainLooper()
+
+        val received = capture.outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("Trailing setComposing replay emitted DEL and removed submitted text", !received.contains(0x7F.toByte()))
+        assertEquals("あ\r", received.toString(Charsets.UTF_8))
+        assertEquals("", capture.composeMode.buffer)
+        assertEquals(1, capture.restartRequests.size)
+    }
+
+    @Test
+    fun testSpaceAfterTrailingSetComposingReplayStartsFreshComposition() {
+        val capture = createComposeReplayCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            capture.ic.setComposingText("a", 1)
+            capture.ic.setComposingText("あ", 1)
+            capture.ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            capture.ic.setComposingText("あ", 1)
+            capture.ic.setComposingText(" ", 1)
+        }
+        drainMainLooper()
+
+        assertEquals(" ", capture.composeMode.buffer)
+        assertEquals(1, capture.restartRequests.size)
+    }
+
     // === Soft-keyboard TYPE_NULL key event routing ===
 
     private fun createNonComposeModeCapture(): Triple<InputConnection, ImeInputView, MutableList<ByteArray>> {

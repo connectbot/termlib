@@ -149,13 +149,32 @@ internal class ImeInputView(
 
         private var composingText: String = ""
         private var awaitingPostEnterCommitReplay: Boolean = false
+        private var postEnterSubmittedText: String? = null
 
         override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
             if (!fullEditor) return super.setComposingText(text, newCursorPosition)
 
             val newText = text?.toString() ?: ""
+            if (awaitingPostEnterCommitReplay &&
+                newText.isNotEmpty() &&
+                postEnterSubmittedText != null &&
+                newText == postEnterSubmittedText
+            ) {
+                super.setComposingText(text, newCursorPosition)
+                awaitingPostEnterCommitReplay = false
+                postEnterSubmittedText = null
+                composingText = ""
+                editable?.clear()
+                onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
+                // Some IMEs replay the just-submitted composition through setComposingText()
+                // after Enter. Ignore that replay so the compose overlay stays cleared.
+                restartInputSoon()
+                return true
+            }
+
             if (awaitingPostEnterCommitReplay && newText.isNotEmpty()) {
                 awaitingPostEnterCommitReplay = false
+                postEnterSubmittedText = null
             }
             super.setComposingText(text, newCursorPosition)
 
@@ -236,6 +255,11 @@ internal class ImeInputView(
                 val result = this@ImeInputView.dispatchKeyEvent(event)
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     awaitingPostEnterCommitReplay = event.keyCode == KeyEvent.KEYCODE_ENTER
+                    postEnterSubmittedText = if (awaitingPostEnterCommitReplay) {
+                        composingText.takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    }
                     editable?.clear()
                     onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
                 }
@@ -280,10 +304,11 @@ internal class ImeInputView(
             super.commitText(text, newCursorPosition)
 
             if (awaitingPostEnterCommitReplay &&
-                previousComposingText.isNotEmpty() &&
-                committedText == previousComposingText
+                postEnterSubmittedText != null &&
+                committedText == postEnterSubmittedText
             ) {
                 awaitingPostEnterCommitReplay = false
+                postEnterSubmittedText = null
                 composingText = ""
                 editable?.clear()
                 onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
@@ -295,6 +320,7 @@ internal class ImeInputView(
             }
 
             awaitingPostEnterCommitReplay = false
+            postEnterSubmittedText = null
             if (committedText.isNotEmpty()) {
                 if (previousComposingText.isNotEmpty()) {
                     sendBackspaces(previousComposingText.length)
