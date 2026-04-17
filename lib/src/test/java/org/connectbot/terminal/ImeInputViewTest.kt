@@ -26,6 +26,7 @@ import android.view.inputmethod.InputMethodManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -535,6 +536,58 @@ class ImeInputViewTest {
 
         val received = outputs.flatMap { it.toList() }.toByteArray()
         assertTrue("DEL via deleteSurroundingText did not reach the terminal", received.contains(0x7F.toByte()))
+    }
+
+    // === DelKeyMode IME tests ===
+
+    private fun createNonComposeModeWithMode(delKeyMode: DelKeyMode): Pair<InputConnection, MutableList<ByteArray>> {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val handler = KeyboardHandler(emulator)
+        handler.delKeyMode = delKeyMode
+        var ic: InputConnection? = null
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ImeInputView(context, handler).also { v ->
+                v.setOnKeyListener { _, _, event ->
+                    if (event.action == KeyEvent.ACTION_DOWN) v.resetImeBuffer()
+                    handler.onKeyEvent(androidx.compose.ui.input.key.KeyEvent(event))
+                }
+                ic = v.onCreateInputConnection(EditorInfo())
+            }
+        }
+        return ic!! to outputs
+    }
+
+    @Test
+    fun testImeSoftBackspaceDeleteModeDefaultDeliversDel() {
+        val (ic, outputs) = createNonComposeModeWithMode(DelKeyMode.Delete)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.deleteSurroundingText(1, 0)
+        }
+        drainMainLooper()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("Expected DEL (0x7f) in default Delete mode", received.contains(0x7F.toByte()))
+    }
+
+    @Test
+    fun testImeSoftBackspaceBackspaceModeDeliversCtrlH() {
+        val (ic, outputs) = createNonComposeModeWithMode(DelKeyMode.Backspace)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.deleteSurroundingText(1, 0)
+        }
+        drainMainLooper()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("Expected ^H (0x08) in Backspace mode", received.contains(0x08.toByte()))
+        assertFalse("Should NOT send DEL (0x7f) in Backspace mode", received.contains(0x7F.toByte()))
     }
 
     /**

@@ -175,6 +175,73 @@ class KeyboardHandlerTest {
         assertEquals(3, inputProcessedCallCount)
     }
 
+    // === DelKeyMode tests ===
+
+    @Test
+    fun testDeleteModeDefaultBackspaceSendsDel() {
+        // Default mode (DelKeyMode.Delete): Key.Backspace → DEL (0x7f)
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val handler = KeyboardHandler(emulator)
+
+        handler.onKeyEvent(createKeyEvent(Key.Backspace, KeyEventType.KeyDown))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("Expected DEL (0x7f) in default Delete mode", received.contains(0x7F.toByte()))
+    }
+
+    @Test
+    fun testBackspaceModeBackspaceSendsCtrlH() {
+        // DelKeyMode.Backspace: Key.Backspace → ^H (0x08)
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val handler = KeyboardHandler(emulator)
+        handler.delKeyMode = DelKeyMode.Backspace
+
+        handler.onKeyEvent(createKeyEvent(Key.Backspace, KeyEventType.KeyDown))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("Expected ^H (0x08) in Backspace mode", received.contains(0x08.toByte()))
+        assertFalse("Should NOT send DEL (0x7f) in Backspace mode", received.contains(0x7F.toByte()))
+    }
+
+    @Test
+    fun testBackspaceModeDeleteKeySendsDel() {
+        // DelKeyMode.Backspace: Key.Delete → DEL (0x7f)
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val handler = KeyboardHandler(emulator)
+        handler.delKeyMode = DelKeyMode.Backspace
+
+        val deleteKeyEvent = KeyEvent(
+            NativeKeyEvent(
+                AndroidKeyEvent(
+                    AndroidKeyEvent.ACTION_DOWN,
+                    AndroidKeyEvent.KEYCODE_FORWARD_DEL,
+                ),
+            ),
+        )
+        handler.onKeyEvent(deleteKeyEvent)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("Expected DEL (0x7f) for Delete key in Backspace mode", received.contains(0x7F.toByte()))
+    }
+
     private fun createKeyEvent(key: Key, type: KeyEventType): KeyEvent = KeyEvent(
         NativeKeyEvent(
             AndroidKeyEvent(

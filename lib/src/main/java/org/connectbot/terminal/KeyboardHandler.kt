@@ -62,6 +62,12 @@ internal class KeyboardHandler(
      */
     var rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
     /**
+     * Controls whether the backspace key sends DEL (0x7f) or ^H (0x08). Defaults to
+     * [DelKeyMode.Delete]. Set to [DelKeyMode.Backspace] for servers that expect ^H.
+     * When [DelKeyMode.Backspace] is active, the Delete key sends DEL (0x7f) instead.
+     */
+    var delKeyMode: DelKeyMode = DelKeyMode.Delete,
+    /**
      * Resolves a (deviceId, keyCode, metaState) triple to a raw Unicode value as returned by
      * [android.view.KeyEvent.getUnicodeChar]. Injectable for testing dead-key logic without
      * requiring a physical keyboard with dead keys.
@@ -191,6 +197,32 @@ internal class KeyboardHandler(
             (!rightAltPressed && nativeEvent.metaState and AndroidKeyEvent.META_ALT_ON != 0)
         val alt = leftAltPressed || rightAltIsMeta
         val stripAltGr = rightAltIsMeta
+
+        // When DelKeyMode.Backspace is active, swap the byte sequences:
+        // Backspace → ^H (0x08), Delete → DEL (0x7f).
+        if (delKeyMode is DelKeyMode.Backspace) {
+            when (key) {
+                Key.Backspace -> {
+                    val modifiers = buildModifierMask(ctrl, alt, shift)
+                    pendingDeadChar = 0
+                    terminalEmulator.dispatchCharacter(modifiers, 0x08)
+                    modifierManager?.clearTransients()
+                    onInputProcessed?.invoke()
+                    return true
+                }
+
+                Key.Delete -> {
+                    val modifiers = buildModifierMask(ctrl, alt, shift)
+                    pendingDeadChar = 0
+                    terminalEmulator.dispatchKey(modifiers, VTermKey.BACKSPACE)
+                    modifierManager?.clearTransients()
+                    onInputProcessed?.invoke()
+                    return true
+                }
+
+                else -> {}
+            }
+        }
 
         // Check if this is a special key that libvterm handles
         val vtermKey = mapToVTermKey(key)

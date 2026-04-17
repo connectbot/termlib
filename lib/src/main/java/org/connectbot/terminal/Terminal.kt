@@ -312,6 +312,7 @@ fun Terminal(
     onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
     onPasteRequest: (() -> Unit)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
+    delKeyMode: DelKeyMode = DelKeyMode.Delete,
 ) {
     if (LocalInspectionMode.current) {
         TerminalPreview(modifier, backgroundColor, foregroundColor)
@@ -342,6 +343,7 @@ fun Terminal(
         rightAltMode = rightAltMode,
         selectionBackgroundColor = selectionBackgroundColor,
         selectionForegroundColor = selectionForegroundColor,
+        delKeyMode = delKeyMode,
     )
 }
 
@@ -377,6 +379,7 @@ internal fun TerminalWithAccessibility(
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
     selectionBackgroundColor: Color = Color(0xFFB3D7FF),
     selectionForegroundColor: Color = Color.Black,
+    delKeyMode: DelKeyMode = DelKeyMode.Delete,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -410,6 +413,7 @@ internal fun TerminalWithAccessibility(
         KeyboardHandler(terminalEmulator, modifierManager)
     }
     keyboardHandler.rightAltMode = rightAltMode
+    keyboardHandler.delKeyMode = delKeyMode
 
     // Font size and zoom state
     var zoomScale by remember(terminalEmulator) { mutableStateOf(1f) }
