@@ -292,6 +292,43 @@ internal class KeyboardHandler(
     }
 
     /**
+     * Dispatch finalized IME text directly to the terminal, bypassing composeMode.buffer.
+     *
+     * setComposingText() updates the local compose overlay while the IME is still composing.
+     * Once the IME calls commitText(), that text is final and should become terminal input
+     * immediately rather than staying attached to the sticky compose buffer.
+     */
+    fun onCommittedText(text: String) {
+        if (text.isEmpty()) return
+
+        val normalized = if (Normalizer.isNormalized(text, Normalizer.Form.NFC)) text
+                         else Normalizer.normalize(text, Normalizer.Form.NFC)
+        val modifiers = getModifierMask()
+
+        var index = 0
+        while (index < normalized.length) {
+            when (val ch = normalized[index]) {
+                '\n' -> {
+                    terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
+                    index += 1
+                }
+                '\r' -> {
+                    terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
+                    index += if (index + 1 < normalized.length && normalized[index + 1] == '\n') 2 else 1
+                }
+                else -> {
+                    val codepoint = normalized.codePointAt(index)
+                    terminalEmulator.dispatchCharacter(modifiers, codepoint)
+                    index += Character.charCount(codepoint)
+                }
+            }
+        }
+
+        modifierManager?.clearTransients()
+        onInputProcessed?.invoke()
+    }
+
+    /**
      * Build VTerm modifier mask.
      * Bit 0: Shift
      * Bit 1: Alt
