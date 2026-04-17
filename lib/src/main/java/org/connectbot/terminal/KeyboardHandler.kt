@@ -375,29 +375,31 @@ internal class KeyboardHandler(
             return null
         }
 
+        val dead = pendingDeadChar
+        val base: Int
         if (raw and KeyCharacterMap.COMBINING_ACCENT != 0) {
-            val accent = raw and KeyCharacterMap.COMBINING_ACCENT_MASK
-            if (pendingDeadChar == accent) {
-                // Same dead key twice: emit the spacing (non-combining) version of the accent.
-                pendingDeadChar = 0
-                return accent.toLong()
+            base = raw and KeyCharacterMap.COMBINING_ACCENT_MASK
+            if (dead == 0) {
+                pendingDeadChar = base
+                return 0L
             }
-            pendingDeadChar = accent
-            return 0L
+            // No need to handle the double-combining accent here; KCM.getDeadChar does it.
+        } else {
+            base = raw
         }
 
-        val dead = pendingDeadChar
         pendingDeadChar = 0
+
         if (dead != 0) {
-            val composed = KeyCharacterMap.getDeadChar(dead, raw)
+            val composed = KeyCharacterMap.getDeadChar(dead, base)
             if (composed != 0) return composed.toLong()
 
             // Combination not possible: the caller will emit `dead` first, then we return `raw`.
             // Use bit 63 as a flag for multiple codepoints.
-            return (1L shl 63) or (dead.toLong() shl 32) or raw.toLong()
+            return (1L shl 63) or (dead.toLong() shl 32) or base.toLong()
         }
 
-        return raw.toLong()
+        return base.toLong()
     }
 
     /**
