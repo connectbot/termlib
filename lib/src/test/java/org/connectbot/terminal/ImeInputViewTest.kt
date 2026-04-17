@@ -356,6 +356,41 @@ class ImeInputViewTest {
         assertEquals("x", effectiveText(outputs))
     }
 
+    @Test
+    fun testCommittedJapaneseTextLeavesComposeBufferImmediately() {
+        val capture = createComposeReplayCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            capture.ic.setComposingText("a", 1)
+            capture.ic.setComposingText("あ", 1)
+            capture.ic.commitText("あ", 1)
+        }
+        drainMainLooper()
+
+        val received = capture.outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
+        assertEquals("あ", received)
+        assertEquals("", capture.composeMode.buffer)
+        assertEquals(0, capture.restartRequests.size)
+    }
+
+    @Test
+    fun testSpaceAfterCommittedJapaneseTextStartsFreshComposition() {
+        val capture = createComposeReplayCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            capture.ic.setComposingText("a", 1)
+            capture.ic.setComposingText("あ", 1)
+            capture.ic.commitText("あ", 1)
+            capture.ic.setComposingText(" ", 1)
+        }
+        drainMainLooper()
+
+        val received = capture.outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
+        assertEquals("あ", received)
+        assertEquals(" ", capture.composeMode.buffer)
+        assertEquals(0, capture.restartRequests.size)
+    }
+
     // === Unicode precomposition (NFC normalization) ===
 
     /**
