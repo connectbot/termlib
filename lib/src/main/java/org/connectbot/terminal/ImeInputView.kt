@@ -46,6 +46,8 @@ internal class ImeInputView(
         { view, selStart, selEnd, candidatesStart, candidatesEnd ->
             inputMethodManager.updateSelection(view, selStart, selEnd, candidatesStart, candidatesEnd)
         },
+    internal val onRestartInput: (view: View) -> Unit =
+        { view -> inputMethodManager.restartInput(view) }
 ) : View(context) {
 
     init {
@@ -58,7 +60,7 @@ internal class ImeInputView(
             if (field == value) return
             field = value
             if (windowToken != null) {
-                inputMethodManager.restartInput(this)
+                onRestartInput(this)
             }
         }
 
@@ -133,6 +135,10 @@ internal class ImeInputView(
         onUpdateSelection(this, 0, 0, -1, -1)
     }
 
+    private fun restartInputSoon() {
+        onRestartInput(this)
+    }
+
     /**
      * Custom InputConnection that handles backspace and other special keys for terminal input.
      */
@@ -142,11 +148,15 @@ internal class ImeInputView(
     ) : BaseInputConnection(targetView, fullEditor) {
 
         private var composingText: String = ""
+        private var awaitingPostEnterCommitReplay: Boolean = false
 
         override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
             if (!fullEditor) return super.setComposingText(text, newCursorPosition)
 
             val newText = text?.toString() ?: ""
+            if (awaitingPostEnterCommitReplay && newText.isNotEmpty()) {
+                awaitingPostEnterCommitReplay = false
+            }
             super.setComposingText(text, newCursorPosition)
 
             if (newText == composingText) {
@@ -225,6 +235,7 @@ internal class ImeInputView(
                 // Gboard does not accumulate terminal input as suggestion candidates.
                 val result = this@ImeInputView.dispatchKeyEvent(event)
                 if (event.action == KeyEvent.ACTION_DOWN) {
+                    awaitingPostEnterCommitReplay = event.keyCode == KeyEvent.KEYCODE_ENTER
                     editable?.clear()
                     onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
                 }
@@ -268,6 +279,22 @@ internal class ImeInputView(
             val previousComposingText = composingText
             super.commitText(text, newCursorPosition)
 
+            if (awaitingPostEnterCommitReplay &&
+                previousComposingText.isNotEmpty() &&
+                committedText == previousComposingText
+            ) {
+                awaitingPostEnterCommitReplay = false
+                composingText = ""
+                editable?.clear()
+                onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
+                // Some IMEs replay the just-submitted composition after Enter. Ignore that
+                // replay so the shell text stays committed, then force the IME to drop the
+                // stale composing span that would otherwise keep the green overlay alive.
+                restartInputSoon()
+                return true
+            }
+
+            awaitingPostEnterCommitReplay = false
             if (committedText.isNotEmpty()) {
                 if (previousComposingText.isNotEmpty()) {
                     sendBackspaces(previousComposingText.length)
