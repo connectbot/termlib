@@ -261,6 +261,42 @@ class ImeInputViewTest {
         return ic!! to outputs
     }
 
+    private data class ComposeReplayCapture(
+        val ic: InputConnection,
+        val outputs: MutableList<ByteArray>,
+        val composeMode: ComposeMode,
+        val restartRequests: MutableList<View>
+    )
+
+    private fun createComposeReplayCapture(): ComposeReplayCapture {
+        val outputs = mutableListOf<ByteArray>()
+        val restartRequests = mutableListOf<View>()
+        val composeMode = ComposeMode().also { it.activate() }
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+        )
+        val handler = KeyboardHandler(emulator).also { it.composeMode = composeMode }
+        var ic: InputConnection? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = ImeInputView(
+                context = context,
+                keyboardHandler = handler,
+                inputMethodManager = noOpImm,
+                onRestartInput = { restartRequests.add(it) }
+            ).also { v ->
+                v.isComposeModeActive = true
+                v.setOnKeyListener { _, _, event ->
+                    if (event.action == KeyEvent.ACTION_DOWN) v.resetImeBuffer()
+                    handler.onKeyEvent(androidx.compose.ui.input.key.KeyEvent(event))
+                }
+            }
+            ic = view.onCreateInputConnection(EditorInfo())
+        }
+        return ComposeReplayCapture(ic!!, outputs, composeMode, restartRequests)
+    }
+
     /**
      * Compute the effective text from captured keyboard output by applying
      * BS (0x08) and DEL (0x7F) as character erasure operations.
@@ -380,6 +416,42 @@ class ImeInputViewTest {
         drainMainLooper()
         val received = outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
         assertEquals(emoji, received)
+    }
+
+    @Test
+    fun testTrailingCommitAfterEnterDoesNotDeleteSubmittedJapaneseText() {
+        val capture = createComposeReplayCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            capture.ic.setComposingText("a", 1)
+            capture.ic.setComposingText("あ", 1)
+            capture.ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            capture.ic.commitText("あ", 1)
+        }
+        drainMainLooper()
+
+        val received = capture.outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("Trailing replay emitted DEL and removed submitted text", !received.contains(0x7F.toByte()))
+        assertEquals("あ\r", received.toString(Charsets.UTF_8))
+        assertEquals("", capture.composeMode.buffer)
+        assertEquals(1, capture.restartRequests.size)
+    }
+
+    @Test
+    fun testSpaceAfterTrailingCommitReplayStartsFreshComposition() {
+        val capture = createComposeReplayCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            capture.ic.setComposingText("a", 1)
+            capture.ic.setComposingText("あ", 1)
+            capture.ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            capture.ic.commitText("あ", 1)
+            capture.ic.setComposingText(" ", 1)
+        }
+        drainMainLooper()
+
+        assertEquals(" ", capture.composeMode.buffer)
+        assertEquals(1, capture.restartRequests.size)
     }
 
     // === Soft-keyboard TYPE_NULL key event routing ===
