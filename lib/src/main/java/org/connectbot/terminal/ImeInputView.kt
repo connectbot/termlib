@@ -338,7 +338,7 @@ internal class ImeInputView(
                 if (previousComposingText.isNotEmpty()) {
                     sendBackspaces(previousComposingText.length)
                 }
-                sendTextInput(committedText)
+                keyboardHandler.onCommittedText(committedText)
             }
             composingText = ""
             editable?.clear()
