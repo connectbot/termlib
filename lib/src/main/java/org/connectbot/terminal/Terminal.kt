@@ -288,7 +288,8 @@ fun Terminal(
     modifierManager: ModifierManager? = null,
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
     onHyperlinkClick: (String) -> Unit = {},
-    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null
+    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
+    rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
 ) {
     if (LocalInspectionMode.current) {
         TerminalPreview(modifier, backgroundColor, foregroundColor)
@@ -313,7 +314,8 @@ fun Terminal(
         modifierManager = modifierManager,
         onSelectionControllerAvailable = onSelectionControllerAvailable,
         onHyperlinkClick = onHyperlinkClick,
-        onComposeControllerAvailable = onComposeControllerAvailable
+        onComposeControllerAvailable = onComposeControllerAvailable,
+        rightAltMode = rightAltMode,
     )
 }
 
@@ -343,7 +345,8 @@ fun TerminalWithAccessibility(
     forceAccessibilityEnabled: Boolean? = null,
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
     onHyperlinkClick: (String) -> Unit = {},
-    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null
+    onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
+    rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -371,6 +374,7 @@ fun TerminalWithAccessibility(
     val keyboardHandler = remember(terminalEmulator) {
         KeyboardHandler(terminalEmulator, modifierManager)
     }
+    keyboardHandler.rightAltMode = rightAltMode
 
     // Font size and zoom state
     var zoomScale by remember(terminalEmulator) { mutableStateOf(1f) }

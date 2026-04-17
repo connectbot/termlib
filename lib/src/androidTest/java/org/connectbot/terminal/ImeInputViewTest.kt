@@ -596,7 +596,7 @@ class ImeInputViewTest {
     }
 
     /**
-     * Alt+A via sendKeyEvent (metaState=META_ALT_ON) must reach the terminal as ESC + 'a'.
+     * Alt+A via sendKeyEvent must reach the terminal as ESC + 'a'.
      */
     @Test
     fun testTypeNullSendKeyEventAltAProducesEscapePrefix() {

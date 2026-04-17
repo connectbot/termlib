@@ -485,6 +485,129 @@ class KeyboardHandlerTest {
         assertEquals(expectedDeviceId, capturedDeviceId)
     }
 
+    // === Swiss German APOSTROPHE key tests ===
+    //
+    // KCM entry for reference:
+    //   key APOSTROPHE { base: 'ä', shift: 'à', capslock: 'Ä', capslock+shift: 'À', ralt: '{' }
+
+    private val swissGermanApostropheKeycode = AndroidKeyEvent.KEYCODE_APOSTROPHE
+
+    private val swissGermanKcmLookup: (Int, Int, Int) -> Int = { _, keyCode, metaState ->
+        if (keyCode == swissGermanApostropheKeycode) {
+            val shift    = metaState and AndroidKeyEvent.META_SHIFT_ON != 0
+            val caps     = metaState and AndroidKeyEvent.META_CAPS_LOCK_ON != 0
+            val rightAlt = metaState and AndroidKeyEvent.META_ALT_RIGHT_ON != 0
+            when {
+                rightAlt        -> '{'.code
+                caps && shift   -> '\u00C0'.code   // À
+                caps            -> '\u00C4'.code   // Ä
+                shift           -> '\u00E0'.code   // à
+                else            -> '\u00E4'.code   // ä
+            }
+        } else {
+            0
+        }
+    }
+
+    private fun createKeyEventWithMeta(keycode: Int, metaState: Int): KeyEvent {
+        return KeyEvent(
+            NativeKeyEvent(
+                AndroidKeyEvent(
+                    /* downTime = */ 0L,
+                    /* eventTime = */ 0L,
+                    AndroidKeyEvent.ACTION_DOWN,
+                    keycode,
+                    /* repeat = */ 0,
+                    metaState,
+                    /* deviceId = */ KeyCharacterMap.VIRTUAL_KEYBOARD,
+                    /* scancode = */ 0,
+                )
+            )
+        )
+    }
+
+    private fun collectOutputWithMeta(events: List<KeyEvent>, rightAltMode: RightAltMode = RightAltMode.CharacterModifier): String {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+        )
+        val handler = KeyboardHandler(emulator, unicodeCharLookup = swissGermanKcmLookup, rightAltMode = rightAltMode)
+        for (event in events) handler.onKeyEvent(event)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        return outputs.flatMap { it.toList() }.toByteArray().toString(Charsets.UTF_8)
+    }
+
+    @Test
+    fun testSwissGermanApostropheBaseProducesAe() {
+        val output = collectOutputWithMeta(listOf(
+            createKeyEventWithMeta(swissGermanApostropheKeycode, 0)
+        ))
+        assertEquals("ä", output)
+    }
+
+    @Test
+    fun testSwissGermanApostropheShiftProducesAGrave() {
+        val output = collectOutputWithMeta(listOf(
+            createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_SHIFT_ON)
+        ))
+        assertEquals("à", output)
+    }
+
+    @Test
+    fun testSwissGermanApostropheCapslockProducesUpperAe() {
+        val output = collectOutputWithMeta(listOf(
+            createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_CAPS_LOCK_ON)
+        ))
+        assertEquals("Ä", output)
+    }
+
+    @Test
+    fun testSwissGermanApostropheCapslockShiftProducesUpperAGrave() {
+        val output = collectOutputWithMeta(listOf(
+            createKeyEventWithMeta(
+                swissGermanApostropheKeycode,
+                AndroidKeyEvent.META_CAPS_LOCK_ON or AndroidKeyEvent.META_SHIFT_ON
+            )
+        ))
+        assertEquals("À", output)
+    }
+
+    @Test
+    fun testSwissGermanApostropheRaltProducesOpenBrace() {
+        val output = collectOutputWithMeta(listOf(
+            createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_ALT_RIGHT_ON)
+        ))
+        assertEquals("{", output)
+    }
+
+    @Test
+    fun testSwissGermanApostropheRaltAsMetaProducesEscapePrefix() {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+        )
+        val handler = KeyboardHandler(
+            emulator,
+            unicodeCharLookup = swissGermanKcmLookup,
+            rightAltMode = RightAltMode.Meta
+        )
+        handler.onKeyEvent(createKeyEventWithMeta(
+            swissGermanApostropheKeycode,
+            AndroidKeyEvent.META_ALT_RIGHT_ON or AndroidKeyEvent.META_ALT_ON
+        ))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        val bytes = outputs.flatMap { it.toList() }.toByteArray()
+        // ESC prefix (0x1B) followed by UTF-8 encoding of 'ä' (0xC3 0xA4)
+        val expected = byteArrayOf(0x1B, 0xC3.toByte(), 0xA4.toByte())
+        assertEquals(expected.toList(), bytes.toList())
+    }
+
+
     private fun keyToAndroidKeyCode(key: Key): Int {
         return when (key) {
             Key.A -> AndroidKeyEvent.KEYCODE_A

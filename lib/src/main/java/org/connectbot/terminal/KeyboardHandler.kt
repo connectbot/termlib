@@ -52,6 +52,13 @@ internal class KeyboardHandler(
     var selectionController: SelectionController? = null,
     var onInputProcessed: (() -> Unit)? = null,
     /**
+     * Controls how the right-alt key (AltGr) is interpreted. Defaults to
+     * [RightAltMode.CharacterModifier] so that international keyboard layouts work correctly.
+     * Set to [RightAltMode.Meta] for US keyboard users who want right-alt to behave like
+     * left-alt (escape prefix).
+     */
+    var rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
+    /**
      * Resolves a (deviceId, keyCode, metaState) triple to a raw Unicode value as returned by
      * [android.view.KeyEvent.getUnicodeChar]. Injectable for testing dead-key logic without
      * requiring a physical keyboard with dead keys.
@@ -85,7 +92,6 @@ internal class KeyboardHandler(
 
         val key = event.key
         val ctrl = event.isCtrlPressed
-        val alt = event.isAltPressed
         val shift = event.isShiftPressed
 
         // If compose mode is active, intercept all input
@@ -102,7 +108,7 @@ internal class KeyboardHandler(
                 Key.Escape -> compose.cancel()
                 Key.Backspace -> compose.deleteLastChar()
                 else -> {
-                    if (!ctrl && !alt) {
+                    if (!ctrl && !event.isAltPressed) {
                         val codepoint = getCodePointFromKeyEvent(event)
                         if (codepoint != null) {
                             dispatchCodePoint(codepoint) { cp ->
@@ -158,12 +164,19 @@ internal class KeyboardHandler(
             }
         }
 
-        // Build modifier mask for libvterm (combine sticky + hardware modifiers)
-        val modifiers = buildModifierMask(ctrl, alt, shift)
+        // Determine whether right-alt counts as a terminal modifier or a character selector.
+        val nativeEvent = event.nativeKeyEvent
+        val rightAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_RIGHT_ON)
+        val rightAltIsMeta = rightAltPressed && rightAltMode == RightAltMode.Meta
+        val leftAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_LEFT_ON) ||
+                (!rightAltPressed && nativeEvent.metaState and AndroidKeyEvent.META_ALT_ON != 0)
+        val alt = leftAltPressed || rightAltIsMeta
+        val stripAltGr = rightAltIsMeta
 
         // Check if this is a special key that libvterm handles
         val vtermKey = mapToVTermKey(key)
         if (vtermKey != null) {
+            val modifiers = buildModifierMask(ctrl, alt, shift)
             pendingDeadChar = 0
             terminalEmulator.dispatchKey(modifiers, vtermKey)
             modifierManager?.clearTransients()
@@ -173,8 +186,9 @@ internal class KeyboardHandler(
 
         // Handle regular printable characters
         val stickyShift = modifierManager?.isShiftActive() == true
-        val codepoint = getCodePointFromKeyEvent(event, extraShift = stickyShift)
+        val codepoint = getCodePointFromKeyEvent(event, extraShift = stickyShift, stripAlt = stripAltGr)
         if (codepoint != null) {
+            val modifiers = buildModifierMask(ctrl, alt, shift)
             dispatchCodePoint(codepoint) { cp -> terminalEmulator.dispatchCharacter(modifiers, cp) }
             modifierManager?.clearTransients()
             onInputProcessed?.invoke()
@@ -279,13 +293,24 @@ internal class KeyboardHandler(
      *   (standard terminal behaviour).
      *
      * @param extraShift if true, adds META_SHIFT_ON to the meta state (for sticky shift)
+     * @param stripAlt if true, also strips [AndroidKeyEvent.META_ALT_RIGHT_ON] from the KCM
+     *   lookup; left-alt is always stripped. Use when right-alt is [RightAltMode.Meta]
      * @return the resolved codepoint, or null if the event was a dead key that has been buffered
      */
-    private fun getCodePointFromKeyEvent(event: ComposeKeyEvent, extraShift: Boolean = false): Int? {
+    private fun getCodePointFromKeyEvent(
+        event: ComposeKeyEvent,
+        extraShift: Boolean = false,
+        stripAlt: Boolean = false,
+    ): Int? {
         val nativeEvent = event.nativeKeyEvent
-        val stripMask = (AndroidKeyEvent.META_CTRL_MASK or AndroidKeyEvent.META_ALT_MASK).inv()
-        var metaState = nativeEvent.metaState and stripMask
-        if (extraShift) metaState = metaState or AndroidKeyEvent.META_SHIFT_ON
+        // Always strip left-alt and the shared ALT_ON bit; only strip right-alt when it is
+        // acting as Meta rather than a character selector.
+        val rightAltMask = if (stripAlt) AndroidKeyEvent.META_ALT_RIGHT_ON else 0
+        val stripMask = (AndroidKeyEvent.META_CTRL_MASK or
+                AndroidKeyEvent.META_ALT_LEFT_ON or AndroidKeyEvent.META_ALT_ON or
+                rightAltMask).inv()
+        val metaState = (nativeEvent.metaState and stripMask) or
+            if (extraShift) AndroidKeyEvent.META_SHIFT_ON else 0
         val raw = unicodeCharLookup(nativeEvent.deviceId, nativeEvent.keyCode, metaState)
 
         if (raw == 0) {
