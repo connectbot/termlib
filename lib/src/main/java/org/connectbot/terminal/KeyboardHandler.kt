@@ -121,6 +121,9 @@ internal class KeyboardHandler(
         val key = event.key
         val ctrl = event.isCtrlPressed
         val shift = event.isShiftPressed
+        val modifierState = resolveEventModifierState(event)
+        val alt = modifierState.alt
+        val stripAltGr = modifierState.stripAltGr
 
         // If compose mode is active, intercept all input
         val compose = composeMode
@@ -228,13 +231,6 @@ internal class KeyboardHandler(
         }
 
         // Determine whether right-alt counts as a terminal modifier or a character selector.
-        val rightAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_RIGHT_ON)
-        val rightAltIsMeta = rightAltPressed && rightAltMode == RightAltMode.Meta
-        val leftAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_LEFT_ON) ||
-            (!rightAltPressed && nativeEvent.metaState and AndroidKeyEvent.META_ALT_ON != 0)
-        val alt = leftAltPressed || rightAltIsMeta
-        val stripAltGr = rightAltIsMeta
-
         // When DelKeyMode.Backspace is active, swap the byte sequences:
         // Backspace → ^H (0x08), Delete → DEL (0x7f).
         if (delKeyMode is DelKeyMode.Backspace) {
@@ -383,6 +379,19 @@ internal class KeyboardHandler(
         if (alt) mask = mask or 2
         if (ctrl) mask = mask or 4
         return mask
+    }
+
+    private fun resolveEventModifierState(event: ComposeKeyEvent): EventModifierState {
+        val nativeEvent = event.nativeKeyEvent
+        val rightAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_RIGHT_ON)
+        val rightAltIsMeta = rightAltPressed && rightAltMode == RightAltMode.Meta
+        val leftAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_LEFT_ON) ||
+            (!rightAltPressed && nativeEvent.metaState and AndroidKeyEvent.META_ALT_ON != 0)
+
+        return EventModifierState(
+            alt = leftAltPressed || rightAltIsMeta,
+            stripAltGr = rightAltIsMeta,
+        )
     }
 
     /**
@@ -593,6 +602,11 @@ internal class KeyboardHandler(
         else -> null
     }
 }
+
+private data class EventModifierState(
+    val alt: Boolean,
+    val stripAltGr: Boolean,
+)
 
 /**
  * VTerm key codes from libvterm.
