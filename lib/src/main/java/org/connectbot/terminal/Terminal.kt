@@ -718,7 +718,7 @@ fun TerminalWithAccessibility(
 
         // Resize terminal when dimensions change
         LaunchedEffect(terminalEmulator, availableWidth, availableHeight, forcedSize, baseCharWidth, baseCharHeight) {
-            if (availableWidth == 0 || availableHeight == 0) {
+            if (availableWidth == 0 || availableHeight == 0 || baseCharWidth <= 0f || baseCharHeight <= 0f) {
                 return@LaunchedEffect
             }
 

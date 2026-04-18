@@ -17,6 +17,7 @@
 package org.connectbot.terminal
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -26,6 +27,12 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class OscSequenceTest {
+    private fun getSnapshot(impl: TerminalEmulatorImpl): TerminalSnapshot {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        impl.processPendingUpdates()
+        return impl.snapshot.value
+    }
+
     @Test
     fun testOscSequenceCallback() = runBlocking {
         var receivedCommand = -1
@@ -162,11 +169,8 @@ class OscSequenceTest {
         val hyperlinkSequence = "\u001B]8;;https://example.com\u001B\\Click here\u001B]8;;\u001B\\".toByteArray()
         emulator.writeInput(hyperlinkSequence)
 
-        delay(100)
-
-        // Verify terminal renders the text without crashing
         val impl = emulator as TerminalEmulatorImpl
-        val snapshot = impl.snapshot.value
+        val snapshot = getSnapshot(impl)
         assertTrue(snapshot.lines.isNotEmpty())
 
         // Verify the text content is rendered
@@ -208,11 +212,8 @@ class OscSequenceTest {
         ).toByteArray()
         emulator.writeInput(sequence)
 
-        delay(100)
-
-        // Verify no crash and text is rendered
         val impl = emulator as TerminalEmulatorImpl
-        val snapshot = impl.snapshot.value
+        val snapshot = getSnapshot(impl)
         assertTrue(snapshot.lines.isNotEmpty())
 
         val line = snapshot.lines[0]
@@ -231,10 +232,8 @@ class OscSequenceTest {
         val mixedContent = "Hello \u001B]8;;https://example.com\u001B\\World\u001B]8;;\u001B\\ today".toByteArray()
         emulator.writeInput(mixedContent)
 
-        delay(100)
-
         val impl = emulator as TerminalEmulatorImpl
-        val snapshot = impl.snapshot.value
+        val snapshot = getSnapshot(impl)
 
         // Verify text is rendered correctly
         assertTrue(snapshot.lines.isNotEmpty())
@@ -254,10 +253,8 @@ class OscSequenceTest {
         val sequence = "\u001B]8;;https://github.com/connectbot\u001B\\ConnectBot Project\u001B]8;;\u001B\\".toByteArray()
         emulator.writeInput(sequence)
 
-        delay(100)
-
         val impl = emulator as TerminalEmulatorImpl
-        val snapshot = impl.snapshot.value
+        val snapshot = getSnapshot(impl)
         assertTrue(snapshot.lines.isNotEmpty())
 
         // The visible text should be the link text, not the URL

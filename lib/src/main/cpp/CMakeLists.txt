@@ -23,6 +23,8 @@ target_compile_definitions(vterm PRIVATE
     VTERM_STATIC
 )
 
+set_target_properties(vterm PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # JNI wrapper library
 add_library(jni_cb_term SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/Terminal.cpp
@@ -35,10 +37,18 @@ target_include_directories(jni_cb_term PRIVATE
 
 target_compile_features(jni_cb_term PRIVATE cxx_std_17)
 
-target_link_options (jni_cb_term PRIVATE "-Wl,-z,max-page-size=16384")
+if(ANDROID)
+    target_link_options(jni_cb_term PRIVATE "-Wl,-z,max-page-size=16384")
 
-target_link_libraries(jni_cb_term
-    vterm
-    android
-    log
-)
+    target_link_libraries(jni_cb_term
+        vterm
+        android
+        log
+    )
+else()
+    find_package(JNI REQUIRED)
+    target_include_directories(jni_cb_term PRIVATE ${JNI_INCLUDE_DIRS})
+    target_link_libraries(jni_cb_term
+        vterm
+    )
+endif()

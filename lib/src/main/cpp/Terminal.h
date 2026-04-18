@@ -21,6 +21,7 @@
 #include <vterm.h>
 #include <memory>
 #include <mutex>
+#include <string>
 
 template<typename T>
 class ScopedLocalRef {
