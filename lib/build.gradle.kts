@@ -7,7 +7,6 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)
     id("kotlin-parcelize")
-    alias(libs.plugins.spotless)
     alias(libs.plugins.publish)
     alias(libs.plugins.metalava)
     alias(libs.plugins.dokka)
@@ -130,47 +129,6 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
-    }
-}
-
-spotless {
-    java {
-        target(
-            fileTree(".") {
-                include("**/*.java")
-                exclude("**/build", "**/out")
-            },
-        )
-        removeUnusedImports()
-        trimTrailingWhitespace()
-
-        replaceRegex("class-level javadoc indentation fix", "^\\*", " *")
-        replaceRegex("method-level javadoc indentation fix", "\t\\*", "\t *")
-    }
-
-    kotlinGradle {
-        target(
-            fileTree(".") {
-                include("**/*.gradle.kts")
-                exclude("**/build", "**/out")
-            },
-        )
-        ktlint()
-    }
-
-    format("xml") {
-        target(
-            fileTree(".") {
-                include("config/**/*.xml", "lib/**/*.xml", "test-app/**/*.xml")
-                exclude("**/build", "**/out")
-            },
-        )
-    }
-
-    format("misc") {
-        target("**/.gitignore")
-        trimTrailingWhitespace()
-        endWithNewline()
     }
 }
 
