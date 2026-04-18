@@ -317,6 +317,7 @@ fun Terminal(
         onSelectionControllerAvailable = onSelectionControllerAvailable,
         onHyperlinkClick = onHyperlinkClick,
         onComposeControllerAvailable = onComposeControllerAvailable,
+        onScrollControllerAvailable = null,
         rightAltMode = rightAltMode,
     )
 }
@@ -328,7 +329,7 @@ fun Terminal(
  */
 @VisibleForTesting
 @Composable
-fun TerminalWithAccessibility(
+internal fun TerminalWithAccessibility(
     terminalEmulator: TerminalEmulator,
     modifier: Modifier = Modifier,
     typeface: Typeface = Typeface.MONOSPACE,
@@ -348,6 +349,7 @@ fun TerminalWithAccessibility(
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
     onHyperlinkClick: (String) -> Unit = {},
     onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
+    onScrollControllerAvailable: ((ScrollController) -> Unit)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
@@ -368,6 +370,7 @@ fun TerminalWithAccessibility(
     val density = LocalDensity.current
     val clipboardManager = LocalClipboardManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val scope = rememberCoroutineScope()
 
     // Track accessibility state - only enable accessibility features when needed
     val systemAccessibilityEnabled by rememberAccessibilityState()
@@ -501,7 +504,8 @@ fun TerminalWithAccessibility(
     // fractional row pitch leaves a gap between background rects (issue #2069).
     val baseCharHeight = remember(textPaint) {
         val metrics = textPaint.fontMetrics
-        ceil(metrics.descent - metrics.ascent)
+        val height = ceil(metrics.descent - metrics.ascent)
+        if (height <= 0f) 20f else height // Fallback for tests
     }
 
     val baseCharBaseline = remember(textPaint) {
@@ -630,6 +634,45 @@ fun TerminalWithAccessibility(
     // Provide compose controller to caller
     LaunchedEffect(composeController) {
         onComposeControllerAvailable?.invoke(composeController)
+    }
+
+    // Scroll controller implementation
+    val scrollController = remember(screenState, scrollOffset, scope, maxScroll) {
+        object : ScrollController {
+            override val scrollbackPosition: Int
+                get() = screenState.scrollbackPosition
+
+            override val maxScrollback: Int
+                get() = screenState.snapshot.scrollback.size
+
+            override fun scrollToBottom() {
+                screenState.scrollToBottom()
+                scope.launch {
+                    scrollOffset.snapTo(0f)
+                }
+            }
+
+            override fun scrollToTop() {
+                screenState.scrollToTop()
+                scope.launch {
+                    scrollOffset.snapTo(maxScroll)
+                }
+            }
+
+            override fun scrollBy(lines: Int) {
+                val newPosition = (screenState.scrollbackPosition + lines)
+                    .coerceIn(0, maxScrollback)
+                screenState.scrollBy(newPosition - screenState.scrollbackPosition)
+                scope.launch {
+                    scrollOffset.snapTo(newPosition * baseCharHeight)
+                }
+            }
+        }
+    }
+
+    // Provide scroll controller to caller
+    LaunchedEffect(scrollController) {
+        onScrollControllerAvailable?.invoke(scrollController)
     }
 
     // Sync compose mode active state to ImeInputView so onCreateInputConnection returns the

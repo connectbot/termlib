@@ -16,27 +16,42 @@
  */
 package org.connectbot.terminal
 
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
-import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 
-@RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], qualifiers = "w1000dp-h1200dp-xhdpi")
 class TerminalGestureTest {
     @get:Rule
-    val composeTestRule = createComposeRule()
+    val composeTestRule = createAndroidComposeRule<ComponentActivity>()
+
+    @Before
+    fun setUp() {
+        ShadowLog.stream = System.out
+        composeTestRule.activityRule.scenario.onActivity { activity ->
+            activity.window.setLayout(1000, 1200)
+        }
+    }
 
     @Test
     fun testQuickTapTriggersOnTerminalTap() {
@@ -47,14 +62,8 @@ class TerminalGestureTest {
             Terminal(
                 terminalEmulator = emulator,
                 onTerminalTap = { tapCount++ },
-                onSelectionControllerAvailable = { _ ->
-                    // This is called once when the terminal is composed
-                },
             )
         }
-
-        // We can't easily get the controller from the callback because it might be called after we need it.
-        // Let's use a more direct approach to verify behavior.
 
         composeTestRule.onRoot().performTouchInput {
             click()
@@ -246,36 +255,81 @@ class TerminalGestureTest {
     @Test
     fun testScrollIsNotInterruptedBySecondPointer() {
         val emulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
+        // Add some content to enable scrolling
+        val content = (1..100).joinToString("\r\n") { "Line $it" }
+        emulator.writeInput(content.toByteArray())
+
+        // Wait for emulator to process input
+        if (emulator is TerminalEmulatorImpl) {
+            emulator.processPendingUpdates()
+        }
+
         var tapCount = 0
+        var scrollController: ScrollController? = null
         composeTestRule.setContent {
-            Terminal(
+            TerminalWithAccessibility(
                 terminalEmulator = emulator,
+                modifier = Modifier.size(800.dp, 1200.dp),
                 onTerminalTap = { tapCount++ },
+                onScrollControllerAvailable = { scrollController = it },
             )
         }
 
+        composeTestRule.waitForIdle()
+        if (emulator is TerminalEmulatorImpl) {
+            emulator.processPendingUpdates()
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.waitUntil { scrollController != null }
+        val controller = scrollController!!
+        val initialPosition = controller.scrollbackPosition
+
+        composeTestRule.mainClock.autoAdvance = false
         composeTestRule.onRoot().performTouchInput {
             // 1. First pointer down
             down(0, center)
+        }
+        composeTestRule.mainClock.advanceTimeBy(16)
 
-            // 2. Move to trigger scroll (beyond touch slop)
-            moveTo(0, center + Offset(0f, -100f))
+        composeTestRule.onRoot().performTouchInput {
+            // 2. Move finger DOWN to scroll BACK into history
+            moveTo(0, center + Offset(0f, 500f))
+        }
+        composeTestRule.mainClock.advanceTimeBy(100) // Give it time to process
+        composeTestRule.waitForIdle()
 
+        composeTestRule.onRoot().performTouchInput {
             // 3. Second pointer down
             down(1, center + Offset(50f, 50f))
+        }
+        composeTestRule.mainClock.advanceTimeBy(16)
 
-            // 4. Move both
-            moveTo(0, center + Offset(0f, -150f))
+        composeTestRule.onRoot().performTouchInput {
+            // 4. Move both further DOWN
+            moveTo(0, center + Offset(0f, 800f))
             moveTo(1, center + Offset(100f, 100f))
+        }
+        composeTestRule.mainClock.advanceTimeBy(100)
+        composeTestRule.waitForIdle()
 
+        composeTestRule.onRoot().performTouchInput {
             // 5. Up
             up(0)
             up(1)
         }
 
+        composeTestRule.mainClock.autoAdvance = true
         composeTestRule.waitForIdle()
-        // If it was hijacked by Zoom, tapCount would be 0, and if it stayed Scroll it is also 0.
-        // The main verification is that it doesn't crash or break the event loop.
+        composeTestRule.mainClock.advanceTimeBy(500) // Give animation time to settle if any
+        composeTestRule.waitForIdle()
+
+        // Verify that we actually scrolled (scrollbackPosition > 0)
+        assertTrue(
+            "Scroll position should have changed (initial=$initialPosition, current=${controller.scrollbackPosition})",
+            controller.scrollbackPosition > initialPosition,
+        )
+
         assertEquals("Tap count should be 0", 0, tapCount)
     }
 }
