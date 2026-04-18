@@ -16,7 +16,7 @@
  */
 package org.connectbot.terminal
 
-import kotlin.io.encoding.Base64;
+import kotlin.io.encoding.Base64
 
 /**
  * Progress state for OSC 9;4 progress reporting.
@@ -27,7 +27,7 @@ enum class ProgressState {
     DEFAULT,
     ERROR,
     INDETERMINATE,
-    WARNING
+    WARNING,
 }
 
 /**
@@ -55,7 +55,7 @@ internal class OscParser {
             val endCol: Int,
             val type: SemanticType,
             val metadata: String? = null,
-            val promptId: Int = -1
+            val promptId: Int = -1,
         ) : Action()
 
         data class SetCursorShape(val shape: CursorShape) : Action()
@@ -68,7 +68,7 @@ internal class OscParser {
          */
         data class ClipboardCopy(
             val selection: String,
-            val data: String
+            val data: String,
         ) : Action()
 
         /**
@@ -79,7 +79,7 @@ internal class OscParser {
          */
         data class SetProgress(
             val state: ProgressState,
-            val progress: Int
+            val progress: Int,
         ) : Action()
     }
 
@@ -97,16 +97,14 @@ internal class OscParser {
         payload: String,
         cursorRow: Int,
         cursorCol: Int,
-        cols: Int
-    ): List<Action> {
-        return when (command) {
-            8 -> handleOsc8(payload, cursorRow, cursorCol)
-            9 -> handleOsc9(payload)
-            52 -> handleOsc52(payload)
-            133 -> handleOsc133(payload, cursorRow, cursorCol, cols)
-            1337 -> handleOsc1337(payload, cursorRow, cursorCol, cols)
-            else -> emptyList()
-        }
+        cols: Int,
+    ): List<Action> = when (command) {
+        8 -> handleOsc8(payload, cursorRow, cursorCol)
+        9 -> handleOsc9(payload)
+        52 -> handleOsc52(payload)
+        133 -> handleOsc133(payload, cursorRow, cursorCol, cols)
+        1337 -> handleOsc1337(payload, cursorRow, cursorCol, cols)
+        else -> emptyList()
     }
 
     /**
@@ -222,8 +220,8 @@ internal class OscParser {
                             endCol = cursorCol,
                             type = SemanticType.HYPERLINK,
                             metadata = activeUrl,
-                            promptId = currentPromptId
-                        )
+                            promptId = currentPromptId,
+                        ),
                     )
                 }
                 // Clear active hyperlink state
@@ -242,8 +240,8 @@ internal class OscParser {
                         endCol = cursorCol,
                         type = SemanticType.HYPERLINK,
                         metadata = activeUrl,
-                        promptId = currentPromptId
-                    )
+                        promptId = currentPromptId,
+                    ),
                 )
             }
 
@@ -283,6 +281,7 @@ internal class OscParser {
                 currentPromptId++
                 currentSegmentStartCol = cursorCol
             }
+
             payload == "B" -> {
                 // Command input start (end of prompt)
                 val promptEndCol = cursorCol
@@ -293,8 +292,8 @@ internal class OscParser {
                             startCol = currentSegmentStartCol,
                             endCol = promptEndCol,
                             type = SemanticType.PROMPT,
-                            promptId = currentPromptId
-                        )
+                            promptId = currentPromptId,
+                        ),
                     )
                 }
                 // Create COMMAND_INPUT marker immediately on the prompt line.
@@ -308,17 +307,19 @@ internal class OscParser {
                         startCol = cursorCol,
                         endCol = cursorCol, // Zero-width marker, updated by C if possible
                         type = SemanticType.COMMAND_INPUT,
-                        promptId = currentPromptId
-                    )
+                        promptId = currentPromptId,
+                    ),
                 )
                 currentSegmentStartCol = cursorCol
             }
+
             payload == "C" -> {
                 // Command output start (end of input)
                 // If C is on the same row as B and cursor advanced, we could
                 // update the COMMAND_INPUT endCol, but the marker from B is
                 // sufficient for getLastCommandOutput() to work.
             }
+
             payload.startsWith("D") -> {
                 // Command finished
                 val exitCode = if (payload.length > 2) payload.substring(2) else "0"
@@ -329,8 +330,8 @@ internal class OscParser {
                         endCol = cursorCol, // Zero-width marker
                         type = SemanticType.COMMAND_FINISHED,
                         metadata = exitCode,
-                        promptId = currentPromptId
-                    )
+                        promptId = currentPromptId,
+                    ),
                 )
             }
         }
@@ -341,7 +342,7 @@ internal class OscParser {
         payload: String,
         cursorRow: Int,
         cursorCol: Int,
-        cols: Int
+        cols: Int,
     ): List<Action> {
         val actions = mutableListOf<Action>()
 
@@ -355,10 +356,11 @@ internal class OscParser {
                         endCol = cols,
                         type = SemanticType.ANNOTATION,
                         metadata = message,
-                        promptId = currentPromptId
-                    )
+                        promptId = currentPromptId,
+                    ),
                 )
             }
+
             payload.startsWith("SetCursorShape=") -> {
                 val shapeParam = payload.substring("SetCursorShape=".length)
                 val shape = when (shapeParam) {

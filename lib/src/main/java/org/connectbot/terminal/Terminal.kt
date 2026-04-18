@@ -85,10 +85,10 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlin.math.ceil
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.ceil
 
 /**
  * Gesture type for unified gesture handling state machine.
@@ -98,7 +98,7 @@ private enum class GestureType {
     Scroll,
     Selection,
     Zoom,
-    HandleDrag
+    HandleDrag,
 }
 
 /**
@@ -350,7 +350,7 @@ fun TerminalWithAccessibility(
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
         ) {
             Text("Unknown TerminalEmulator type")
         }
@@ -461,7 +461,7 @@ fun TerminalWithAccessibility(
         screenState.snapshot.cursorVisible,
         screenState.snapshot.cursorBlink,
         screenState.snapshot.cursorRow,
-        screenState.snapshot.cursorCol
+        screenState.snapshot.cursorCol,
     ) {
         if (screenState.snapshot.cursorVisible) {
             cursorBlinkVisible = true
@@ -603,9 +603,7 @@ fun TerminalWithAccessibility(
                 }
             }
 
-            override fun getComposedText(): String {
-                return composeMode.buffer
-            }
+            override fun getComposedText(): String = composeMode.buffer
         }
     }
 
@@ -669,7 +667,10 @@ fun TerminalWithAccessibility(
                                     Key.DirectionLeft,
                                     Key.DirectionRight,
                                     Key.PageUp,
-                                    Key.PageDown -> false // Don't consume - let system handle
+                                    Key.PageDown,
+                                    -> false
+
+                                    // Don't consume - let system handle
                                     else -> {
                                         // Any other key exits Review Mode and goes to shell
                                         isReviewMode = false
@@ -683,10 +684,9 @@ fun TerminalWithAccessibility(
                         }
                 } else {
                     Modifier
-                }
-            )
+                },
+            ),
     ) {
-
         // Calculate font size if forcedSize is specified
         if (forcedSize != null) {
             val (forcedRows, forcedCols) = forcedSize
@@ -703,7 +703,7 @@ fun TerminalWithAccessibility(
                     minSize = minFontSize.value,
                     maxSize = maxFontSize.value,
                     typeface = typeface,
-                    density = density.density
+                    density = density.density,
                 )
                 calculatedFontSize = optimalSize.sp
             }
@@ -764,20 +764,22 @@ fun TerminalWithAccessibility(
 
         // Draw terminal content with context menu overlay
         Box(
-            modifier = (if (forcedSize != null && !isZooming && zoomScale == 1f) {
-                // Add border outside the terminal content (only when not zooming)
-                Modifier
-                    .size(
-                        width = with(density) { terminalWidthPx.toDp() },
-                        height = with(density) { terminalHeightPx.toDp() }
-                    )
-                    .border(
-                        width = TERMINAL_BORDER_WIDTH,
-                        color = Color(0xFF4CAF50).copy(alpha = 0.6f)
-                    )
-            } else {
-                Modifier.fillMaxSize()
-            }).pointerInput(terminalEmulator, baseCharHeight) {
+            modifier = (
+                if (forcedSize != null && !isZooming && zoomScale == 1f) {
+                    // Add border outside the terminal content (only when not zooming)
+                    Modifier
+                        .size(
+                            width = with(density) { terminalWidthPx.toDp() },
+                            height = with(density) { terminalHeightPx.toDp() },
+                        )
+                        .border(
+                            width = TERMINAL_BORDER_WIDTH,
+                            color = Color(0xFF4CAF50).copy(alpha = 0.6f),
+                        )
+                } else {
+                    Modifier.fillMaxSize()
+                }
+                ).pointerInput(terminalEmulator, baseCharHeight) {
                 val touchSlopSquared =
                     viewConfiguration.touchSlop * viewConfiguration.touchSlop
                 coroutineScope {
@@ -793,7 +795,7 @@ fun TerminalWithAccessibility(
                                     down.position,
                                     range,
                                     baseCharWidth,
-                                    baseCharHeight
+                                    baseCharHeight,
                                 )
                                 if (touchingStart || touchingEnd) {
                                     gestureType = GestureType.HandleDrag
@@ -812,12 +814,12 @@ fun TerminalWithAccessibility(
                                         if (touchingStart) {
                                             selectionManager.updateSelectionStart(
                                                 newRow,
-                                                newCol
+                                                newCol,
                                             )
                                         } else {
                                             selectionManager.updateSelectionEnd(
                                                 newRow,
-                                                newCol
+                                                newCol,
                                             )
                                         }
 
@@ -853,7 +855,7 @@ fun TerminalWithAccessibility(
                                 selectionManager.startSelection(
                                     row,
                                     col,
-                                    SelectionMode.BLOCK
+                                    SelectionMode.BLOCK,
                                 )
                                 showMagnifier = true
                                 magnifierPosition = down.position
@@ -862,7 +864,7 @@ fun TerminalWithAccessibility(
 
                         // 3. Check for multi-touch (zoom)
                         val secondPointer = withTimeoutOrNull(
-                            WAIT_FOR_SECOND_TOUCH_MS
+                            WAIT_FOR_SECOND_TOUCH_MS,
                         ) {
                             awaitPointerEvent().changes.firstOrNull { it.id != down.id && it.pressed }
                         }
@@ -878,7 +880,7 @@ fun TerminalWithAccessibility(
                             val centerY = (down.position.y + secondPointer.position.y) / 2f
                             zoomOrigin = TransformOrigin(
                                 pivotFractionX = centerX / size.width,
-                                pivotFractionY = centerY / size.height
+                                pivotFractionY = centerY / size.height,
                             )
 
                             while (true) {
@@ -893,7 +895,7 @@ fun TerminalWithAccessibility(
                                     val newScale =
                                         (oldScale * gestureZoom).coerceIn(
                                             MIN_ZOOM_SCALE,
-                                            MAX_ZOOM_SCALE
+                                            MAX_ZOOM_SCALE,
                                         )
 
                                     zoomOffset += gesturePan
@@ -924,7 +926,7 @@ fun TerminalWithAccessibility(
                             val change = event.changes.first()
                             velocityTracker.addPosition(
                                 change.uptimeMillis,
-                                change.position
+                                change.position,
                             )
                             val dragAmount = change.positionChange()
 
@@ -952,7 +954,7 @@ fun TerminalWithAccessibility(
                                                 .coerceIn(0, screenState.snapshot.rows - 1)
                                         selectionManager.updateSelection(
                                             dragRow,
-                                            dragCol
+                                            dragCol,
                                         )
                                         magnifierPosition = change.position
                                     }
@@ -992,7 +994,7 @@ fun TerminalWithAccessibility(
                                     var targetValue = scrollOffset.targetValue
                                     scrollOffset.animateDecay(
                                         initialVelocity = velocity.y,
-                                        animationSpec = splineBasedDecay(density)
+                                        animationSpec = splineBasedDecay(density),
                                     ) {
                                         targetValue = value
                                         // Update terminal buffer during animation
@@ -1050,7 +1052,7 @@ fun TerminalWithAccessibility(
                         }
                     }
                 }
-            }
+            },
         ) {
             Canvas(
                 modifier = Modifier
@@ -1064,12 +1066,12 @@ fun TerminalWithAccessibility(
                         scaleX = zoomScale
                         scaleY = zoomScale
                         transformOrigin = zoomOrigin
-                    }
+                    },
             ) {
                 // Fill background
                 drawRect(
                     color = backgroundColor,
-                    size = size
+                    size = size,
                 )
 
                 // Draw each line (zoom/pan applied via graphicsLayer)
@@ -1085,7 +1087,7 @@ fun TerminalWithAccessibility(
                         defaultFg = foregroundColor,
                         defaultBg = backgroundColor,
                         selectionManager = selectionManager,
-                        autoDetectUrls = terminalEmulator.autoDetectUrls
+                        autoDetectUrls = terminalEmulator.autoDetectUrls,
                     )
                 }
 
@@ -1097,7 +1099,7 @@ fun TerminalWithAccessibility(
                         charWidth = baseCharWidth,
                         charHeight = baseCharHeight,
                         foregroundColor = foregroundColor,
-                        cursorShape = screenState.snapshot.cursorShape
+                        cursorShape = screenState.snapshot.cursorShape,
                     )
                 }
 
@@ -1111,7 +1113,7 @@ fun TerminalWithAccessibility(
                         charWidth = baseCharWidth,
                         charHeight = baseCharHeight,
                         charBaseline = baseCharBaseline,
-                        textPaint = textPaint
+                        textPaint = textPaint,
                     )
                 }
 
@@ -1151,14 +1153,14 @@ fun TerminalWithAccessibility(
                         .focusRequester(reviewFocusRequester)
                         .focusable(),
                     onToggleReviewMode = { isReviewMode = !isReviewMode },
-                    isReviewMode = isReviewMode
+                    isReviewMode = isReviewMode,
                 )
 
                 if (!isReviewMode && keyboardEnabled) {
                     LiveOutputRegion(
                         screenState = screenState,
                         enabled = true,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
@@ -1176,7 +1178,7 @@ fun TerminalWithAccessibility(
                 backgroundColor = backgroundColor,
                 foregroundColor = foregroundColor,
                 selectionManager = selectionManager,
-                autoDetectUrls = terminalEmulator.autoDetectUrls
+                autoDetectUrls = terminalEmulator.autoDetectUrls,
             )
         }
 
@@ -1193,8 +1195,8 @@ fun TerminalWithAccessibility(
                     modifier = Modifier
                         .offset(
                             x = with(density) { buttonX.toDp() },
-                            y = with(density) { buttonY.coerceAtLeast(0f).toDp() }
-                        )
+                            y = with(density) { buttonY.coerceAtLeast(0f).toDp() },
+                        ),
                 ) {
                     FloatingActionButton(
                         onClick = {
@@ -1205,7 +1207,7 @@ fun TerminalWithAccessibility(
                         },
                         modifier = Modifier.size(COPY_BUTTON_SIZE),
                         containerColor = Color.White,
-                        contentColor = Color.Black
+                        contentColor = Color.Black,
                     ) {
                         Text("Copy", style = MaterialTheme.typography.labelSmall)
                     }
@@ -1226,7 +1228,7 @@ fun TerminalWithAccessibility(
                                 resetImeBuffer()
                             }
                             keyboardHandler.onKeyEvent(
-                                androidx.compose.ui.input.key.KeyEvent(event)
+                                androidx.compose.ui.input.key.KeyEvent(event),
                             )
                         }
                         // Store reference for IME control
@@ -1236,11 +1238,10 @@ fun TerminalWithAccessibility(
                 modifier = Modifier
                     .size(1.dp)
                     .focusable()
-                    .focusRequester(focusRequester)
+                    .focusRequester(focusRequester),
             )
         }
     }
-
 }
 
 /**
@@ -1256,7 +1257,7 @@ private fun DrawScope.drawLine(
     defaultFg: Color,
     defaultBg: Color,
     selectionManager: SelectionManager,
-    autoDetectUrls: Boolean = false
+    autoDetectUrls: Boolean = false,
 ) {
     val y = row * charHeight
     var x = 0f
@@ -1280,7 +1281,7 @@ private fun DrawScope.drawLine(
             drawRect(
                 color = finalBgColor,
                 topLeft = Offset(x, y),
-                size = Size(cellWidth, charHeight)
+                size = Size(cellWidth, charHeight),
             )
         }
 
@@ -1304,7 +1305,7 @@ private fun DrawScope.drawLine(
                 text,
                 x,
                 y + charBaseline,
-                textPaint
+                textPaint,
             )
 
             // Draw double underline if needed
@@ -1313,7 +1314,7 @@ private fun DrawScope.drawLine(
                     x = x,
                     y = y + charBaseline,
                     width = cellWidth,
-                    color = fgColor
+                    color = fgColor,
                 )
             }
 
@@ -1324,7 +1325,7 @@ private fun DrawScope.drawLine(
                     y = y + charBaseline,
                     width = cellWidth,
                     charWidth = charWidth,
-                    color = fgColor
+                    color = fgColor,
                 )
             }
         }
@@ -1345,7 +1346,7 @@ private fun DrawScope.drawDoubleUnderline(
     x: Float,
     y: Float,
     width: Float,
-    color: Color
+    color: Color,
 ) {
     val paint = Paint().apply {
         this.color = color.toArgb()
@@ -1380,7 +1381,7 @@ private fun DrawScope.drawCurlyUnderline(
     y: Float,
     width: Float,
     charWidth: Float,
-    color: Color
+    color: Color,
 ) {
     val path = Path()
     val wavelength = charWidth / CURLY_UNDERLINE_CYCLES_PER_CHAR
@@ -1416,7 +1417,7 @@ private fun DrawScope.drawCurlyUnderline(
             style = Paint.Style.STROKE
             strokeWidth = 1f
             isAntiAlias = true
-        }
+        },
     )
 }
 
@@ -1429,7 +1430,7 @@ private fun isTouchingHandle(
     range: SelectionRange,
     charWidth: Float,
     charHeight: Float,
-    hitRadius: Float = HANDLE_HIT_RADIUS
+    hitRadius: Float = HANDLE_HIT_RADIUS,
 ): Pair<Boolean, Boolean> {
     // Handle circles are drawn offset from the character edge by their radius (~12dp).
     // Start handle points up (circle above the character top),
@@ -1438,11 +1439,11 @@ private fun isTouchingHandle(
     val handleRadius = charHeight * 0.4f // approximate circle radius
     val startPos = Offset(
         range.startCol * charWidth + charWidth / 2,
-        range.startRow * charHeight - handleRadius
+        range.startRow * charHeight - handleRadius,
     )
     val endPos = Offset(
         range.endCol * charWidth + charWidth / 2,
-        range.endRow * charHeight + charHeight + handleRadius
+        range.endRow * charHeight + charHeight + handleRadius,
     )
 
     val distToStart = (touchPos - startPos).getDistance()
@@ -1450,7 +1451,7 @@ private fun isTouchingHandle(
 
     return Pair(
         distToStart < hitRadius,
-        distToEnd < hitRadius
+        distToEnd < hitRadius,
     )
 }
 
@@ -1509,7 +1510,7 @@ private fun MagnifyingGlass(
     backgroundColor: Color,
     foregroundColor: Color,
     selectionManager: SelectionManager,
-    autoDetectUrls: Boolean = false
+    autoDetectUrls: Boolean = false,
 ) {
     val magnifierSize = MAGNIFIER_SIZE_DP.dp
     val magnifierScale = MAGNIFIER_SCALE
@@ -1520,7 +1521,7 @@ private fun MagnifyingGlass(
     val verticalOffset = with(density) { MAGNIFIER_VERTICAL_OFFSET.toPx() }
     val magnifierPos = Offset(
         x = (position.x - magnifierSizePx / 2).coerceIn(0f, Float.MAX_VALUE),
-        y = (position.y - verticalOffset - magnifierSizePx).coerceAtLeast(0f)
+        y = (position.y - verticalOffset - magnifierSizePx).coerceAtLeast(0f),
     )
 
     // The actual touch point that should be centered in the magnifier
@@ -1533,25 +1534,25 @@ private fun MagnifyingGlass(
         modifier = Modifier
             .offset(
                 x = with(density) { magnifierPos.x.toDp() },
-                y = with(density) { magnifierPos.y.toDp() }
+                y = with(density) { magnifierPos.y.toDp() },
             )
             .size(magnifierSize)
             .border(
                 width = MAGNIFIER_BORDER_WIDTH,
                 color = Color.Gray,
-                shape = CircleShape
+                shape = CircleShape,
             )
             .background(
                 color = Color.White.copy(alpha = MAGNIFIER_BACKGROUND_ALPHA),
-                shape = CircleShape
+                shape = CircleShape,
             )
-            .clip(CircleShape)
+            .clip(CircleShape),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             // Fill background
             drawRect(
                 color = backgroundColor,
-                size = size
+                size = size,
             )
 
             // Apply magnification and translate to center the touch point
@@ -1574,7 +1575,7 @@ private fun MagnifyingGlass(
                             defaultFg = foregroundColor,
                             defaultBg = backgroundColor,
                             selectionManager = selectionManager,
-                            autoDetectUrls = autoDetectUrls
+                            autoDetectUrls = autoDetectUrls,
                         )
                     }
                 }
@@ -1620,7 +1621,7 @@ private fun DrawScope.drawSelectionHandle(
     drawCircle(
         color = color,
         radius = circleRadius,
-        center = Offset(handleX, circleY)
+        center = Offset(handleX, circleY),
     )
 }
 
@@ -1633,7 +1634,7 @@ private fun DrawScope.drawCursor(
     charWidth: Float,
     charHeight: Float,
     foregroundColor: Color,
-    cursorShape: CursorShape = CursorShape.BLOCK
+    cursorShape: CursorShape = CursorShape.BLOCK,
 ) {
     val x = col * charWidth
     val y = row * charHeight
@@ -1645,7 +1646,7 @@ private fun DrawScope.drawCursor(
                 color = foregroundColor,
                 topLeft = Offset(x, y),
                 size = Size(charWidth, charHeight),
-                alpha = CURSOR_BLOCK_ALPHA
+                alpha = CURSOR_BLOCK_ALPHA,
             )
         }
 
@@ -1656,7 +1657,7 @@ private fun DrawScope.drawCursor(
                 color = foregroundColor,
                 topLeft = Offset(x, y + charHeight - underlineHeight),
                 size = Size(charWidth, underlineHeight),
-                alpha = CURSOR_LINE_ALPHA
+                alpha = CURSOR_LINE_ALPHA,
             )
         }
 
@@ -1667,7 +1668,7 @@ private fun DrawScope.drawCursor(
                 color = foregroundColor,
                 topLeft = Offset(x, y),
                 size = Size(barWidth, charHeight),
-                alpha = CURSOR_LINE_ALPHA
+                alpha = CURSOR_LINE_ALPHA,
             )
         }
     }
@@ -1698,7 +1699,7 @@ private fun DrawScope.drawComposeOverlay(
     charWidth: Float,
     charHeight: Float,
     charBaseline: Float,
-    textPaint: TextPaint
+    textPaint: TextPaint,
 ) {
     val x = cursorCol * charWidth
     val y = cursorRow * charHeight
@@ -1717,7 +1718,7 @@ private fun DrawScope.drawComposeOverlay(
     drawRect(
         color = COMPOSE_OVERLAY_BACKGROUND,
         topLeft = Offset(x, y),
-        size = Size(displayWidth.coerceAtLeast(charWidth), charHeight)
+        size = Size(displayWidth.coerceAtLeast(charWidth), charHeight),
     )
 
     // Draw text
@@ -1738,7 +1739,7 @@ private fun DrawScope.drawComposeOverlay(
             displayText,
             x,
             y + charBaseline,
-            textPaint
+            textPaint,
         )
 
         textPaint.color = savedColor
@@ -1754,7 +1755,7 @@ private fun DrawScope.drawComposeOverlay(
         color = Color.White,
         topLeft = Offset(cursorX, y),
         size = Size(COMPOSE_CURSOR_BAR_WIDTH, charHeight),
-        alpha = CURSOR_LINE_ALPHA
+        alpha = CURSOR_LINE_ALPHA,
     )
 }
 
@@ -1773,7 +1774,7 @@ private fun calculateDimensions(
     cols: Int,
     fontSize: Float,
     typeface: Typeface,
-    density: Float
+    density: Float,
 ): Pair<Float, Float> {
     val textPaint = TextPaint().apply {
         this.typeface = typeface
@@ -1814,7 +1815,7 @@ private fun findOptimalFontSize(
     minSize: Float,
     maxSize: Float,
     typeface: Typeface,
-    density: Float
+    density: Float,
 ): Float {
     var minSizeCurrent = minSize
     var maxSizeCurrent = maxSize
@@ -1827,7 +1828,7 @@ private fun findOptimalFontSize(
             cols = targetCols,
             fontSize = midSize,
             typeface = typeface,
-            density = density
+            density = density,
         )
 
         if (width <= availableWidth && height <= availableHeight) {
@@ -1843,5 +1844,4 @@ private fun findOptimalFontSize(
     return minSizeCurrent.coerceIn(minSize, maxSize)
 }
 
-private fun charsPerDimension(pixels: Int, charPixels: Float) =
-    (pixels / charPixels).toInt().coerceAtLeast(1)
+private fun charsPerDimension(pixels: Int, charPixels: Float) = (pixels / charPixels).toInt().coerceAtLeast(1)

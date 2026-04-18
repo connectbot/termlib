@@ -40,7 +40,7 @@ import androidx.compose.runtime.setValue
  */
 @Stable
 internal class TerminalScreenState(
-    initialSnapshot: TerminalSnapshot
+    initialSnapshot: TerminalSnapshot,
 ) {
     /**
      * The current immutable terminal snapshot.
@@ -67,22 +67,20 @@ internal class TerminalScreenState(
      * @param index Line index (0 = oldest scrollback, totalLines-1 = last visible line)
      * @return The terminal line at the specified index
      */
-    fun getLine(index: Int): TerminalLine {
-        return if (index < snapshot.scrollback.size) {
-            snapshot.scrollback[index]
+    fun getLine(index: Int): TerminalLine = if (index < snapshot.scrollback.size) {
+        snapshot.scrollback[index]
+    } else {
+        val screenIndex = index - snapshot.scrollback.size
+        if (screenIndex in snapshot.lines.indices) {
+            snapshot.lines[screenIndex]
         } else {
-            val screenIndex = index - snapshot.scrollback.size
-            if (screenIndex in snapshot.lines.indices) {
-                snapshot.lines[screenIndex]
-            } else {
-                // Return empty line if index out of bounds
-                TerminalLine.empty(
-                    row = screenIndex,
-                    cols = snapshot.cols,
-                    defaultFg = androidx.compose.ui.graphics.Color.White,
-                    defaultBg = androidx.compose.ui.graphics.Color.Black
-                )
-            }
+            // Return empty line if index out of bounds
+            TerminalLine.empty(
+                row = screenIndex,
+                cols = snapshot.cols,
+                defaultFg = androidx.compose.ui.graphics.Color.White,
+                defaultBg = androidx.compose.ui.graphics.Color.Black,
+            )
         }
     }
 
@@ -106,7 +104,7 @@ internal class TerminalScreenState(
                 row = row,
                 cols = snapshot.cols,
                 defaultFg = androidx.compose.ui.graphics.Color.White,
-                defaultBg = androidx.compose.ui.graphics.Color.Black
+                defaultBg = androidx.compose.ui.graphics.Color.Black,
             )
         }
     }
@@ -161,7 +159,7 @@ internal class TerminalScreenState(
  */
 @Composable
 internal fun rememberTerminalScreenState(
-    terminalEmulator: TerminalEmulatorImpl
+    terminalEmulator: TerminalEmulatorImpl,
 ): TerminalScreenState {
     val snapshot by remember(terminalEmulator) {
         terminalEmulator.snapshot

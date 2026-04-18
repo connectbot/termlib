@@ -27,15 +27,23 @@ class ReadLastOutputTest {
     fun testBasicCommandOutput() {
         // Simulates: prompt$ ls\nfile1\nfile2\n[finished]
         val lines = listOf(
-            makeLine(0, "prompt\$ ls", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
-                SemanticSegment(8, 10, SemanticType.COMMAND_INPUT, promptId = 1)
-            )),
+            makeLine(
+                0,
+                "prompt\$ ls",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
+                    SemanticSegment(8, 10, SemanticType.COMMAND_INPUT, promptId = 1),
+                ),
+            ),
             makeLine(1, "file1"),
             makeLine(2, "file2"),
-            makeLine(3, "", listOf(
-                SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1)
-            ))
+            makeLine(
+                3,
+                "",
+                listOf(
+                    SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1),
+                ),
+            ),
         )
 
         val output = getLastCommandOutput(lines)
@@ -46,11 +54,15 @@ class ReadLastOutputTest {
     @Test
     fun testNoCommandFinished() {
         val lines = listOf(
-            makeLine(0, "prompt\$ ls", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
-                SemanticSegment(8, 10, SemanticType.COMMAND_INPUT, promptId = 1)
-            )),
-            makeLine(1, "file1")
+            makeLine(
+                0,
+                "prompt\$ ls",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
+                    SemanticSegment(8, 10, SemanticType.COMMAND_INPUT, promptId = 1),
+                ),
+            ),
+            makeLine(1, "file1"),
         )
 
         assertNull(getLastCommandOutput(lines))
@@ -60,9 +72,13 @@ class ReadLastOutputTest {
     fun testNoCommandInput() {
         val lines = listOf(
             makeLine(0, "some text"),
-            makeLine(1, "", listOf(
-                SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1)
-            ))
+            makeLine(
+                1,
+                "",
+                listOf(
+                    SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1),
+                ),
+            ),
         )
 
         assertNull(getLastCommandOutput(lines))
@@ -72,13 +88,21 @@ class ReadLastOutputTest {
     fun testEmptyOutput() {
         // Command that produces no output (e.g., "cd /tmp")
         val lines = listOf(
-            makeLine(0, "prompt\$ cd /tmp", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
-                SemanticSegment(8, 15, SemanticType.COMMAND_INPUT, promptId = 1)
-            )),
-            makeLine(1, "", listOf(
-                SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1)
-            ))
+            makeLine(
+                0,
+                "prompt\$ cd /tmp",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
+                    SemanticSegment(8, 15, SemanticType.COMMAND_INPUT, promptId = 1),
+                ),
+            ),
+            makeLine(
+                1,
+                "",
+                listOf(
+                    SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1),
+                ),
+            ),
         )
 
         assertNull(getLastCommandOutput(lines))
@@ -88,22 +112,38 @@ class ReadLastOutputTest {
     fun testMultipleCommands() {
         // Two commands: first outputs "hello", second outputs "world"
         val lines = listOf(
-            makeLine(0, "prompt\$ echo hello", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
-                SemanticSegment(8, 18, SemanticType.COMMAND_INPUT, promptId = 1)
-            )),
+            makeLine(
+                0,
+                "prompt\$ echo hello",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
+                    SemanticSegment(8, 18, SemanticType.COMMAND_INPUT, promptId = 1),
+                ),
+            ),
             makeLine(1, "hello"),
-            makeLine(2, "", listOf(
-                SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1)
-            )),
-            makeLine(3, "prompt\$ echo world", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 2),
-                SemanticSegment(8, 18, SemanticType.COMMAND_INPUT, promptId = 2)
-            )),
+            makeLine(
+                2,
+                "",
+                listOf(
+                    SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1),
+                ),
+            ),
+            makeLine(
+                3,
+                "prompt\$ echo world",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 2),
+                    SemanticSegment(8, 18, SemanticType.COMMAND_INPUT, promptId = 2),
+                ),
+            ),
             makeLine(4, "world"),
-            makeLine(5, "", listOf(
-                SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 2)
-            ))
+            makeLine(
+                5,
+                "",
+                listOf(
+                    SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 2),
+                ),
+            ),
         )
 
         // Should return only the last command's output
@@ -115,16 +155,24 @@ class ReadLastOutputTest {
     @Test
     fun testMultiLineOutput() {
         val lines = listOf(
-            makeLine(0, "prompt\$ find .", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
-                SemanticSegment(8, 14, SemanticType.COMMAND_INPUT, promptId = 1)
-            )),
+            makeLine(
+                0,
+                "prompt\$ find .",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
+                    SemanticSegment(8, 14, SemanticType.COMMAND_INPUT, promptId = 1),
+                ),
+            ),
             makeLine(1, "./src"),
             makeLine(2, "./src/main"),
             makeLine(3, "./src/test"),
-            makeLine(4, "", listOf(
-                SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1)
-            ))
+            makeLine(
+                4,
+                "",
+                listOf(
+                    SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1),
+                ),
+            ),
         )
 
         val output = getLastCommandOutput(lines)
@@ -135,15 +183,23 @@ class ReadLastOutputTest {
     @Test
     fun testOutputWithTrailingWhitespace() {
         val lines = listOf(
-            makeLine(0, "prompt\$ cmd", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
-                SemanticSegment(8, 11, SemanticType.COMMAND_INPUT, promptId = 1)
-            )),
+            makeLine(
+                0,
+                "prompt\$ cmd",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
+                    SemanticSegment(8, 11, SemanticType.COMMAND_INPUT, promptId = 1),
+                ),
+            ),
             makeLine(1, "output   "),
             makeLine(2, "   "),
-            makeLine(3, "", listOf(
-                SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1)
-            ))
+            makeLine(
+                3,
+                "",
+                listOf(
+                    SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1),
+                ),
+            ),
         )
 
         val output = getLastCommandOutput(lines)
@@ -156,13 +212,21 @@ class ReadLastOutputTest {
     fun testCommandInputAndFinishedAdjacent() {
         // COMMAND_INPUT on line 0, COMMAND_FINISHED on line 1 with no output between
         val lines = listOf(
-            makeLine(0, "prompt\$ true", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
-                SemanticSegment(8, 12, SemanticType.COMMAND_INPUT, promptId = 1)
-            )),
-            makeLine(1, "", listOf(
-                SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1)
-            ))
+            makeLine(
+                0,
+                "prompt\$ true",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
+                    SemanticSegment(8, 12, SemanticType.COMMAND_INPUT, promptId = 1),
+                ),
+            ),
+            makeLine(
+                1,
+                "",
+                listOf(
+                    SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1),
+                ),
+            ),
         )
 
         // No lines between input and finished
@@ -174,40 +238,52 @@ class ReadLastOutputTest {
         // Simulates output that has scrolled into scrollback
         val lines = listOf(
             // Scrollback lines
-            makeLine(-1, "prompt\$ ls -la", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
-                SemanticSegment(8, 14, SemanticType.COMMAND_INPUT, promptId = 1)
-            )),
+            makeLine(
+                -1,
+                "prompt\$ ls -la",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 1),
+                    SemanticSegment(8, 14, SemanticType.COMMAND_INPUT, promptId = 1),
+                ),
+            ),
             makeLine(-1, "total 42"),
             makeLine(-1, "drwxr-xr-x  2 user group 4096 Jan 1 file1"),
             makeLine(-1, "drwxr-xr-x  2 user group 4096 Jan 1 file2"),
             // Visible screen
-            makeLine(0, "", listOf(
-                SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1)
-            )),
-            makeLine(1, "prompt\$ ", listOf(
-                SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 2)
-            ))
+            makeLine(
+                0,
+                "",
+                listOf(
+                    SemanticSegment(0, 0, SemanticType.COMMAND_FINISHED, metadata = "0", promptId = 1),
+                ),
+            ),
+            makeLine(
+                1,
+                "prompt\$ ",
+                listOf(
+                    SemanticSegment(0, 8, SemanticType.PROMPT, promptId = 2),
+                ),
+            ),
         )
 
         val output = getLastCommandOutput(lines)
         assertNotNull(output)
         assertEquals(
             "total 42\ndrwxr-xr-x  2 user group 4096 Jan 1 file1\ndrwxr-xr-x  2 user group 4096 Jan 1 file2",
-            output
+            output,
         )
     }
 
     private fun makeLine(
         row: Int,
         text: String,
-        segments: List<SemanticSegment> = emptyList()
+        segments: List<SemanticSegment> = emptyList(),
     ): TerminalLine {
         val cells = text.map { char ->
             TerminalLine.Cell(
                 char = char,
                 fgColor = Color.White,
-                bgColor = Color.Black
+                bgColor = Color.Black,
             )
         }
         return TerminalLine(row = row, cells = cells, semanticSegments = segments)

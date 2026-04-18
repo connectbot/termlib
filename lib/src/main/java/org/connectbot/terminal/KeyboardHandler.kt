@@ -17,16 +17,16 @@
 package org.connectbot.terminal
 
 import android.view.KeyCharacterMap
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 import java.text.Normalizer
+import android.view.KeyEvent as AndroidKeyEvent
+import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 
 /**
  * Handles keyboard input conversion for terminal emulation.
@@ -75,7 +75,7 @@ internal class KeyboardHandler(
             } catch (_: KeyCharacterMap.UnavailableException) {
                 KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD)
             }.get(keyCode, metaState)
-        }
+        },
 ) {
     var composeMode: ComposeMode? = null
 
@@ -105,8 +105,11 @@ internal class KeyboardHandler(
                     }
                     onInputProcessed?.invoke()
                 }
+
                 Key.Escape -> compose.cancel()
+
                 Key.Backspace -> compose.deleteLastChar()
+
                 else -> {
                     if (!ctrl && !event.isAltPressed) {
                         val codepoint = getCodePointFromKeyEvent(event)
@@ -134,28 +137,34 @@ internal class KeyboardHandler(
                     selection.moveSelectionUp()
                     return true
                 }
+
                 Key.DirectionDown -> {
                     selection.moveSelectionDown()
                     return true
                 }
+
                 Key.DirectionLeft -> {
                     selection.moveSelectionLeft()
                     return true
                 }
+
                 Key.DirectionRight -> {
                     selection.moveSelectionRight()
                     return true
                 }
+
                 Key.Enter -> {
                     // Finish selection (stop extending, but keep selected for copying)
                     selection.finishSelection()
                     return true
                 }
+
                 Key.Escape -> {
                     // Cancel selection
                     selection.clearSelection()
                     return true
                 }
+
                 // Any other key clears selection and goes to terminal
                 else -> {
                     selection.clearSelection()
@@ -169,7 +178,7 @@ internal class KeyboardHandler(
         val rightAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_RIGHT_ON)
         val rightAltIsMeta = rightAltPressed && rightAltMode == RightAltMode.Meta
         val leftAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_LEFT_ON) ||
-                (!rightAltPressed && nativeEvent.metaState and AndroidKeyEvent.META_ALT_ON != 0)
+            (!rightAltPressed && nativeEvent.metaState and AndroidKeyEvent.META_ALT_ON != 0)
         val alt = leftAltPressed || rightAltIsMeta
         val stripAltGr = rightAltIsMeta
 
@@ -225,8 +234,11 @@ internal class KeyboardHandler(
         if (bytes.isEmpty()) return
 
         val raw = bytes.toString(Charsets.UTF_8)
-        val text = if (Normalizer.isNormalized(raw, Normalizer.Form.NFC)) raw
-                   else Normalizer.normalize(raw, Normalizer.Form.NFC)
+        val text = if (Normalizer.isNormalized(raw, Normalizer.Form.NFC)) {
+            raw
+        } else {
+            Normalizer.normalize(raw, Normalizer.Form.NFC)
+        }
 
         val compose = composeMode
         if (compose != null && compose.isActive) {
@@ -270,9 +282,9 @@ internal class KeyboardHandler(
     fun getModifierMask(): Int {
         return modifierManager?.let {
             var mask = 0
-            if (it.isShiftActive() == true) mask = mask or 1  // Bit 0: Shift
-            if (it.isAltActive() == true) mask = mask or 2    // Bit 1: Alt
-            if (it.isCtrlActive() == true) mask = mask or 4   // Bit 2: Ctrl
+            if (it.isShiftActive() == true) mask = mask or 1 // Bit 0: Shift
+            if (it.isAltActive() == true) mask = mask or 2 // Bit 1: Alt
+            if (it.isCtrlActive() == true) mask = mask or 4 // Bit 2: Ctrl
             return mask
         } ?: 0
     }
@@ -306,9 +318,11 @@ internal class KeyboardHandler(
         // Always strip left-alt and the shared ALT_ON bit; only strip right-alt when it is
         // acting as Meta rather than a character selector.
         val rightAltMask = if (stripAlt) AndroidKeyEvent.META_ALT_RIGHT_ON else 0
-        val stripMask = (AndroidKeyEvent.META_CTRL_MASK or
+        val stripMask = (
+            AndroidKeyEvent.META_CTRL_MASK or
                 AndroidKeyEvent.META_ALT_LEFT_ON or AndroidKeyEvent.META_ALT_ON or
-                rightAltMask).inv()
+                rightAltMask
+            ).inv()
         val metaState = (nativeEvent.metaState and stripMask) or
             if (extraShift) AndroidKeyEvent.META_SHIFT_ON else 0
         val raw = unicodeCharLookup(nativeEvent.deviceId, nativeEvent.keyCode, metaState)
@@ -353,8 +367,8 @@ internal class KeyboardHandler(
             dispatch(codepoint)
         } else {
             val packed = -codepoint
-            dispatch(packed ushr 21)          // the stranded accent
-            dispatch(packed and 0x1FFFFF)     // the base character
+            dispatch(packed ushr 21) // the stranded accent
+            dispatch(packed and 0x1FFFFF) // the base character
         }
     }
 
@@ -362,66 +376,102 @@ internal class KeyboardHandler(
      * Map Compose Key to VTerm key code.
      * Returns null if not a special key.
      */
-    private fun mapToVTermKey(key: Key): Int? {
-        return when (key) {
-            // Function keys
-            Key.F1 -> VTermKey.FUNCTION_1
-            Key.F2 -> VTermKey.FUNCTION_2
-            Key.F3 -> VTermKey.FUNCTION_3
-            Key.F4 -> VTermKey.FUNCTION_4
-            Key.F5 -> VTermKey.FUNCTION_5
-            Key.F6 -> VTermKey.FUNCTION_6
-            Key.F7 -> VTermKey.FUNCTION_7
-            Key.F8 -> VTermKey.FUNCTION_8
-            Key.F9 -> VTermKey.FUNCTION_9
-            Key.F10 -> VTermKey.FUNCTION_10
-            Key.F11 -> VTermKey.FUNCTION_11
-            Key.F12 -> VTermKey.FUNCTION_12
+    private fun mapToVTermKey(key: Key): Int? = when (key) {
+        // Function keys
+        Key.F1 -> VTermKey.FUNCTION_1
 
-            // Arrow keys
-            Key.DirectionUp -> VTermKey.UP
-            Key.DirectionDown -> VTermKey.DOWN
-            Key.DirectionLeft -> VTermKey.LEFT
-            Key.DirectionRight -> VTermKey.RIGHT
+        Key.F2 -> VTermKey.FUNCTION_2
 
-            // Editing keys
-            Key.Insert -> VTermKey.INS
-            Key.Delete -> VTermKey.DEL
-            Key.MoveHome -> VTermKey.HOME
-            Key.MoveEnd -> VTermKey.END
-            Key.PageUp -> VTermKey.PAGEUP
-            Key.PageDown -> VTermKey.PAGEDOWN
+        Key.F3 -> VTermKey.FUNCTION_3
 
-            // Special keys
-            Key.Enter -> VTermKey.ENTER
-            Key.Tab -> VTermKey.TAB
-            Key.Backspace -> VTermKey.BACKSPACE
-            Key.Escape -> VTermKey.ESCAPE
+        Key.F4 -> VTermKey.FUNCTION_4
 
-            // KP (Keypad) keys
-            Key.NumPad0 -> VTermKey.KP_0
-            Key.NumPad1 -> VTermKey.KP_1
-            Key.NumPad2 -> VTermKey.KP_2
-            Key.NumPad3 -> VTermKey.KP_3
-            Key.NumPad4 -> VTermKey.KP_4
-            Key.NumPad5 -> VTermKey.KP_5
-            Key.NumPad6 -> VTermKey.KP_6
-            Key.NumPad7 -> VTermKey.KP_7
-            Key.NumPad8 -> VTermKey.KP_8
-            Key.NumPad9 -> VTermKey.KP_9
-            Key.NumPadMultiply -> VTermKey.KP_MULT
-            Key.NumPadAdd -> VTermKey.KP_PLUS
-            Key.NumPadComma -> VTermKey.KP_COMMA
-            Key.NumPadSubtract -> VTermKey.KP_MINUS
-            Key.NumPadDot -> VTermKey.KP_PERIOD
-            Key.NumPadDivide -> VTermKey.KP_DIVIDE
-            Key.NumPadEnter -> VTermKey.KP_ENTER
-            Key.NumPadEquals -> VTermKey.KP_EQUAL
+        Key.F5 -> VTermKey.FUNCTION_5
 
-            else -> null
-        }
+        Key.F6 -> VTermKey.FUNCTION_6
+
+        Key.F7 -> VTermKey.FUNCTION_7
+
+        Key.F8 -> VTermKey.FUNCTION_8
+
+        Key.F9 -> VTermKey.FUNCTION_9
+
+        Key.F10 -> VTermKey.FUNCTION_10
+
+        Key.F11 -> VTermKey.FUNCTION_11
+
+        Key.F12 -> VTermKey.FUNCTION_12
+
+        // Arrow keys
+        Key.DirectionUp -> VTermKey.UP
+
+        Key.DirectionDown -> VTermKey.DOWN
+
+        Key.DirectionLeft -> VTermKey.LEFT
+
+        Key.DirectionRight -> VTermKey.RIGHT
+
+        // Editing keys
+        Key.Insert -> VTermKey.INS
+
+        Key.Delete -> VTermKey.DEL
+
+        Key.MoveHome -> VTermKey.HOME
+
+        Key.MoveEnd -> VTermKey.END
+
+        Key.PageUp -> VTermKey.PAGEUP
+
+        Key.PageDown -> VTermKey.PAGEDOWN
+
+        // Special keys
+        Key.Enter -> VTermKey.ENTER
+
+        Key.Tab -> VTermKey.TAB
+
+        Key.Backspace -> VTermKey.BACKSPACE
+
+        Key.Escape -> VTermKey.ESCAPE
+
+        // KP (Keypad) keys
+        Key.NumPad0 -> VTermKey.KP_0
+
+        Key.NumPad1 -> VTermKey.KP_1
+
+        Key.NumPad2 -> VTermKey.KP_2
+
+        Key.NumPad3 -> VTermKey.KP_3
+
+        Key.NumPad4 -> VTermKey.KP_4
+
+        Key.NumPad5 -> VTermKey.KP_5
+
+        Key.NumPad6 -> VTermKey.KP_6
+
+        Key.NumPad7 -> VTermKey.KP_7
+
+        Key.NumPad8 -> VTermKey.KP_8
+
+        Key.NumPad9 -> VTermKey.KP_9
+
+        Key.NumPadMultiply -> VTermKey.KP_MULT
+
+        Key.NumPadAdd -> VTermKey.KP_PLUS
+
+        Key.NumPadComma -> VTermKey.KP_COMMA
+
+        Key.NumPadSubtract -> VTermKey.KP_MINUS
+
+        Key.NumPadDot -> VTermKey.KP_PERIOD
+
+        Key.NumPadDivide -> VTermKey.KP_DIVIDE
+
+        Key.NumPadEnter -> VTermKey.KP_ENTER
+
+        Key.NumPadEquals -> VTermKey.KP_EQUAL
+
+        else -> null
     }
-
 }
 
 /**

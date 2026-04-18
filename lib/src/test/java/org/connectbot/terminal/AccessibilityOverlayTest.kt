@@ -34,7 +34,7 @@ class AccessibilityOverlayTest {
         runBlocking {
             val emulator = TerminalEmulatorFactory.create(
                 initialRows = 5,
-                initialCols = 20
+                initialCols = 20,
             )
 
             // Write test data
@@ -46,7 +46,7 @@ class AccessibilityOverlayTest {
             composeTestRule.setContent {
                 TerminalWithAccessibility(
                     terminalEmulator = emulator,
-                    forceAccessibilityEnabled = true
+                    forceAccessibilityEnabled = true,
                 )
             }
 
@@ -61,7 +61,7 @@ class AccessibilityOverlayTest {
         runBlocking {
             val emulator = TerminalEmulatorFactory.create(
                 initialRows = 3,
-                initialCols = 10
+                initialCols = 10,
             )
 
             // Write some empty lines
@@ -72,7 +72,7 @@ class AccessibilityOverlayTest {
             composeTestRule.setContent {
                 TerminalWithAccessibility(
                     terminalEmulator = emulator,
-                    forceAccessibilityEnabled = true
+                    forceAccessibilityEnabled = true,
                 )
             }
 
@@ -85,7 +85,7 @@ class AccessibilityOverlayTest {
         runBlocking {
             val emulator = TerminalEmulatorFactory.create(
                 initialRows = 3,
-                initialCols = 20
+                initialCols = 20,
             )
 
             emulator.writeInput("Plain text\r\n".toByteArray())
@@ -95,7 +95,7 @@ class AccessibilityOverlayTest {
             composeTestRule.setContent {
                 TerminalWithAccessibility(
                     terminalEmulator = emulator,
-                    forceAccessibilityEnabled = true
+                    forceAccessibilityEnabled = true,
                 )
             }
 
@@ -109,7 +109,7 @@ class AccessibilityOverlayTest {
         runBlocking {
             val emulator = TerminalEmulatorFactory.create(
                 initialRows = 10,
-                initialCols = 40
+                initialCols = 40,
             )
 
             // Write multiple lines
@@ -122,7 +122,7 @@ class AccessibilityOverlayTest {
             composeTestRule.setContent {
                 TerminalWithAccessibility(
                     terminalEmulator = emulator,
-                    forceAccessibilityEnabled = true
+                    forceAccessibilityEnabled = true,
                 )
             }
 

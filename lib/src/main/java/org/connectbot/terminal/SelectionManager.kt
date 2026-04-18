@@ -86,14 +86,14 @@ interface SelectionController {
 enum class SelectionMode {
     NONE,
     BLOCK,
-    LINE
+    LINE,
 }
 
 internal data class SelectionRange(
     val startRow: Int,
     val startCol: Int,
     val endRow: Int,
-    val endCol: Int
+    val endCol: Int,
 ) {
     fun contains(row: Int, col: Int): Boolean {
         val minRow = minOf(startRow, endRow)
@@ -238,7 +238,7 @@ internal class SelectionManager {
             val range = selectionRange!!
             selectionRange = range.copy(
                 startCol = 0,
-                endCol = cols - 1
+                endCol = cols - 1,
             )
         }
     }
@@ -280,6 +280,7 @@ internal class SelectionManager {
                         // insert spurious newlines that break the command when pasted.
                         if (row < maxRow && !line.softWrapped) append('\n')
                     }
+
                     SelectionMode.BLOCK -> {
                         val startCol = when (row) {
                             minRow -> minOf(range.startCol, range.endCol)
@@ -302,6 +303,7 @@ internal class SelectionManager {
                         // Only add newline for hard line breaks, not soft wraps.
                         if (row < maxRow && !line.softWrapped) append('\n')
                     }
+
                     SelectionMode.NONE -> {}
                 }
             }
@@ -316,7 +318,9 @@ internal class SelectionManager {
                 val maxRow = maxOf(range.startRow, range.endRow)
                 row in minRow..maxRow
             }
+
             SelectionMode.BLOCK -> range.contains(row, col)
+
             SelectionMode.NONE -> false
         }
     }
