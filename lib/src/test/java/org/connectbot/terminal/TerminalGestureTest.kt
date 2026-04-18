@@ -22,7 +22,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
@@ -43,13 +42,12 @@ class TerminalGestureTest {
     fun testQuickTapTriggersOnTerminalTap() {
         var tapCount = 0
         val emulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
-        var selectionActive = false
 
         composeTestRule.setContent {
             Terminal(
                 terminalEmulator = emulator,
                 onTerminalTap = { tapCount++ },
-                onSelectionControllerAvailable = { controller ->
+                onSelectionControllerAvailable = { _ ->
                     // This is called once when the terminal is composed
                 },
             )
