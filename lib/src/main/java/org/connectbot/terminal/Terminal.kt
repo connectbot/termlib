@@ -822,6 +822,13 @@ internal fun TerminalWithAccessibility(
             val dimensions = terminalEmulator.dimensions
             if (newRows != dimensions.rows || newCols != dimensions.columns) {
                 terminalEmulator.resize(newRows, newCols)
+
+                // If selection is active, ensure it stays within the new visible bounds.
+                // This ensures the Copy button resets to the last visible line when the screen
+                // shrinks (e.g. keyboard up) without forcing a scroll to the bottom.
+                if (selectionManager.mode != SelectionMode.NONE) {
+                    selectionManager.clampToDimensions(newRows, newCols)
+                }
             }
         }
 

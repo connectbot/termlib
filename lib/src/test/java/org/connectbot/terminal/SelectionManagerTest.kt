@@ -564,4 +564,23 @@ class SelectionManagerTest {
         selectionManager.clearSelection()
         assertEquals(SelectionMode.NONE, selectionManager.mode)
     }
+
+    @Test
+    fun testClampToDimensions() {
+        // Start with a large selection (e.g. 24 rows)
+        selectionManager.selectAll(24, 80)
+        var range = selectionManager.selectionRange!!
+        assertEquals(23, range.endRow)
+
+        // Shrink to 12 rows
+        selectionManager.clampToDimensions(12, 80)
+        range = selectionManager.selectionRange!!
+        assertEquals(0, range.startRow)
+        assertEquals(11, range.endRow) // Clamped to new maxRow - 1
+
+        // Expand back to 24 rows - should NOT expand back automatically
+        selectionManager.clampToDimensions(24, 80)
+        range = selectionManager.selectionRange!!
+        assertEquals(11, range.endRow) // Still at 11
+    }
 }

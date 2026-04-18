@@ -267,6 +267,24 @@ internal class SelectionManager {
         selectionRange = SelectionRange(0, 0, rows - 1, cols - 1)
     }
 
+    /**
+     * Clamps the selection range to the given dimensions.
+     * Useful when the terminal is resized.
+     */
+    fun clampToDimensions(rows: Int, cols: Int) {
+        val range = selectionRange ?: return
+        val newStartRow = range.startRow.coerceAtMost(rows - 1)
+        val newEndRow = range.endRow.coerceAtMost(rows - 1)
+        val newStartCol = range.startCol.coerceAtMost(cols - 1)
+        val newEndCol = range.endCol.coerceAtMost(cols - 1)
+
+        if (newStartRow != range.startRow || newEndRow != range.endRow ||
+            newStartCol != range.startCol || newEndCol != range.endCol
+        ) {
+            selectionRange = SelectionRange(newStartRow, newStartCol, newEndRow, newEndCol)
+        }
+    }
+
     internal fun adjustSelectionForMode(cols: Int, snapshot: TerminalSnapshot?, scrollbackPosition: Int = 0) {
         val range = selectionRange ?: return
 
