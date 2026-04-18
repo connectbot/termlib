@@ -129,7 +129,16 @@ internal class ImeInputView(
      * suggestion context stays in sync with the terminal's stateless text model.
      */
     fun resetImeBuffer() {
+        // Clear both the Editable AND the composing-text tracking so an
+        // in-flight IME composition doesn't resume against stale state.
+        // Without the composition reset, a mid-composition interruption
+        // from an external key path (hardware keyboard, macro key, IME
+        // dismissal) leaves the tracked composingText non-empty, and the
+        // next setComposingText() computes its backspace-count against
+        // that stale length — producing ghost backspaces or duplicated
+        // input on the next IME message.
         activeConnection?.editable?.clear()
+        activeConnection?.resetComposition()
         onUpdateSelection(this, 0, 0, -1, -1)
     }
 
@@ -203,14 +212,18 @@ internal class ImeInputView(
                 return sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
             }
 
-            // Delete multiple characters (leftLength backspaces)
-            for (i in 0 until leftLength) {
+            // Cap the loop: real IMEs send single-digit values here. A misbehaving
+            // or hostile IME asking for ~2^31 deletions would freeze the UI thread
+            // in a DEL-key loop. MAX_DELETE_SURROUNDING is well above anything
+            // legitimate.
+            val bounded = leftLength.coerceIn(0, MAX_DELETE_SURROUNDING)
+            for (i in 0 until bounded) {
                 sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
             }
 
             // TODO: Implement forward delete if rightLength > 0
-            if (leftLength > 0 && composingText.isNotEmpty()) {
-                val newLength = (composingText.length - leftLength).coerceAtLeast(0)
+            if (bounded > 0 && composingText.isNotEmpty()) {
+                val newLength = (composingText.length - bounded).coerceAtLeast(0)
                 composingText = composingText.substring(0, newLength)
             }
 
@@ -290,5 +303,21 @@ internal class ImeInputView(
                 keyboardHandler.onTextInput(text.toByteArray(Charsets.UTF_8))
             }
         }
+
+        /**
+         * Drop in-flight composition tracking without touching the terminal
+         * output. Called from [ImeInputView.resetImeBuffer] so an interrupted
+         * composition (e.g. external hardware-key events, IME dismissal mid-
+         * conversion) doesn't leave stale length state that a subsequent
+         * [setComposingText] would compute its backspace count against.
+         */
+        internal fun resetComposition() {
+            composingText = ""
+        }
+    }
+
+    companion object {
+        /** Upper bound on [InputConnection.deleteSurroundingText]'s `leftLength`. */
+        private const val MAX_DELETE_SURROUNDING = 4096
     }
 }
