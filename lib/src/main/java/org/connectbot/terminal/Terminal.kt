@@ -513,6 +513,9 @@ fun TerminalWithAccessibility(
     val maxScroll = remember(screenState.snapshot.scrollback.size, baseCharHeight) {
         screenState.snapshot.scrollback.size * baseCharHeight
     }
+    LaunchedEffect(maxScroll) {
+        scrollOffset.updateBounds(0f, maxScroll)
+    }
 
     // Selection manager
     val selectionManager = remember(terminalEmulator) {
@@ -875,6 +878,7 @@ fun TerminalWithAccessibility(
                         var secondPointer: PointerInputChange? = null
                         val multiTouchTimeout = down.uptimeMillis + WAIT_FOR_SECOND_TOUCH_MS
                         var panAccumulator = Offset.Zero
+                        var initialScrollOffset = 0f
 
                         // 4. Main event loop
                         while (true) {
@@ -906,6 +910,7 @@ fun TerminalWithAccessibility(
                                 if (!isGracePeriod && panAccumulator.getDistanceSquared() > touchSlopSquared) {
                                     longPressJob.cancel()
                                     gestureType = GestureType.Scroll
+                                    initialScrollOffset = scrollOffset.value
                                     // Clear any active selection when scrolling starts
                                     if (selectionManager.mode != SelectionMode.NONE) {
                                         selectionManager.clearSelection()
@@ -932,10 +937,9 @@ fun TerminalWithAccessibility(
                                 }
 
                                 GestureType.Scroll -> {
-                                    // Update scroll offset
-                                    // Drag down (positive dragAmount.y) = view older content (increase scrollbackPosition)
-                                    // Drag up (negative dragAmount.y) = view newer content (decrease scrollbackPosition)
-                                    val newOffset = (scrollOffset.value + dragAmount.y)
+                                    // Update scroll offset using total pan from the start of the gesture
+                                    // to avoid stuttering from stale scrollOffset.value.
+                                    val newOffset = (initialScrollOffset + panAccumulator.y)
                                         .coerceIn(0f, maxScroll)
                                     coroutineScope.launch {
                                         scrollOffset.snapTo(newOffset)
@@ -1007,25 +1011,14 @@ fun TerminalWithAccessibility(
                                 // Apply fling animation
                                 val velocity = velocityTracker.calculateVelocity()
                                 coroutineScope.launch {
-                                    var targetValue = scrollOffset.targetValue
                                     scrollOffset.animateDecay(
                                         initialVelocity = velocity.y,
                                         animationSpec = splineBasedDecay(density),
                                     ) {
-                                        targetValue = value
                                         // Update terminal buffer during animation
                                         val scrolledLines =
                                             (value / baseCharHeight).toInt()
                                         screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
-                                    }
-
-                                    // Clamp final position if needed
-                                    if (targetValue < 0f) {
-                                        scrollOffset.snapTo(0f)
-                                        screenState.scrollToBottom()
-                                    } else if (targetValue > maxScroll) {
-                                        scrollOffset.snapTo(maxScroll)
-                                        screenState.scrollToTop()
                                     }
                                 }
                             }
