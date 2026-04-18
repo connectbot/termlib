@@ -48,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +69,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -358,6 +360,10 @@ fun TerminalWithAccessibility(
     }
 
     val terminalEmulator: TerminalEmulatorImpl = terminalEmulator
+
+    // Remember updated callbacks to avoid stale lambdas inside pointerInput
+    val currentOnTerminalTap by rememberUpdatedState(onTerminalTap)
+    val currentOnHyperlinkClick by rememberUpdatedState(onHyperlinkClick)
 
     val density = LocalDensity.current
     val clipboardManager = LocalClipboardManager.current
@@ -779,7 +785,7 @@ fun TerminalWithAccessibility(
                 } else {
                     Modifier.fillMaxSize()
                 }
-                ).pointerInput(terminalEmulator, baseCharHeight) {
+                ).pointerInput(terminalEmulator, baseCharWidth, baseCharHeight) {
                 val touchSlopSquared =
                     viewConfiguration.touchSlop * viewConfiguration.touchSlop
                 coroutineScope {
@@ -862,13 +868,92 @@ fun TerminalWithAccessibility(
                             }
                         }
 
-                        // 3. Check for multi-touch (zoom)
-                        val secondPointer = withTimeoutOrNull(
-                            WAIT_FOR_SECOND_TOUCH_MS,
-                        ) {
-                            awaitPointerEvent().changes.firstOrNull { it.id != down.id && it.pressed }
+                        // 3. Setup tracking for velocity and multi-touch
+                        val velocityTracker = VelocityTracker()
+                        velocityTracker.addPosition(down.uptimeMillis, down.position)
+
+                        var secondPointer: PointerInputChange? = null
+                        val multiTouchTimeout = down.uptimeMillis + WAIT_FOR_SECOND_TOUCH_MS
+                        var panAccumulator = Offset.Zero
+
+                        // 4. Main event loop
+                        while (true) {
+                            val event: PointerEvent =
+                                awaitPointerEvent(PointerEventPass.Main)
+                            if (event.changes.all { !it.pressed }) break
+
+                            val change = event.changes.first()
+
+                            // 4a. Check for multi-touch (zoom)
+                            // Only allow zoom if we are still undetermined and within the initial grace period.
+                            if (gestureType == GestureType.Undetermined && change.uptimeMillis <= multiTouchTimeout && event.changes.size > 1) {
+                                secondPointer = event.changes.firstOrNull { it.id != down.id && it.pressed }
+                                if (secondPointer != null) break
+                            }
+
+                            velocityTracker.addPosition(
+                                change.uptimeMillis,
+                                change.position,
+                            )
+                            val dragAmount = change.positionChange()
+                            panAccumulator += dragAmount
+
+                            // 4b. Determine gesture if still undetermined
+                            if (gestureType == GestureType.Undetermined && !longPressDetected) {
+                                // Ignore touch slop if within multi-touch grace period
+                                val isGracePeriod = change.uptimeMillis <= multiTouchTimeout
+
+                                if (!isGracePeriod && panAccumulator.getDistanceSquared() > touchSlopSquared) {
+                                    longPressJob.cancel()
+                                    gestureType = GestureType.Scroll
+                                    // Clear any active selection when scrolling starts
+                                    if (selectionManager.mode != SelectionMode.NONE) {
+                                        selectionManager.clearSelection()
+                                    }
+                                }
+                            }
+
+                            // 4c. Handle based on gesture type
+                            when (gestureType) {
+                                GestureType.Selection -> {
+                                    if (selectionManager.isSelecting) {
+                                        val dragCol =
+                                            (change.position.x / baseCharWidth).toInt()
+                                                .coerceIn(0, screenState.snapshot.cols - 1)
+                                        val dragRow =
+                                            (change.position.y / baseCharHeight).toInt()
+                                                .coerceIn(0, screenState.snapshot.rows - 1)
+                                        selectionManager.updateSelection(
+                                            dragRow,
+                                            dragCol,
+                                        )
+                                        magnifierPosition = change.position
+                                    }
+                                }
+
+                                GestureType.Scroll -> {
+                                    // Update scroll offset
+                                    // Drag down (positive dragAmount.y) = view older content (increase scrollbackPosition)
+                                    // Drag up (negative dragAmount.y) = view newer content (decrease scrollbackPosition)
+                                    val newOffset = (scrollOffset.value + dragAmount.y)
+                                        .coerceIn(0f, maxScroll)
+                                    coroutineScope.launch {
+                                        scrollOffset.snapTo(newOffset)
+                                    }
+
+                                    // Update terminal buffer scrollback position
+                                    val scrolledLines =
+                                        (newOffset / baseCharHeight).toInt()
+                                    screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                }
+
+                                else -> {}
+                            }
+
+                            change.consume()
                         }
 
+                        // 5. Handle zoom if multi-touch was detected
                         if (secondPointer != null) {
                             longPressJob.cancel()
                             gestureType = GestureType.Zoom
@@ -911,75 +996,6 @@ fun TerminalWithAccessibility(
                             zoomOffset = Offset.Zero
 
                             return@awaitEachGesture
-                        }
-
-                        // 4. Track velocity for scroll fling
-                        val velocityTracker = VelocityTracker()
-                        velocityTracker.addPosition(down.uptimeMillis, down.position)
-
-                        // 5. Event loop for single-touch gestures
-                        while (true) {
-                            val event: PointerEvent =
-                                awaitPointerEvent(PointerEventPass.Main)
-                            if (event.changes.all { !it.pressed }) break
-
-                            val change = event.changes.first()
-                            velocityTracker.addPosition(
-                                change.uptimeMillis,
-                                change.position,
-                            )
-                            val dragAmount = change.positionChange()
-
-                            // Determine gesture if still undetermined
-                            if (gestureType == GestureType.Undetermined && !longPressDetected) {
-                                if (dragAmount.getDistanceSquared() > touchSlopSquared) {
-                                    longPressJob.cancel()
-                                    gestureType = GestureType.Scroll
-                                    // Clear any active selection when scrolling starts
-                                    if (selectionManager.mode != SelectionMode.NONE) {
-                                        selectionManager.clearSelection()
-                                    }
-                                }
-                            }
-
-                            // Handle based on gesture type
-                            when (gestureType) {
-                                GestureType.Selection -> {
-                                    if (selectionManager.isSelecting) {
-                                        val dragCol =
-                                            (change.position.x / baseCharWidth).toInt()
-                                                .coerceIn(0, screenState.snapshot.cols - 1)
-                                        val dragRow =
-                                            (change.position.y / baseCharHeight).toInt()
-                                                .coerceIn(0, screenState.snapshot.rows - 1)
-                                        selectionManager.updateSelection(
-                                            dragRow,
-                                            dragCol,
-                                        )
-                                        magnifierPosition = change.position
-                                    }
-                                }
-
-                                GestureType.Scroll -> {
-                                    // Update scroll offset
-                                    // Drag down (positive dragAmount.y) = view older content (increase scrollbackPosition)
-                                    // Drag up (negative dragAmount.y) = view newer content (decrease scrollbackPosition)
-                                    val newOffset = (scrollOffset.value + dragAmount.y)
-                                        .coerceIn(0f, maxScroll)
-                                    coroutineScope.launch {
-                                        scrollOffset.snapTo(newOffset)
-                                    }
-
-                                    // Update terminal buffer scrollback position
-                                    val scrolledLines =
-                                        (newOffset / baseCharHeight).toInt()
-                                    screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
-                                }
-
-                                else -> {}
-                            }
-
-                            change.consume()
                         }
 
                         // 6. Gesture ended - cleanup
@@ -1037,13 +1053,13 @@ fun TerminalWithAccessibility(
 
                                     if (hyperlinkUrl != null) {
                                         // User tapped on a hyperlink
-                                        onHyperlinkClick(hyperlinkUrl)
+                                        currentOnHyperlinkClick(hyperlinkUrl)
                                     } else {
                                         // Request focus when terminal is tapped to show keyboard
                                         if (keyboardEnabled) {
                                             focusRequester.requestFocus()
                                         }
-                                        onTerminalTap()
+                                        currentOnTerminalTap()
                                     }
                                 }
                             }
