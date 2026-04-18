@@ -17,7 +17,6 @@
 package org.connectbot.terminal
 
 import android.view.KeyCharacterMap
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -31,6 +30,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import android.view.KeyEvent as AndroidKeyEvent
 
 @RunWith(AndroidJUnit4::class)
 class KeyboardHandlerTest {
@@ -42,7 +42,7 @@ class KeyboardHandlerTest {
     fun setup() {
         terminalEmulator = TerminalEmulatorFactory.create(
             initialRows = 24,
-            initialCols = 80
+            initialCols = 80,
         )
         keyboardHandler = KeyboardHandler(terminalEmulator)
         inputProcessedCallCount = 0
@@ -175,19 +175,18 @@ class KeyboardHandlerTest {
         assertEquals(3, inputProcessedCallCount)
     }
 
-    private fun createKeyEvent(key: Key, type: KeyEventType): KeyEvent {
-        return KeyEvent(
-            NativeKeyEvent(
-                AndroidKeyEvent(
-                    if (type == KeyEventType.KeyDown)
-                        AndroidKeyEvent.ACTION_DOWN
-                    else
-                        AndroidKeyEvent.ACTION_UP,
-                    keyToAndroidKeyCode(key)
-                )
-            )
-        )
-    }
+    private fun createKeyEvent(key: Key, type: KeyEventType): KeyEvent = KeyEvent(
+        NativeKeyEvent(
+            AndroidKeyEvent(
+                if (type == KeyEventType.KeyDown) {
+                    AndroidKeyEvent.ACTION_DOWN
+                } else {
+                    AndroidKeyEvent.ACTION_UP
+                },
+                keyToAndroidKeyCode(key),
+            ),
+        ),
+    )
 
     // === Compose Mode Tests ===
 
@@ -322,10 +321,10 @@ class KeyboardHandlerTest {
     // === Dead Key Tests ===
 
     // Fake keycodes used exclusively in dead-key tests.
-    private val FAKE_DEAD_GRAVE   = 900  // returns COMBINING_ACCENT | '`' (U+0060, grave accent)
-    private val FAKE_KEY_A        = 901  // returns 'a' — combines with grave → 'à' (U+00E0)
-    private val FAKE_KEY_B        = 902  // returns 'b' — does NOT combine with grave
-    private val FAKE_ACCENT_GRAVE = '`'.code  // spacing form of the grave accent
+    private val FAKE_DEAD_GRAVE = 900 // returns COMBINING_ACCENT | '`' (U+0060, grave accent)
+    private val FAKE_KEY_A = 901 // returns 'a' — combines with grave → 'à' (U+00E0)
+    private val FAKE_KEY_B = 902 // returns 'b' — does NOT combine with grave
+    private val FAKE_ACCENT_GRAVE = '`'.code // spacing form of the grave accent
 
     /**
      * A [KeyboardHandler.unicodeCharLookup] that simulates a keyboard with a dead grave key.
@@ -340,21 +339,19 @@ class KeyboardHandlerTest {
     private val fakeDeadKeyLookup: (Int, Int, Int) -> Int = { _, keyCode, _ ->
         when (keyCode) {
             FAKE_DEAD_GRAVE -> KeyCharacterMap.COMBINING_ACCENT or FAKE_ACCENT_GRAVE
-            FAKE_KEY_A      -> 'a'.code
-            FAKE_KEY_B      -> 'b'.code
+            FAKE_KEY_A -> 'a'.code
+            FAKE_KEY_B -> 'b'.code
             AndroidKeyEvent.KEYCODE_A -> 'a'.code
-            else            -> 0
+            else -> 0
         }
     }
 
     /** Creates a KeyEvent directly from an Android keycode (no Compose Key mapping needed). */
-    private fun createRawKeyEvent(keycode: Int): KeyEvent {
-        return KeyEvent(
-            NativeKeyEvent(
-                AndroidKeyEvent(AndroidKeyEvent.ACTION_DOWN, keycode)
-            )
-        )
-    }
+    private fun createRawKeyEvent(keycode: Int): KeyEvent = KeyEvent(
+        NativeKeyEvent(
+            AndroidKeyEvent(AndroidKeyEvent.ACTION_DOWN, keycode),
+        ),
+    )
 
     /**
      * Send [events] through a fresh KeyboardHandler (with [lookup] installed) and return
@@ -365,7 +362,7 @@ class KeyboardHandlerTest {
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
-            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
         val handler = KeyboardHandler(emulator, unicodeCharLookup = lookup)
         for (event in events) handler.onKeyEvent(event)
@@ -378,10 +375,12 @@ class KeyboardHandlerTest {
         // dead grave + 'a' → 'à' (U+00E0)
         val expected = KeyCharacterMap.getDeadChar(FAKE_ACCENT_GRAVE, 'a'.code)
 
-        val output = collectOutput(listOf(
-            createRawKeyEvent(FAKE_DEAD_GRAVE),
-            createRawKeyEvent(FAKE_KEY_A)
-        ))
+        val output = collectOutput(
+            listOf(
+                createRawKeyEvent(FAKE_DEAD_GRAVE),
+                createRawKeyEvent(FAKE_KEY_A),
+            ),
+        )
 
         assertEquals(String(Character.toChars(expected)), output)
     }
@@ -392,10 +391,12 @@ class KeyboardHandlerTest {
         val combined = KeyCharacterMap.getDeadChar(FAKE_ACCENT_GRAVE, 'b'.code)
         assumeTrue("grave + b unexpectedly combines", combined == 0)
 
-        val output = collectOutput(listOf(
-            createRawKeyEvent(FAKE_DEAD_GRAVE),
-            createRawKeyEvent(FAKE_KEY_B)
-        ))
+        val output = collectOutput(
+            listOf(
+                createRawKeyEvent(FAKE_DEAD_GRAVE),
+                createRawKeyEvent(FAKE_KEY_B),
+            ),
+        )
 
         assertEquals("`b", output)
     }
@@ -403,10 +404,12 @@ class KeyboardHandlerTest {
     @Test
     fun testSameDeadKeyTwiceEmitsSpacingAccent() {
         // dead grave + dead grave → '`'
-        val output = collectOutput(listOf(
-            createRawKeyEvent(FAKE_DEAD_GRAVE),
-            createRawKeyEvent(FAKE_DEAD_GRAVE)
-        ))
+        val output = collectOutput(
+            listOf(
+                createRawKeyEvent(FAKE_DEAD_GRAVE),
+                createRawKeyEvent(FAKE_DEAD_GRAVE),
+            ),
+        )
 
         assertEquals("`", output)
     }
@@ -418,7 +421,7 @@ class KeyboardHandlerTest {
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
-            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
         val handler = KeyboardHandler(emulator, unicodeCharLookup = fakeDeadKeyLookup)
         handler.onKeyEvent(createRawKeyEvent(FAKE_DEAD_GRAVE))
@@ -448,22 +451,25 @@ class KeyboardHandlerTest {
     }
 
     /** Creates a KeyEvent with an explicit [deviceId] for testing device-specific lookup. */
-    private fun createRawKeyEventWithDeviceId(keycode: Int, deviceId: Int): KeyEvent {
-        return KeyEvent(
-            NativeKeyEvent(
-                AndroidKeyEvent(
-                    /* downTime = */ 0L,
-                    /* eventTime = */ 0L,
-                    AndroidKeyEvent.ACTION_DOWN,
-                    keycode,
-                    /* repeat = */ 0,
-                    /* metaState = */ 0,
-                    deviceId,
-                    /* scancode = */ 0,
-                )
-            )
-        )
-    }
+    private fun createRawKeyEventWithDeviceId(keycode: Int, deviceId: Int): KeyEvent = KeyEvent(
+        NativeKeyEvent(
+            AndroidKeyEvent(
+                /* downTime = */
+                0L,
+                /* eventTime = */
+                0L,
+                AndroidKeyEvent.ACTION_DOWN,
+                keycode,
+                /* repeat = */
+                0,
+                /* metaState = */
+                0,
+                deviceId,
+                /* scancode = */
+                0,
+            ),
+        ),
+    )
 
     @Test
     fun testUnicodeCharLookupReceivesDeviceIdFromKeyEvent() {
@@ -474,8 +480,7 @@ class KeyboardHandlerTest {
             initialRows = 24,
             initialCols = 80,
         )
-        val handler = KeyboardHandler(emulator) {
-            deviceId, keyCode, metaState ->
+        val handler = KeyboardHandler(emulator) { deviceId, keyCode, metaState ->
             capturedDeviceId = deviceId
             if (keyCode == AndroidKeyEvent.KEYCODE_A) 'a'.code else 0
         }
@@ -494,44 +499,54 @@ class KeyboardHandlerTest {
 
     private val swissGermanKcmLookup: (Int, Int, Int) -> Int = { _, keyCode, metaState ->
         if (keyCode == swissGermanApostropheKeycode) {
-            val shift    = metaState and AndroidKeyEvent.META_SHIFT_ON != 0
-            val caps     = metaState and AndroidKeyEvent.META_CAPS_LOCK_ON != 0
+            val shift = metaState and AndroidKeyEvent.META_SHIFT_ON != 0
+            val caps = metaState and AndroidKeyEvent.META_CAPS_LOCK_ON != 0
             val rightAlt = metaState and AndroidKeyEvent.META_ALT_RIGHT_ON != 0
             when {
-                rightAlt        -> '{'.code
-                caps && shift   -> '\u00C0'.code   // À
-                caps            -> '\u00C4'.code   // Ä
-                shift           -> '\u00E0'.code   // à
-                else            -> '\u00E4'.code   // ä
+                rightAlt -> '{'.code
+
+                caps && shift -> '\u00C0'.code
+
+                // À
+                caps -> '\u00C4'.code
+
+                // Ä
+                shift -> '\u00E0'.code
+
+                // à
+                else -> '\u00E4'.code // ä
             }
         } else {
             0
         }
     }
 
-    private fun createKeyEventWithMeta(keycode: Int, metaState: Int): KeyEvent {
-        return KeyEvent(
-            NativeKeyEvent(
-                AndroidKeyEvent(
-                    /* downTime = */ 0L,
-                    /* eventTime = */ 0L,
-                    AndroidKeyEvent.ACTION_DOWN,
-                    keycode,
-                    /* repeat = */ 0,
-                    metaState,
-                    /* deviceId = */ KeyCharacterMap.VIRTUAL_KEYBOARD,
-                    /* scancode = */ 0,
-                )
-            )
-        )
-    }
+    private fun createKeyEventWithMeta(keycode: Int, metaState: Int): KeyEvent = KeyEvent(
+        NativeKeyEvent(
+            AndroidKeyEvent(
+                /* downTime = */
+                0L,
+                /* eventTime = */
+                0L,
+                AndroidKeyEvent.ACTION_DOWN,
+                keycode,
+                /* repeat = */
+                0,
+                metaState,
+                /* deviceId = */
+                KeyCharacterMap.VIRTUAL_KEYBOARD,
+                /* scancode = */
+                0,
+            ),
+        ),
+    )
 
     private fun collectOutputWithMeta(events: List<KeyEvent>, rightAltMode: RightAltMode = RightAltMode.CharacterModifier): String {
         val outputs = mutableListOf<ByteArray>()
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
-            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
         val handler = KeyboardHandler(emulator, unicodeCharLookup = swissGermanKcmLookup, rightAltMode = rightAltMode)
         for (event in events) handler.onKeyEvent(event)
@@ -541,44 +556,54 @@ class KeyboardHandlerTest {
 
     @Test
     fun testSwissGermanApostropheBaseProducesAe() {
-        val output = collectOutputWithMeta(listOf(
-            createKeyEventWithMeta(swissGermanApostropheKeycode, 0)
-        ))
+        val output = collectOutputWithMeta(
+            listOf(
+                createKeyEventWithMeta(swissGermanApostropheKeycode, 0),
+            ),
+        )
         assertEquals("ä", output)
     }
 
     @Test
     fun testSwissGermanApostropheShiftProducesAGrave() {
-        val output = collectOutputWithMeta(listOf(
-            createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_SHIFT_ON)
-        ))
+        val output = collectOutputWithMeta(
+            listOf(
+                createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_SHIFT_ON),
+            ),
+        )
         assertEquals("à", output)
     }
 
     @Test
     fun testSwissGermanApostropheCapslockProducesUpperAe() {
-        val output = collectOutputWithMeta(listOf(
-            createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_CAPS_LOCK_ON)
-        ))
+        val output = collectOutputWithMeta(
+            listOf(
+                createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_CAPS_LOCK_ON),
+            ),
+        )
         assertEquals("Ä", output)
     }
 
     @Test
     fun testSwissGermanApostropheCapslockShiftProducesUpperAGrave() {
-        val output = collectOutputWithMeta(listOf(
-            createKeyEventWithMeta(
-                swissGermanApostropheKeycode,
-                AndroidKeyEvent.META_CAPS_LOCK_ON or AndroidKeyEvent.META_SHIFT_ON
-            )
-        ))
+        val output = collectOutputWithMeta(
+            listOf(
+                createKeyEventWithMeta(
+                    swissGermanApostropheKeycode,
+                    AndroidKeyEvent.META_CAPS_LOCK_ON or AndroidKeyEvent.META_SHIFT_ON,
+                ),
+            ),
+        )
         assertEquals("À", output)
     }
 
     @Test
     fun testSwissGermanApostropheRaltProducesOpenBrace() {
-        val output = collectOutputWithMeta(listOf(
-            createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_ALT_RIGHT_ON)
-        ))
+        val output = collectOutputWithMeta(
+            listOf(
+                createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_ALT_RIGHT_ON),
+            ),
+        )
         assertEquals("{", output)
     }
 
@@ -588,17 +613,19 @@ class KeyboardHandlerTest {
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
-            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
         val handler = KeyboardHandler(
             emulator,
             unicodeCharLookup = swissGermanKcmLookup,
-            rightAltMode = RightAltMode.Meta
+            rightAltMode = RightAltMode.Meta,
         )
-        handler.onKeyEvent(createKeyEventWithMeta(
-            swissGermanApostropheKeycode,
-            AndroidKeyEvent.META_ALT_RIGHT_ON or AndroidKeyEvent.META_ALT_ON
-        ))
+        handler.onKeyEvent(
+            createKeyEventWithMeta(
+                swissGermanApostropheKeycode,
+                AndroidKeyEvent.META_ALT_RIGHT_ON or AndroidKeyEvent.META_ALT_ON,
+            ),
+        )
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
 
         val bytes = outputs.flatMap { it.toList() }.toByteArray()
@@ -607,18 +634,15 @@ class KeyboardHandlerTest {
         assertEquals(expected.toList(), bytes.toList())
     }
 
-
-    private fun keyToAndroidKeyCode(key: Key): Int {
-        return when (key) {
-            Key.A -> AndroidKeyEvent.KEYCODE_A
-            Key.B -> AndroidKeyEvent.KEYCODE_B
-            Key.C -> AndroidKeyEvent.KEYCODE_C
-            Key.Enter -> AndroidKeyEvent.KEYCODE_ENTER
-            Key.Spacebar -> AndroidKeyEvent.KEYCODE_SPACE
-            Key.Backspace -> AndroidKeyEvent.KEYCODE_DEL
-            Key.Tab -> AndroidKeyEvent.KEYCODE_TAB
-            Key.Escape -> AndroidKeyEvent.KEYCODE_ESCAPE
-            else -> AndroidKeyEvent.KEYCODE_UNKNOWN
-        }
+    private fun keyToAndroidKeyCode(key: Key): Int = when (key) {
+        Key.A -> AndroidKeyEvent.KEYCODE_A
+        Key.B -> AndroidKeyEvent.KEYCODE_B
+        Key.C -> AndroidKeyEvent.KEYCODE_C
+        Key.Enter -> AndroidKeyEvent.KEYCODE_ENTER
+        Key.Spacebar -> AndroidKeyEvent.KEYCODE_SPACE
+        Key.Backspace -> AndroidKeyEvent.KEYCODE_DEL
+        Key.Tab -> AndroidKeyEvent.KEYCODE_TAB
+        Key.Escape -> AndroidKeyEvent.KEYCODE_ESCAPE
+        else -> AndroidKeyEvent.KEYCODE_UNKNOWN
     }
 }

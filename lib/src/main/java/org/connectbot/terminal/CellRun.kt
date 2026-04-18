@@ -35,7 +35,7 @@ internal class CellRun {
 
     // Text attributes
     var bold: Boolean = false
-    var underline: Int = 0  // 0=none, 1=single, 2=double, 3=curly
+    var underline: Int = 0 // 0=none, 1=single, 2=double, 3=curly
     var italic: Boolean = false
     var blink: Boolean = false
     var reverse: Boolean = false
@@ -43,8 +43,8 @@ internal class CellRun {
     var font: Int = 0
 
     // Line attributes
-    var dwl: Boolean = false  // Double-width line
-    var dhl: Int = 0  // Double-height line (0=none, 1=top, 2=bottom)
+    var dwl: Boolean = false // Double-width line
+    var dhl: Int = 0 // Double-height line (0=none, 1=top, 2=bottom)
 
     // Characters in this run (UTF-16, may include surrogate pairs)
     var chars: CharArray = CharArray(256)
@@ -71,7 +71,5 @@ internal class CellRun {
     /**
      * Get the characters as a String.
      */
-    fun getCharsAsString(): String {
-        return String(chars, 0, chars.size)
-    }
+    fun getCharsAsString(): String = String(chars, 0, chars.size)
 }

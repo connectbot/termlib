@@ -45,7 +45,7 @@ internal class ImeInputView(
     internal val onUpdateSelection: (view: View, selStart: Int, selEnd: Int, candidatesStart: Int, candidatesEnd: Int) -> Unit =
         { view, selStart, selEnd, candidatesStart, candidatesEnd ->
             inputMethodManager.updateSelection(view, selStart, selEnd, candidatesStart, candidatesEnd)
-        }
+        },
 ) : View(context) {
 
     init {
@@ -89,9 +89,9 @@ internal class ImeInputView(
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
         // Configure IME options
         outAttrs.imeOptions = outAttrs.imeOptions or
-                EditorInfo.IME_FLAG_NO_EXTRACT_UI or
-                EditorInfo.IME_FLAG_NO_ENTER_ACTION or
-                EditorInfo.IME_ACTION_NONE
+            EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+            EditorInfo.IME_FLAG_NO_ENTER_ACTION or
+            EditorInfo.IME_ACTION_NONE
 
         if (isComposeModeActive) {
             // Compose mode: allow voice input and IME suggestions.
@@ -109,9 +109,9 @@ internal class ImeInputView(
             // - TYPE_TEXT_FLAG_NO_SUGGESTIONS: Disables autocomplete/suggestions
             // - TYPE_NULL: No special input processing
             outAttrs.inputType = EditorInfo.TYPE_NULL or
-                    EditorInfo.TYPE_TEXT_VARIATION_PASSWORD or
-                    EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
-                    EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                EditorInfo.TYPE_TEXT_VARIATION_PASSWORD or
+                EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
+                EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
 
         return TerminalInputConnection(this, isComposeModeActive).also { activeConnection = it }
@@ -138,7 +138,7 @@ internal class ImeInputView(
      */
     private inner class TerminalInputConnection(
         targetView: View,
-        private val fullEditor: Boolean
+        private val fullEditor: Boolean,
     ) : BaseInputConnection(targetView, fullEditor) {
 
         private var composingText: String = ""
@@ -291,5 +291,4 @@ internal class ImeInputView(
             }
         }
     }
-
 }

@@ -47,7 +47,7 @@ class ImeInputViewTest {
     private val noOpImm get() = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
 
     private fun makeView(
-        selectionUpdates: MutableList<SelectionUpdate>? = null
+        selectionUpdates: MutableList<SelectionUpdate>? = null,
     ): ImeInputView {
         val onUpdateSelection: (View, Int, Int, Int, Int) -> Unit =
             if (selectionUpdates != null) {
@@ -65,7 +65,7 @@ class ImeInputViewTest {
         val selStart: Int,
         val selEnd: Int,
         val candidatesStart: Int,
-        val candidatesEnd: Int
+        val candidatesEnd: Int,
     )
 
     private fun ImeInputView.ic(composeMode: Boolean = false): BaseInputConnection {
@@ -240,7 +240,7 @@ class ImeInputViewTest {
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
-            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
         val handler = KeyboardHandler(emulator)
         var ic: InputConnection? = null
@@ -249,7 +249,7 @@ class ImeInputViewTest {
             view.isComposeModeActive = true
             view.setOnKeyListener { _, _, event ->
                 handler.onKeyEvent(
-                    androidx.compose.ui.input.key.KeyEvent(event)
+                    androidx.compose.ui.input.key.KeyEvent(event),
                 )
             }
             ic = view.onCreateInputConnection(EditorInfo())
@@ -270,6 +270,7 @@ class ImeInputViewTest {
                     code == 0x08 || code == 0x7F -> {
                         if (buffer.isNotEmpty()) buffer.deleteCharAt(buffer.length - 1)
                     }
+
                     code >= 0x20 -> buffer.append(byte.toInt().toChar())
                 }
             }
@@ -384,7 +385,7 @@ class ImeInputViewTest {
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
-            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
         val handler = KeyboardHandler(emulator)
         var ic: InputConnection? = null
@@ -446,7 +447,7 @@ class ImeInputViewTest {
             onKeyboardInput = { data ->
                 outputs.add(data.copyOf())
                 if (data.contains(0x0D.toByte())) enterDispatched = true
-            }
+            },
         )
         val handler = KeyboardHandler(emulator)
         var view: ImeInputView? = null
@@ -568,7 +569,7 @@ class ImeInputViewTest {
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             ic.sendKeyEvent(
-                KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A, 0, KeyEvent.META_CTRL_ON)
+                KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A, 0, KeyEvent.META_CTRL_ON),
             )
         }
         drainMainLooper()
@@ -586,7 +587,7 @@ class ImeInputViewTest {
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             ic.sendKeyEvent(
-                KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_C, 0, KeyEvent.META_CTRL_ON)
+                KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_C, 0, KeyEvent.META_CTRL_ON),
             )
         }
         drainMainLooper()
@@ -604,7 +605,7 @@ class ImeInputViewTest {
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             ic.sendKeyEvent(
-                KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A, 0, KeyEvent.META_ALT_ON)
+                KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A, 0, KeyEvent.META_ALT_ON),
             )
         }
         drainMainLooper()
@@ -646,5 +647,4 @@ class ImeInputViewTest {
 
         assertEquals(" ", effectiveText(outputs))
     }
-
 }

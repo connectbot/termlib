@@ -42,7 +42,7 @@ internal enum class SemanticType {
     ANNOTATION,
 
     /** Hyperlink (OSC 8) - metadata contains the URL */
-    HYPERLINK
+    HYPERLINK,
 }
 
 /**
@@ -64,7 +64,7 @@ internal data class SemanticSegment(
     val endCol: Int,
     val semanticType: SemanticType,
     val metadata: String? = null,
-    val promptId: Int = -1
+    val promptId: Int = -1,
 ) {
     /**
      * Check if a column is within this segment's range.

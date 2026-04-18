@@ -109,26 +109,56 @@ internal object ColorCache {
         return -1 // Not in palette
     }
 
-    private fun standardAnsiColor(i: Int): Color {
-        return when (i) {
-            0 -> Color(0, 0, 0)         // Black
-            1 -> Color(205, 0, 0)       // Red
-            2 -> Color(0, 205, 0)       // Green
-            3 -> Color(205, 205, 0)     // Yellow
-            4 -> Color(0, 0, 238)       // Blue
-            5 -> Color(205, 0, 205)     // Magenta
-            6 -> Color(0, 205, 205)     // Cyan
-            7 -> Color(229, 229, 229)   // White
-            8 -> Color(127, 127, 127)   // Bright Black
-            9 -> Color(255, 0, 0)       // Bright Red
-            10 -> Color(0, 255, 0)      // Bright Green
-            11 -> Color(255, 255, 0)    // Bright Yellow
-            12 -> Color(92, 92, 255)    // Bright Blue
-            13 -> Color(255, 0, 255)    // Bright Magenta
-            14 -> Color(0, 255, 255)    // Bright Cyan
-            15 -> Color(255, 255, 255)  // Bright White
-            else -> Color.White
-        }
+    private fun standardAnsiColor(i: Int): Color = when (i) {
+        0 -> Color(0, 0, 0)
+
+        // Black
+        1 -> Color(205, 0, 0)
+
+        // Red
+        2 -> Color(0, 205, 0)
+
+        // Green
+        3 -> Color(205, 205, 0)
+
+        // Yellow
+        4 -> Color(0, 0, 238)
+
+        // Blue
+        5 -> Color(205, 0, 205)
+
+        // Magenta
+        6 -> Color(0, 205, 205)
+
+        // Cyan
+        7 -> Color(229, 229, 229)
+
+        // White
+        8 -> Color(127, 127, 127)
+
+        // Bright Black
+        9 -> Color(255, 0, 0)
+
+        // Bright Red
+        10 -> Color(0, 255, 0)
+
+        // Bright Green
+        11 -> Color(255, 255, 0)
+
+        // Bright Yellow
+        12 -> Color(92, 92, 255)
+
+        // Bright Blue
+        13 -> Color(255, 0, 255)
+
+        // Bright Magenta
+        14 -> Color(0, 255, 255)
+
+        // Bright Cyan
+        15 -> Color(255, 255, 255)
+
+        // Bright White
+        else -> Color.White
     }
 
     private fun rgb6Color(offset: Int): Color {
