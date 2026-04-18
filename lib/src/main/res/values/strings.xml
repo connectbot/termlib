@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Button that copies the currently selected terminal text to the clipboard and dismisses the selection -->
+    <string name="terminal_selection_copy">Copy</string>
+
+    <!-- Button that opens an overflow menu with additional text selection actions (Select All, Share, Paste, mode toggle). The glyph shown on the button face. -->
+    <string name="terminal_selection_more_options">⋮</string>
+
+    <!-- Accessibility content description for the overflow menu button, read aloud by screen readers such as TalkBack -->
+    <string name="terminal_selection_more_options_description">More options</string>
+
+    <!-- Overflow menu item that selects all visible text in the terminal -->
+    <string name="terminal_selection_select_all">Select All</string>
+
+    <!-- Overflow menu item that shares the currently selected terminal text via the Android share sheet, without copying to clipboard -->
+    <string name="terminal_selection_share">Share</string>
+
+    <!-- Overflow menu item that pastes clipboard text into the terminal and dismisses the selection -->
+    <string name="terminal_selection_paste">Paste</string>
+
+    <!-- Overflow menu item showing the current selection granularity; tapping cycles to the next mode (Character → Word → Line → Character) -->
+    <string name="terminal_selection_mode_character">Mode: Character</string>
+
+    <!-- Overflow menu item showing the current selection granularity; tapping cycles to the next mode (Character → Word → Line → Character) -->
+    <string name="terminal_selection_mode_word">Mode: Word</string>
+
+    <!-- Overflow menu item showing the current selection granularity; tapping cycles to the next mode (Character → Word → Line → Character) -->
+    <string name="terminal_selection_mode_line">Mode: Line</string>
+</resources>

@@ -17,7 +17,11 @@
 package org.connectbot.terminal
 
 import androidx.compose.ui.graphics.Color
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -38,7 +42,7 @@ class SelectionControllerTest {
             override fun startSelection(mode: SelectionMode) {
                 if (selectionManager.mode == SelectionMode.NONE) {
                     // Start at a default position for testing
-                    selectionManager.startSelection(10, 20, mode)
+                    selectionManager.startSelection(10, 20, cols = 80, mode = mode)
                 }
             }
 
@@ -68,6 +72,14 @@ class SelectionControllerTest {
 
             override fun toggleSelectionMode() {
                 selectionManager.toggleMode(80)
+            }
+
+            override fun setSelectionMode(mode: SelectionMode) {
+                selectionManager.setMode(mode, 80)
+            }
+
+            override fun selectAll() {
+                selectionManager.selectAll(25, 80)
             }
 
             override fun finishSelection() {
@@ -176,12 +188,35 @@ class SelectionControllerTest {
 
     @Test
     fun testToggleSelectionMode() {
-        selectionController.startSelection(SelectionMode.BLOCK)
-        assertEquals(SelectionMode.BLOCK, selectionManager.mode)
+        selectionController.startSelection(SelectionMode.CHARACTER)
+        assertEquals(SelectionMode.CHARACTER, selectionManager.mode)
 
         selectionController.toggleSelectionMode()
+        assertEquals(SelectionMode.WORD, selectionManager.mode)
 
+        selectionController.toggleSelectionMode()
         assertEquals(SelectionMode.LINE, selectionManager.mode)
+
+        selectionController.toggleSelectionMode()
+        assertEquals(SelectionMode.CHARACTER, selectionManager.mode)
+    }
+
+    @Test
+    fun testSetSelectionMode() {
+        selectionController.startSelection(SelectionMode.CHARACTER)
+        selectionController.setSelectionMode(SelectionMode.LINE)
+        assertEquals(SelectionMode.LINE, selectionManager.mode)
+    }
+
+    @Test
+    fun testSelectAll() {
+        selectionController.selectAll()
+        assertTrue(selectionController.isSelectionActive)
+        val range = selectionManager.selectionRange!!
+        assertEquals(0, range.startRow)
+        assertEquals(0, range.startCol)
+        assertEquals(24, range.endRow)
+        assertEquals(79, range.endCol)
     }
 
     @Test
@@ -327,8 +362,8 @@ class SelectionControllerTest {
                     TerminalLine.Cell(
                         char = if (col < 10) ' ' else ('A' + (col % 26)),
                         fgColor = Color.White,
-                        bgColor = Color.Black
-                    )
+                        bgColor = Color.Black,
+                    ),
                 )
             }
             lines.add(TerminalLine(row, cells))
@@ -346,7 +381,7 @@ class SelectionControllerTest {
             rows = 25,
             cols = 80,
             timestamp = 0L,
-            sequenceNumber = 0L
+            sequenceNumber = 0L,
         )
     }
 }

@@ -16,7 +16,11 @@
  */
 package org.connectbot.terminal
 
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -37,9 +41,9 @@ class SelectionManagerTest {
 
     @Test
     fun testStartSelection() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
 
-        assertEquals(SelectionMode.BLOCK, selectionManager.mode)
+        assertEquals(SelectionMode.CHARACTER, selectionManager.mode)
         assertTrue(selectionManager.isSelecting)
         assertNotNull(selectionManager.selectionRange)
 
@@ -52,7 +56,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionUpWhileSelecting() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
 
         selectionManager.moveSelectionUp(20)
 
@@ -65,7 +69,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionUpAtBoundary() {
-        selectionManager.startSelection(0, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(0, 10, cols = 80, mode = SelectionMode.CHARACTER)
 
         selectionManager.moveSelectionUp(20)
 
@@ -75,7 +79,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionDownWhileSelecting() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
 
         selectionManager.moveSelectionDown(20)
 
@@ -88,7 +92,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionDownAtBoundary() {
-        selectionManager.startSelection(19, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(19, 10, cols = 80, mode = SelectionMode.CHARACTER)
 
         selectionManager.moveSelectionDown(20)
 
@@ -98,7 +102,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionLeftWhileSelecting() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
 
         selectionManager.moveSelectionLeft(80)
 
@@ -111,7 +115,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionLeftAtBoundary() {
-        selectionManager.startSelection(5, 0, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 0, cols = 80, mode = SelectionMode.CHARACTER)
 
         selectionManager.moveSelectionLeft(80)
 
@@ -121,7 +125,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionRightWhileSelecting() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
 
         selectionManager.moveSelectionRight(80)
 
@@ -134,7 +138,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionRightAtBoundary() {
-        selectionManager.startSelection(5, 79, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 79, cols = 80, mode = SelectionMode.CHARACTER)
 
         selectionManager.moveSelectionRight(80)
 
@@ -144,7 +148,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionAfterFinished() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
         selectionManager.endSelection()
 
         assertFalse(selectionManager.isSelecting)
@@ -159,7 +163,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionUpAfterFinished() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
         selectionManager.endSelection()
 
         selectionManager.moveSelectionUp(20)
@@ -171,7 +175,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionLeftAfterFinished() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
         selectionManager.endSelection()
 
         selectionManager.moveSelectionLeft(80)
@@ -183,7 +187,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMoveSelectionRightAfterFinished() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
         selectionManager.endSelection()
 
         selectionManager.moveSelectionRight(80)
@@ -195,7 +199,7 @@ class SelectionManagerTest {
 
     @Test
     fun testMultipleMovesWhileSelecting() {
-        selectionManager.startSelection(10, 40, SelectionMode.BLOCK)
+        selectionManager.startSelection(10, 40, cols = 80, mode = SelectionMode.CHARACTER)
 
         // Move to create a rectangular selection
         selectionManager.moveSelectionDown(25)
@@ -213,7 +217,7 @@ class SelectionManagerTest {
 
     @Test
     fun testClearSelectionResetsState() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
         selectionManager.moveSelectionDown(20)
         selectionManager.moveSelectionRight(80)
 
@@ -226,7 +230,7 @@ class SelectionManagerTest {
 
     @Test
     fun testUpdateSelectionStart() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
         selectionManager.endSelection()
 
         selectionManager.updateSelectionStart(3, 8)
@@ -240,7 +244,7 @@ class SelectionManagerTest {
 
     @Test
     fun testUpdateSelectionEnd() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
         selectionManager.endSelection()
 
         selectionManager.updateSelectionEnd(7, 12)
@@ -253,29 +257,48 @@ class SelectionManagerTest {
     }
 
     @Test
-    fun testToggleModeBlockToLine() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+    fun testToggleModeCycling() {
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
         selectionManager.endSelection()
 
+        // CHARACTER -> WORD
         selectionManager.toggleMode(80)
+        assertEquals(SelectionMode.WORD, selectionManager.mode)
 
+        // WORD -> LINE
+        selectionManager.toggleMode(80)
         assertEquals(SelectionMode.LINE, selectionManager.mode)
         val range = selectionManager.selectionRange!!
         assertEquals(0, range.startCol) // Line mode uses full width
         assertEquals(79, range.endCol)
-    }
 
-    @Test
-    fun testToggleModeLineToBlock() {
-        selectionManager.startSelection(5, 10, SelectionMode.LINE)
+        // LINE -> CHARACTER
         selectionManager.toggleMode(80)
-
-        assertEquals(SelectionMode.BLOCK, selectionManager.mode)
+        assertEquals(SelectionMode.CHARACTER, selectionManager.mode)
     }
 
     @Test
-    fun testIsCellSelectedInBlockMode() {
-        selectionManager.startSelection(5, 10, SelectionMode.BLOCK)
+    fun testSetMode() {
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
+        selectionManager.setMode(SelectionMode.LINE, 80)
+        assertEquals(SelectionMode.LINE, selectionManager.mode)
+    }
+
+    @Test
+    fun testSelectAll() {
+        selectionManager.selectAll(25, 80)
+        assertEquals(SelectionMode.CHARACTER, selectionManager.mode)
+        assertFalse(selectionManager.isSelecting)
+        val range = selectionManager.selectionRange!!
+        assertEquals(0, range.startRow)
+        assertEquals(0, range.startCol)
+        assertEquals(24, range.endRow)
+        assertEquals(79, range.endCol)
+    }
+
+    @Test
+    fun testIsCellSelectedInCharacterMode() {
+        selectionManager.startSelection(5, 10, cols = 80, mode = SelectionMode.CHARACTER)
         selectionManager.updateSelection(7, 15)
         selectionManager.endSelection()
 
@@ -299,13 +322,13 @@ class SelectionManagerTest {
         // Outside selection
         assertFalse(selectionManager.isCellSelected(4, 10)) // Row before
         assertFalse(selectionManager.isCellSelected(8, 10)) // Row after
-        assertFalse(selectionManager.isCellSelected(5, 9))  // Before startCol on first row
+        assertFalse(selectionManager.isCellSelected(5, 9)) // Before startCol on first row
         assertFalse(selectionManager.isCellSelected(7, 16)) // After endCol on last row
     }
 
     @Test
     fun testIsCellSelectedInLineMode() {
-        selectionManager.startSelection(5, 0, SelectionMode.LINE)
+        selectionManager.startSelection(5, 0, cols = 80, mode = SelectionMode.LINE)
         selectionManager.updateSelection(7, 79)
         selectionManager.endSelection()
 
@@ -321,6 +344,53 @@ class SelectionManagerTest {
     }
 
     @Test
+    fun testAdjustSelectionForModeWord() {
+        // Create a fake snapshot with one line: "Hello world"
+        val line = TerminalLine(
+            row = 0,
+            cells = "Hello world".map { c ->
+                TerminalLine.Cell(
+                    char = c,
+                    fgColor = androidx.compose.ui.graphics.Color.White,
+                    bgColor = androidx.compose.ui.graphics.Color.Black,
+                )
+            },
+        )
+        val snapshot = TerminalSnapshot(
+            lines = listOf(line),
+            scrollback = emptyList(),
+            cursorRow = 0,
+            cursorCol = 0,
+            cursorVisible = true,
+            cursorBlink = true,
+            cursorShape = CursorShape.BLOCK,
+            terminalTitle = "",
+            rows = 1,
+            cols = 11,
+            timestamp = System.currentTimeMillis(),
+            sequenceNumber = 1L,
+        )
+
+        // Select 'e' in "Hello" (row 0, col 1)
+        selectionManager.startSelection(0, 1, cols = 11, mode = SelectionMode.WORD, snapshot = snapshot)
+
+        val range = selectionManager.selectionRange!!
+        // Should snap to "Hello" (cols 0 to 4)
+        assertEquals(0, range.startCol)
+        assertEquals(4, range.endCol)
+
+        // Now update end to 'r' in "world" (col 8)
+        selectionManager.updateSelectionEnd(0, 8)
+        selectionManager.adjustSelectionForMode(11, snapshot)
+
+        val updatedRange = selectionManager.selectionRange!!
+        // End should snap to end of "world" (col 10)
+        // Start remains at 0 because it was already snapped and hasn't moved
+        assertEquals(0, updatedRange.startCol)
+        assertEquals(10, updatedRange.endCol)
+    }
+
+    @Test
     fun testMoveWithoutStartingSelectionDoesNothing() {
         // Should not crash when moving without selection
         selectionManager.moveSelectionUp(20)
@@ -331,10 +401,137 @@ class SelectionManagerTest {
         assertNull(selectionManager.selectionRange)
     }
 
+    private fun makeSnapshot(text: String, cols: Int = text.length): TerminalSnapshot {
+        val cells = text.map { c ->
+            TerminalLine.Cell(
+                char = c,
+                fgColor = androidx.compose.ui.graphics.Color.White,
+                bgColor = androidx.compose.ui.graphics.Color.Black,
+            )
+        }
+        val line = TerminalLine(row = 0, cells = cells)
+        return TerminalSnapshot(
+            lines = listOf(line),
+            scrollback = emptyList(),
+            cursorRow = 0,
+            cursorCol = 0,
+            cursorVisible = true,
+            cursorBlink = true,
+            cursorShape = CursorShape.BLOCK,
+            terminalTitle = "",
+            rows = 1,
+            cols = cols,
+            timestamp = System.currentTimeMillis(),
+            sequenceNumber = 1L,
+        )
+    }
+
+    @Test
+    fun testWordModeSnapsToLastWordWhenInTrailingWhitespace() {
+        // "hello   " — touch in trailing spaces past the last word
+        val snapshot = makeSnapshot("hello   ", cols = 80)
+        selectionManager.startSelection(0, 6, cols = 80, mode = SelectionMode.WORD, snapshot = snapshot)
+
+        val range = selectionManager.selectionRange!!
+        // Should snap to "hello" (cols 0-4), not stay in whitespace
+        assertEquals(0, range.startCol)
+        assertEquals(4, range.endCol)
+    }
+
+    @Test
+    fun testWordModeDoesNotSnapWhenWordExistsToRight() {
+        // "foo bar" — touch in space between words; should keep non-word region
+        val snapshot = makeSnapshot("foo bar")
+        selectionManager.startSelection(0, 3, cols = 7, mode = SelectionMode.WORD, snapshot = snapshot)
+
+        val range = selectionManager.selectionRange!!
+        // col 3 is ' ' and there is a word to the right, so it groups the space
+        assertEquals(3, range.startCol)
+        assertEquals(3, range.endCol)
+    }
+
+    private fun cell(c: Char) = TerminalLine.Cell(
+        char = c,
+        fgColor = androidx.compose.ui.graphics.Color.White,
+        bgColor = androidx.compose.ui.graphics.Color.Black,
+    )
+
+    @Test
+    fun testIsCellSelectedSkipsTrailingSpaceCells() {
+        // Line: "hi  " (content in cols 0-1, spaces in 2-3)
+        val line = TerminalLine(row = 0, cells = listOf(cell('h'), cell('i'), cell(' '), cell(' ')))
+
+        selectionManager.startSelection(0, 0, cols = 80, mode = SelectionMode.CHARACTER)
+        selectionManager.updateSelection(0, 3)
+        selectionManager.endSelection()
+
+        // Content cells should be selected
+        assertTrue(selectionManager.isCellSelected(0, 0, line))
+        assertTrue(selectionManager.isCellSelected(0, 1, line))
+        // Trailing space cells should NOT be selected when line is provided
+        assertFalse(selectionManager.isCellSelected(0, 2, line))
+        assertFalse(selectionManager.isCellSelected(0, 3, line))
+    }
+
+    @Test
+    fun testIsCellSelectedSkipsTrailingNullCells() {
+        val line = TerminalLine(row = 0, cells = listOf(cell('x'), cell('\u0000'), cell('\u0000')))
+
+        selectionManager.startSelection(0, 0, cols = 80, mode = SelectionMode.CHARACTER)
+        selectionManager.updateSelection(0, 2)
+        selectionManager.endSelection()
+
+        assertTrue(selectionManager.isCellSelected(0, 0, line))
+        assertFalse(selectionManager.isCellSelected(0, 1, line))
+        assertFalse(selectionManager.isCellSelected(0, 2, line))
+    }
+
+    @Test
+    fun testIsCellSelectedWithoutLineIncludesTrailingSpace() {
+        // Without providing a line, trailing spaces ARE included (backward compat)
+        selectionManager.startSelection(0, 0, cols = 80, mode = SelectionMode.CHARACTER)
+        selectionManager.updateSelection(0, 5)
+        selectionManager.endSelection()
+
+        assertTrue(selectionManager.isCellSelected(0, 5))
+        assertTrue(selectionManager.isCellSelected(0, 3))
+    }
+
+    @Test
+    fun testIsCellSelectedLineModeIncludesTrailingSpace() {
+        // LINE mode selects entire rows including trailing whitespace so the handle
+        // position and the highlight are consistent with the full-width selection.
+        val line = TerminalLine(row = 0, cells = listOf(cell('a'), cell(' '), cell(' ')))
+
+        selectionManager.startSelection(0, 0, cols = 80, mode = SelectionMode.LINE)
+        selectionManager.endSelection()
+
+        assertTrue(selectionManager.isCellSelected(0, 0, line))
+        assertTrue(selectionManager.isCellSelected(0, 1, line))
+        assertTrue(selectionManager.isCellSelected(0, 2, line))
+    }
+
+    @Test
+    fun testWordModeAdjustsDuringDrag() {
+        // "hello world   " — start on 'h', drag end to trailing space
+        val snapshot = makeSnapshot("hello world   ", cols = 80)
+        selectionManager.startSelection(0, 0, cols = 80, mode = SelectionMode.WORD, snapshot = snapshot)
+
+        // Simulate drag into trailing whitespace (col 12, past "world" ending at col 10)
+        selectionManager.updateSelection(0, 12)
+        selectionManager.adjustSelectionForMode(80, snapshot)
+
+        val range = selectionManager.selectionRange!!
+        // Start should snap to start of "hello" (col 0)
+        assertEquals(0, range.startCol)
+        // End should snap to last word "world" end (col 10), not trailing space
+        assertEquals(10, range.endCol)
+    }
+
     @Test
     fun testComplexNavigationScenario() {
         // Start selection
-        selectionManager.startSelection(10, 20, SelectionMode.BLOCK)
+        selectionManager.startSelection(10, 20, cols = 80, mode = SelectionMode.CHARACTER)
         assertTrue(selectionManager.isSelecting)
 
         // Extend selection by moving

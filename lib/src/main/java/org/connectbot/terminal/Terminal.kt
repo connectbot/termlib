@@ -16,6 +16,8 @@
  */
 package org.connectbot.terminal
 
+import android.app.Activity
+import android.content.Intent
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
@@ -33,11 +35,15 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -77,11 +83,17 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -174,9 +186,14 @@ private val SELECTION_HIGHLIGHT_COLOR = Color(0xFF4A90E2)
 private const val HANDLE_HIT_RADIUS = 80f
 
 /**
- * Vertical offset in dp to position the magnifier above the finger.
+ * Vertical offset in dp to position the magnifier above (or below) the finger.
  */
 private val MAGNIFIER_VERTICAL_OFFSET = 40.dp
+
+/**
+ * Estimated finger contact height in dp, used to avoid positioning the magnifier under the finger.
+ */
+private val FINGER_HEIGHT_DP = 50.dp
 
 /**
  * Center offset multiplier for magnifier positioning.
@@ -291,6 +308,7 @@ fun Terminal(
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
     onHyperlinkClick: (String) -> Unit = {},
     onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
+    onPasteRequest: (() -> Unit)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
 ) {
     if (LocalInspectionMode.current) {
@@ -318,6 +336,7 @@ fun Terminal(
         onHyperlinkClick = onHyperlinkClick,
         onComposeControllerAvailable = onComposeControllerAvailable,
         onScrollControllerAvailable = null,
+        onPasteRequest = onPasteRequest,
         rightAltMode = rightAltMode,
     )
 }
@@ -350,6 +369,7 @@ internal fun TerminalWithAccessibility(
     onHyperlinkClick: (String) -> Unit = {},
     onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
     onScrollControllerAvailable: ((ScrollController) -> Unit)? = null,
+    onPasteRequest: (() -> Unit)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
@@ -537,7 +557,7 @@ internal fun TerminalWithAccessibility(
                     // Start at cursor position or center of screen
                     val row = screenState.snapshot.cursorRow.coerceIn(0, screenState.snapshot.rows - 1)
                     val col = screenState.snapshot.cursorCol.coerceIn(0, screenState.snapshot.cols - 1)
-                    selectionManager.startSelection(row, col, mode)
+                    selectionManager.startSelection(row, col, screenState.snapshot.cols, mode, screenState.snapshot, screenState.scrollbackPosition)
                 }
             }
 
@@ -566,7 +586,15 @@ internal fun TerminalWithAccessibility(
             }
 
             override fun toggleSelectionMode() {
-                selectionManager.toggleMode(screenState.snapshot.cols)
+                selectionManager.toggleMode(screenState.snapshot.cols, screenState.snapshot, screenState.scrollbackPosition)
+            }
+
+            override fun setSelectionMode(mode: SelectionMode) {
+                selectionManager.setMode(mode, screenState.snapshot.cols, screenState.snapshot, screenState.scrollbackPosition)
+            }
+
+            override fun selectAll() {
+                selectionManager.selectAll(screenState.snapshot.rows, screenState.snapshot.cols)
             }
 
             override fun finishSelection() {
@@ -683,6 +711,10 @@ internal fun TerminalWithAccessibility(
 
     // Coroutine scope for animations
     val coroutineScope = rememberCoroutineScope()
+
+    // Last tap tracking for double-tap detection
+    var lastTapTimestamp by remember(terminalEmulator) { mutableStateOf(0L) }
+    var lastTapPosition by remember(terminalEmulator) { mutableStateOf(Offset.Zero) }
 
     // Setup keyboard input callback to reset scroll position
     LaunchedEffect(screenState, scrollOffset) {
@@ -839,8 +871,24 @@ internal fun TerminalWithAccessibility(
                         var gestureType: GestureType = GestureType.Undetermined
                         val down = awaitFirstDown(requireUnconsumed = false)
 
+                        // 1a. Check for double-tap to start word selection
+                        val isDoubleTap = (down.uptimeMillis - lastTapTimestamp) < viewConfiguration.doubleTapTimeoutMillis &&
+                            (down.position - lastTapPosition).getDistanceSquared() < touchSlopSquared
+
+                        if (isDoubleTap) {
+                            gestureType = GestureType.Selection
+                            val tapCol = (down.position.x / baseCharWidth).toInt()
+                                .coerceIn(0, screenState.snapshot.cols - 1)
+                            val tapRow = (down.position.y / baseCharHeight).toInt()
+                                .coerceIn(0, screenState.snapshot.rows - 1)
+                            selectionManager.startSelection(tapRow, tapCol, screenState.snapshot.cols, SelectionMode.WORD, screenState.snapshot, screenState.scrollbackPosition)
+                            showMagnifier = true
+                            magnifierPosition = down.position
+                            lastTapTimestamp = 0L // prevent triple-tap double triggers
+                        }
+
                         // 1. Check if touching a selection handle first
-                        if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
+                        if (gestureType == GestureType.Undetermined && selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
                             val range = selectionManager.selectionRange
                             if (range != null) {
                                 val (touchingStart, touchingEnd) = isTouchingHandle(
@@ -855,6 +903,9 @@ internal fun TerminalWithAccessibility(
                                     showMagnifier = true
                                     magnifierPosition = down.position
 
+                                    // Local variable to keep track of which handle we are moving in case they cross
+                                    var isMovingStart = touchingStart
+
                                     drag(down.id) { change ->
                                         val newCol =
                                             (change.position.x / baseCharWidth).toInt()
@@ -863,21 +914,38 @@ internal fun TerminalWithAccessibility(
                                             (change.position.y / baseCharHeight).toInt()
                                                 .coerceIn(0, screenState.snapshot.rows - 1)
 
-                                        if (touchingStart) {
-                                            selectionManager.updateSelectionStart(
-                                                newRow,
-                                                newCol,
+                                        val current = selectionManager.selectionRange
+                                        if (current != null) {
+                                            val result = applyHandleDrag(
+                                                startRow = current.startRow,
+                                                startCol = current.startCol,
+                                                endRow = current.endRow,
+                                                endCol = current.endCol,
+                                                isMovingStart = isMovingStart,
+                                                newRow = newRow,
+                                                newCol = newCol,
                                             )
-                                        } else {
-                                            selectionManager.updateSelectionEnd(
-                                                newRow,
-                                                newCol,
+                                            isMovingStart = result.isMovingStart
+                                            selectionManager.updateSelectionStart(result.startRow, result.startCol)
+                                            selectionManager.updateSelectionEnd(result.endRow, result.endCol)
+                                            selectionManager.adjustSelectionForMode(
+                                                screenState.snapshot.cols,
+                                                screenState.snapshot,
+                                                screenState.scrollbackPosition,
                                             )
                                         }
 
                                         magnifierPosition = change.position
                                         change.consume()
                                     }
+
+                                    // After lifting finger, ensure selection is fully adjusted and handles snap
+                                    selectionManager.adjustSelectionForMode(
+                                        screenState.snapshot.cols,
+                                        screenState.snapshot,
+                                        screenState.scrollbackPosition,
+                                    )
+
                                     showMagnifier = false
                                     // Don't auto-show menu again after dragging handle
                                     return@awaitEachGesture
@@ -889,29 +957,34 @@ internal fun TerminalWithAccessibility(
                         // Only start selection if no selection is already active
                         var longPressDetected = false
                         var gestureEnded = false
-                        val longPressJob = launch {
-                            delay(viewConfiguration.longPressTimeoutMillis)
-                            // Only trigger long press if gesture is still undetermined AND still in progress
-                            if (gestureType == GestureType.Undetermined &&
-                                selectionManager.mode == SelectionMode.NONE &&
-                                !gestureEnded
-                            ) {
-                                longPressDetected = true
-                                gestureType = GestureType.Selection
+                        val longPressJob = if (gestureType == GestureType.Undetermined) {
+                            launch {
+                                delay(viewConfiguration.longPressTimeoutMillis)
+                                // Only trigger long press if gesture is still undetermined AND still in progress
+                                if (gestureType == GestureType.Undetermined &&
+                                    selectionManager.mode == SelectionMode.NONE &&
+                                    !gestureEnded
+                                ) {
+                                    longPressDetected = true
+                                    gestureType = GestureType.Selection
 
-                                // Start selection
-                                val col = (down.position.x / baseCharWidth).toInt()
-                                    .coerceIn(0, screenState.snapshot.cols - 1)
-                                val row = (down.position.y / baseCharHeight).toInt()
-                                    .coerceIn(0, screenState.snapshot.rows - 1)
-                                selectionManager.startSelection(
-                                    row,
-                                    col,
-                                    SelectionMode.BLOCK,
-                                )
-                                showMagnifier = true
-                                magnifierPosition = down.position
+                                    // Start selection
+                                    val col = (down.position.x / baseCharWidth).toInt()
+                                        .coerceIn(0, screenState.snapshot.cols - 1)
+                                    val row = (down.position.y / baseCharHeight).toInt()
+                                        .coerceIn(0, screenState.snapshot.rows - 1)
+                                    selectionManager.startSelection(
+                                        row,
+                                        col,
+                                        screenState.snapshot.cols,
+                                        SelectionMode.CHARACTER,
+                                    )
+                                    showMagnifier = true
+                                    magnifierPosition = down.position
+                                }
                             }
+                        } else {
+                            null
                         }
 
                         // 3. Setup tracking for velocity and multi-touch
@@ -947,6 +1020,10 @@ internal fun TerminalWithAccessibility(
                                 if (secondPointer != null) break
                             }
 
+                            velocityTracker.addPosition(
+                                change.uptimeMillis,
+                                change.position,
+                            )
                             val dragAmount = change.positionChange()
                             panAccumulator += dragAmount
 
@@ -956,7 +1033,7 @@ internal fun TerminalWithAccessibility(
                                 val isGracePeriod = change.uptimeMillis <= multiTouchTimeout
 
                                 if (!isGracePeriod && panAccumulator.getDistanceSquared() > touchSlopSquared) {
-                                    longPressJob.cancel()
+                                    longPressJob?.cancel()
                                     gestureType = GestureType.Scroll
                                     // Adjust initialScrollOffset so (initial + panAccumulator) matches current offset
                                     initialScrollOffset = scrollOffset.value - panAccumulator.y
@@ -980,6 +1057,11 @@ internal fun TerminalWithAccessibility(
                                         selectionManager.updateSelection(
                                             dragRow,
                                             dragCol,
+                                        )
+                                        selectionManager.adjustSelectionForMode(
+                                            screenState.snapshot.cols,
+                                            screenState.snapshot,
+                                            screenState.scrollbackPosition,
                                         )
                                         magnifierPosition = change.position
                                     }
@@ -1008,7 +1090,7 @@ internal fun TerminalWithAccessibility(
 
                         // 5. Handle zoom if multi-touch was detected
                         if (secondPointer != null) {
-                            longPressJob.cancel()
+                            longPressJob?.cancel()
                             gestureType = GestureType.Zoom
 
                             // Handle zoom using Compose's built-in gesture calculations
@@ -1053,7 +1135,7 @@ internal fun TerminalWithAccessibility(
 
                         // 6. Gesture ended - cleanup
                         gestureEnded = true
-                        longPressJob.cancel()
+                        longPressJob?.cancel()
 
                         when (gestureType) {
                             GestureType.Scroll -> {
@@ -1104,6 +1186,9 @@ internal fun TerminalWithAccessibility(
                                         currentOnTerminalTap()
                                     }
                                 }
+                                // Record tap for double-tap detection
+                                lastTapTimestamp = down.uptimeMillis
+                                lastTapPosition = down.position
                             }
 
                             else -> {}
@@ -1237,17 +1322,23 @@ internal fun TerminalWithAccessibility(
                 foregroundColor = foregroundColor,
                 selectionManager = selectionManager,
                 autoDetectUrls = terminalEmulator.autoDetectUrls,
+                componentWidth = availableWidth,
+                componentHeight = availableHeight,
             )
         }
 
-        // Copy button when text is selected
+        // Copy button (+ overflow menu) when text is selected
         if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
             val range = selectionManager.selectionRange
             if (range != null) {
-                // Position copy button above the selection
                 val endPosition = range.getEndPosition()
-                val buttonX = endPosition.second * baseCharWidth
+                val buttonRowWidthPx = with(density) { (COPY_BUTTON_SIZE * 2 + 8.dp).toPx() }
+                val buttonX = (endPosition.second * baseCharWidth)
+                    .coerceAtMost(availableWidth - buttonRowWidthPx)
+                    .coerceAtLeast(0f)
                 val buttonY = endPosition.first * baseCharHeight - with(density) { COPY_BUTTON_OFFSET.toPx() }
+                val context = LocalContext.current
+                var overflowMenuExpanded by remember { mutableStateOf(false) }
 
                 Box(
                     modifier = Modifier
@@ -1256,18 +1347,112 @@ internal fun TerminalWithAccessibility(
                             y = with(density) { buttonY.coerceAtLeast(0f).toDp() },
                         ),
                 ) {
-                    FloatingActionButton(
-                        onClick = {
-                            val selectedText =
-                                selectionManager.getSelectedText(screenState.snapshot, screenState.scrollbackPosition)
-                            clipboardManager.setText(AnnotatedString(selectedText))
-                            selectionManager.clearSelection()
-                        },
-                        modifier = Modifier.size(COPY_BUTTON_SIZE),
-                        containerColor = Color.White,
-                        contentColor = Color.Black,
-                    ) {
-                        Text("Copy", style = MaterialTheme.typography.labelSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FloatingActionButton(
+                            onClick = {
+                                val selectedText =
+                                    selectionManager.getSelectedText(screenState.snapshot, screenState.scrollbackPosition)
+                                clipboardManager.setText(AnnotatedString(selectedText))
+                                selectionManager.clearSelection()
+                            },
+                            modifier = Modifier.size(COPY_BUTTON_SIZE),
+                            containerColor = Color.White,
+                            contentColor = Color.Black,
+                        ) {
+                            Text(stringResource(R.string.terminal_selection_copy), style = MaterialTheme.typography.labelSmall)
+                        }
+
+                        Box {
+                            val moreOptionsLabel = stringResource(R.string.terminal_selection_more_options_description)
+                            FloatingActionButton(
+                                onClick = {
+                                    overflowMenuExpanded = true
+                                    if (shouldShowIme) {
+                                        scope.launch {
+                                            delay(IME_SHOW_DELAY_MS)
+                                            imeInputView?.showIme()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(COPY_BUTTON_SIZE)
+                                    .semantics {
+                                        contentDescription = moreOptionsLabel
+                                        role = Role.Button
+                                    },
+                                containerColor = Color.White,
+                                contentColor = Color.Black,
+                            ) {
+                                Text(stringResource(R.string.terminal_selection_more_options), style = MaterialTheme.typography.labelSmall)
+                            }
+
+                            DropdownMenu(
+                                expanded = overflowMenuExpanded,
+                                onDismissRequest = {
+                                    overflowMenuExpanded = false
+                                    if (shouldShowIme) {
+                                        scope.launch {
+                                            delay(IME_SHOW_DELAY_MS)
+                                            imeInputView?.showIme()
+                                        }
+                                    }
+                                },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.terminal_selection_select_all)) },
+                                    onClick = {
+                                        selectionController.selectAll()
+                                        overflowMenuExpanded = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.terminal_selection_share)) },
+                                    onClick = {
+                                        val selectedText = selectionManager.getSelectedText(
+                                            screenState.snapshot,
+                                            screenState.scrollbackPosition,
+                                        )
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_TEXT, selectedText)
+                                            if (context !is Activity) {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                        }
+                                        try {
+                                            context.startActivity(Intent.createChooser(intent, null))
+                                        } catch (_: android.content.ActivityNotFoundException) {
+                                            // No app available to handle the share intent; silently ignore
+                                        }
+                                        overflowMenuExpanded = false
+                                    },
+                                )
+                                if (onPasteRequest != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.terminal_selection_paste)) },
+                                        onClick = {
+                                            selectionManager.clearSelection()
+                                            onPasteRequest()
+                                            overflowMenuExpanded = false
+                                        },
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = {
+                                        val modeLabel = when (selectionManager.mode) {
+                                            SelectionMode.CHARACTER -> stringResource(R.string.terminal_selection_mode_character)
+                                            SelectionMode.WORD -> stringResource(R.string.terminal_selection_mode_word)
+                                            else -> stringResource(R.string.terminal_selection_mode_line)
+                                        }
+                                        Text(modeLabel)
+                                    },
+                                    onClick = {
+                                        selectionController.toggleSelectionMode()
+                                        // Keep menu open for easy cycling
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1324,7 +1509,7 @@ private fun DrawScope.drawLine(
         val cellWidth = charWidth * cell.width
 
         // Check if this cell is selected
-        val isSelected = selectionManager.isCellSelected(row, col)
+        val isSelected = selectionManager.isCellSelected(row, col, line)
 
         // Check if this cell is part of a hyperlink
         val isHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
@@ -1480,6 +1665,77 @@ private fun DrawScope.drawCurlyUnderline(
 }
 
 /**
+ * Result of a single handle-drag update step.
+ *
+ * @param startRow Updated selection start row
+ * @param startCol Updated selection start col
+ * @param endRow Updated selection end row
+ * @param endCol Updated selection end col
+ * @param isMovingStart Which handle the finger is now dragging after this step
+ */
+internal data class HandleDragResult(
+    val startRow: Int,
+    val startCol: Int,
+    val endRow: Int,
+    val endCol: Int,
+    val isMovingStart: Boolean,
+)
+
+/**
+ * Computes the next selection range and active-handle flag for one drag event, handling
+ * the case where the two handles cross each other.
+ *
+ * When the moving handle passes the anchor, ownership flips and the anchor is restored to
+ * its pre-cross position so it doesn't jump to the dragged handle's column.
+ *
+ * @param startRow Current selection start row (before this event)
+ * @param startCol Current selection start col (before this event)
+ * @param endRow Current selection end row (before this event)
+ * @param endCol Current selection end col (before this event)
+ * @param isMovingStart True if the start handle is being dragged
+ * @param newRow Row the finger moved to
+ * @param newCol Col the finger moved to
+ */
+@VisibleForTesting
+internal fun applyHandleDrag(
+    startRow: Int,
+    startCol: Int,
+    endRow: Int,
+    endCol: Int,
+    isMovingStart: Boolean,
+    newRow: Int,
+    newCol: Int,
+): HandleDragResult {
+    val anchorRow = if (isMovingStart) endRow else startRow
+    val anchorCol = if (isMovingStart) endCol else startCol
+
+    val updatedStartRow = if (isMovingStart) newRow else startRow
+    val updatedStartCol = if (isMovingStart) newCol else startCol
+    val updatedEndRow = if (isMovingStart) endRow else newRow
+    val updatedEndCol = if (isMovingStart) endCol else newCol
+
+    val crossed = if (isMovingStart) {
+        newRow > anchorRow || (newRow == anchorRow && newCol > anchorCol)
+    } else {
+        newRow < anchorRow || (newRow == anchorRow && newCol < anchorCol)
+    }
+
+    return if (!crossed) {
+        HandleDragResult(updatedStartRow, updatedStartCol, updatedEndRow, updatedEndCol, isMovingStart)
+    } else {
+        // Flip ownership and restore the stationary handle to its pre-cross position.
+        val newIsMovingStart = !isMovingStart
+        if (newIsMovingStart) {
+            // Was moving end, now moving start — end goes back to anchor
+            HandleDragResult(newRow, newCol, anchorRow, anchorCol, newIsMovingStart)
+        } else {
+            // Was moving start, now moving end — start goes back to anchor
+            HandleDragResult(anchorRow, anchorCol, newRow, newCol, newIsMovingStart)
+        }
+    }
+}
+
+/**
  * Check if a touch position is near a selection handle.
  * Returns (touchingStart, touchingEnd).
  */
@@ -1555,6 +1811,34 @@ private fun TerminalPreview(
 }
 
 /**
+ * Calculates the top-left offset for the magnifying glass box so it stays visible and
+ * never obscured by the finger.
+ *
+ * Prefers positioning above the touch point (with [verticalOffsetPx] gap). Flips below
+ * the finger (adding [fingerHeightPx] + [verticalOffsetPx]) when there is not enough
+ * room above. The result is clamped to the component bounds on all sides.
+ */
+@VisibleForTesting
+internal fun magnifierOffset(
+    position: Offset,
+    magnifierSizePx: Float,
+    verticalOffsetPx: Float,
+    fingerHeightPx: Float,
+    componentWidth: Int,
+    componentHeight: Int,
+): Offset {
+    val clampedX = (position.x - magnifierSizePx / 2)
+        .coerceIn(0f, (componentWidth.toFloat() - magnifierSizePx).coerceAtLeast(0f))
+    val spaceAbove = position.y - verticalOffsetPx - magnifierSizePx
+    return if (spaceAbove >= 0f) {
+        Offset(x = clampedX, y = spaceAbove)
+    } else {
+        val yBelow = position.y + fingerHeightPx + verticalOffsetPx
+        Offset(x = clampedX, y = yBelow.coerceAtMost((componentHeight.toFloat() - magnifierSizePx).coerceAtLeast(0f)))
+    }
+}
+
+/**
  * Magnifying glass for text selection.
  */
 @Composable
@@ -1569,17 +1853,24 @@ private fun MagnifyingGlass(
     foregroundColor: Color,
     selectionManager: SelectionManager,
     autoDetectUrls: Boolean = false,
+    componentWidth: Int = 0,
+    componentHeight: Int = 0,
 ) {
     val magnifierSize = MAGNIFIER_SIZE_DP.dp
     val magnifierScale = MAGNIFIER_SCALE
     val density = LocalDensity.current
     val magnifierSizePx = with(density) { magnifierSize.toPx() }
 
-    // Position magnifying glass well above the finger (so it's visible)
     val verticalOffset = with(density) { MAGNIFIER_VERTICAL_OFFSET.toPx() }
-    val magnifierPos = Offset(
-        x = (position.x - magnifierSizePx / 2).coerceIn(0f, Float.MAX_VALUE),
-        y = (position.y - verticalOffset - magnifierSizePx).coerceAtLeast(0f),
+    val fingerHeightPx = with(density) { FINGER_HEIGHT_DP.toPx() }
+
+    val magnifierPos = magnifierOffset(
+        position = position,
+        magnifierSizePx = magnifierSizePx,
+        verticalOffsetPx = verticalOffset,
+        fingerHeightPx = fingerHeightPx,
+        componentWidth = componentWidth,
+        componentHeight = componentHeight,
     )
 
     // The actual touch point that should be centered in the magnifier

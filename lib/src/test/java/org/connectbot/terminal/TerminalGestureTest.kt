@@ -332,4 +332,36 @@ class TerminalGestureTest {
 
         assertEquals("Tap count should be 0", 0, tapCount)
     }
+
+    @Test
+    fun testDoubleTapTriggersWordSelection() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
+        // Add a word to the terminal
+        emulator.writeInput("Hello world\r\n".toByteArray())
+        if (emulator is TerminalEmulatorImpl) {
+            emulator.processPendingUpdates()
+        }
+
+        var selectionController: SelectionController? = null
+
+        composeTestRule.setContent {
+            Terminal(
+                terminalEmulator = emulator,
+                onSelectionControllerAvailable = { selectionController = it },
+            )
+        }
+
+        composeTestRule.waitUntil { selectionController != null }
+
+        // Both taps in one block with controlled timing so the gap is always within
+        // doubleTapTimeoutMillis and the test is deterministic on slow CI runners.
+        composeTestRule.onRoot().performTouchInput {
+            click(Offset(10f, 10f))
+            advanceEventTime(100)
+            click(Offset(12f, 12f))
+        }
+
+        composeTestRule.waitForIdle()
+        assertTrue("Selection should be active after double tap", selectionController?.isSelectionActive == true)
+    }
 }
