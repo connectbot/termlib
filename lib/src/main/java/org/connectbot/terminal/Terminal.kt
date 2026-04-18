@@ -79,6 +79,7 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -99,6 +100,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -712,9 +714,14 @@ internal fun TerminalWithAccessibility(
     // Coroutine scope for animations
     val coroutineScope = rememberCoroutineScope()
 
-    // Last tap tracking for double-tap detection
-    var lastTapTimestamp by remember(terminalEmulator) { mutableStateOf(0L) }
-    var lastTapPosition by remember(terminalEmulator) { mutableStateOf(Offset.Zero) }
+    // Last tap tracking for double-tap detection.
+    // Stored as plain vars in a remembered holder so writes don't trigger recomposition.
+    val tapTracker = remember(terminalEmulator) {
+        object {
+            var lastTimestamp = 0L
+            var lastPosition = Offset.Zero
+        }
+    }
 
     // Setup keyboard input callback to reset scroll position
     LaunchedEffect(screenState, scrollOffset) {
@@ -866,14 +873,15 @@ internal fun TerminalWithAccessibility(
                 ).pointerInput(terminalEmulator, baseCharWidth, baseCharHeight) {
                 val touchSlopSquared =
                     viewConfiguration.touchSlop * viewConfiguration.touchSlop
+                var scrollJob: Job? = null
                 coroutineScope {
                     awaitEachGesture {
                         var gestureType: GestureType = GestureType.Undetermined
                         val down = awaitFirstDown(requireUnconsumed = false)
 
                         // 1a. Check for double-tap to start word selection
-                        val isDoubleTap = (down.uptimeMillis - lastTapTimestamp) < viewConfiguration.doubleTapTimeoutMillis &&
-                            (down.position - lastTapPosition).getDistanceSquared() < touchSlopSquared
+                        val isDoubleTap = (down.uptimeMillis - tapTracker.lastTimestamp) < viewConfiguration.doubleTapTimeoutMillis &&
+                            (down.position - tapTracker.lastPosition).getDistanceSquared() < touchSlopSquared
 
                         if (isDoubleTap) {
                             gestureType = GestureType.Selection
@@ -884,7 +892,7 @@ internal fun TerminalWithAccessibility(
                             selectionManager.startSelection(tapRow, tapCol, screenState.snapshot.cols, SelectionMode.WORD, screenState.snapshot, screenState.scrollbackPosition)
                             showMagnifier = true
                             magnifierPosition = down.position
-                            lastTapTimestamp = 0L // prevent triple-tap double triggers
+                            tapTracker.lastTimestamp = 0L // prevent triple-tap double triggers
                         }
 
                         // 1. Check if touching a selection handle first
@@ -1005,13 +1013,12 @@ internal fun TerminalWithAccessibility(
                             // Use the same pointer that started the gesture for consistency
                             val change = event.changes.find { it.id == primaryPointerId } ?: event.changes.first()
 
-                            // Add position to tracker BEFORE breaking to include the final UP event
-                            velocityTracker.addPosition(
-                                change.uptimeMillis,
-                                change.position,
-                            )
+                            // Track velocity for all events, including the final UP event.
+                            // addPointerInputChange handles historical positions for better accuracy.
+                            velocityTracker.addPointerInputChange(change)
 
-                            if (event.changes.all { !it.pressed }) break
+                            val dragAmount = change.positionChange()
+                            panAccumulator += dragAmount
 
                             // 4a. Check for multi-touch (zoom)
                             // Only allow zoom if we are still undetermined and within the initial grace period.
@@ -1019,13 +1026,6 @@ internal fun TerminalWithAccessibility(
                                 secondPointer = event.changes.firstOrNull { it.id != primaryPointerId && it.pressed }
                                 if (secondPointer != null) break
                             }
-
-                            velocityTracker.addPosition(
-                                change.uptimeMillis,
-                                change.position,
-                            )
-                            val dragAmount = change.positionChange()
-                            panAccumulator += dragAmount
 
                             // 4b. Determine gesture if still undetermined
                             if (gestureType == GestureType.Undetermined && !longPressDetected) {
@@ -1072,7 +1072,11 @@ internal fun TerminalWithAccessibility(
                                     // to avoid stuttering from stale scrollOffset.value.
                                     val newOffset = (initialScrollOffset + panAccumulator.y)
                                         .coerceIn(0f, maxScroll)
-                                    coroutineScope.launch {
+
+                                    // Cancel any ongoing scroll or fling and snap to the new position.
+                                    // Using launch with cancel ensures the latest snap always wins.
+                                    scrollJob?.cancel()
+                                    scrollJob = launch {
                                         scrollOffset.snapTo(newOffset)
                                     }
 
@@ -1085,6 +1089,7 @@ internal fun TerminalWithAccessibility(
                                 else -> {}
                             }
 
+                            if (event.changes.all { !it.pressed }) break
                             change.consume()
                         }
 
@@ -1141,7 +1146,8 @@ internal fun TerminalWithAccessibility(
                             GestureType.Scroll -> {
                                 // Apply fling animation
                                 val velocity = velocityTracker.calculateVelocity()
-                                coroutineScope.launch {
+                                scrollJob?.cancel()
+                                scrollJob = launch {
                                     scrollOffset.animateDecay(
                                         initialVelocity = velocity.y,
                                         animationSpec = splineBasedDecay(density),
@@ -1187,8 +1193,8 @@ internal fun TerminalWithAccessibility(
                                     }
                                 }
                                 // Record tap for double-tap detection
-                                lastTapTimestamp = down.uptimeMillis
-                                lastTapPosition = down.position
+                                tapTracker.lastTimestamp = down.uptimeMillis
+                                tapTracker.lastPosition = down.position
                             }
 
                             else -> {}
