@@ -700,4 +700,78 @@ class ImeInputViewTest {
 
         assertEquals(" ", effectiveText(outputs))
     }
+
+    // === Robustness: deleteSurroundingText upper bound ===
+
+    /**
+     * A misbehaving or hostile IME can call [InputConnection.deleteSurroundingText]
+     * with an unbounded (Int.MAX_VALUE-ish) left length. Without a cap that would
+     * freeze the UI thread in a DEL-key dispatch loop. Cap is well above anything
+     * any real IME sends (real values are 0–few).
+     */
+    @Test
+    fun testDeleteSurroundingTextCapsAbsurdLeftLength() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.deleteSurroundingText(Int.MAX_VALUE, 0)
+        }
+        drainMainLooper()
+
+        // Cap is 4096 — assert we got no more than that many DEL bytes.
+        val delCount = outputs.sumOf { bytes ->
+            bytes.count { (it.toInt() and 0xFF) == 0x7F }
+        }
+        assertTrue("delete count should be capped, got $delCount", delCount <= 4096)
+    }
+
+    // === Robustness: resetImeBuffer drops stale composition state ===
+
+    /**
+     * [ImeInputView.resetImeBuffer] used to clear only the Editable and the IME's
+     * selection, leaving the internal `composingText` tracking string non-empty.
+     * A composition interrupted by an external key path (hardware keyboard, macro
+     * key, IME dismissal mid-conversion) would resume against stale state on the
+     * next [setComposingText], producing ghost backspaces sized to the old
+     * composition. Reset both.
+     */
+    @Test
+    fun testResetImeBufferDropsCompositionSoNextSetComposingStartsClean() {
+        val outputs = mutableListOf<ByteArray>()
+        val captureEmulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val captureHandler = KeyboardHandler(captureEmulator)
+
+        lateinit var view: ImeInputView
+        lateinit var ic: InputConnection
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = ImeInputView(context, captureHandler)
+            view.isComposeModeActive = true
+            ic = view.onCreateInputConnection(EditorInfo())!!
+        }
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            // Build up a 5-char composition in the background
+            ic.setComposingText("hello", 1)
+            // External key path interrupts — buffer reset
+            view.resetImeBuffer()
+            // New composition starts from scratch. Without the reset, the internal
+            // composingText would still read "hello" and the next setComposingText
+            // would dispatch 5 backspaces before projecting "a".
+            ic.setComposingText("a", 1)
+        }
+        drainMainLooper()
+
+        // Final state should reflect just "a", with no stray backspaces from the
+        // pre-reset composition length.
+        val del = outputs.sumOf { bytes ->
+            bytes.count { b -> (b.toInt() and 0xFF) == 0x7F || (b.toInt() and 0xFF) == 0x08 }
+        }
+        // With the reset, del count from the second setComposingText must be 0.
+        // (Before the fix, del count was 5 — one DEL per char of "hello".)
+        assertEquals("no backspaces should be dispatched after a fresh reset", 0, del)
+    }
 }
