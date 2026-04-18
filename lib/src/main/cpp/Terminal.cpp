@@ -16,14 +16,21 @@
  */
 #include "Terminal.h"
 #include "mutf8.h"
-#include <android/log.h>
 #include <cstring>
 #include <algorithm>
 #include <vector>
 
-#define LOG_TAG "TermNative"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#ifdef __ANDROID__
+#  include <android/log.h>
+#  define LOG_TAG "TermNative"
+#  define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#  define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#else
+#  include <cstdio>
+#  define LOG_TAG "TermNative"
+#  define LOGD(...) do { fprintf(stderr, "[D/" LOG_TAG "] " __VA_ARGS__); fputc('\n', stderr); } while(0)
+#  define LOGE(...) do { fprintf(stderr, "[E/" LOG_TAG "] " __VA_ARGS__); fputc('\n', stderr); } while(0)
+#endif
 
 #define JNI_CHECK_EXCEPTION_RETURN(env, retval) \
     do { if ((env)->ExceptionCheck()) { (env)->ExceptionDescribe(); (env)->ExceptionClear(); return (retval); } } while (0)

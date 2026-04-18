@@ -27,6 +27,39 @@ abstract class DokkaMarkdownPlugin : DokkaFormatPlugin(formatName = "markdown") 
 
 apply<DokkaMarkdownPlugin>()
 
+val hostJniDir = layout.buildDirectory.dir("host-jni")
+val cppSourceDir = layout.projectDirectory.dir("src/main/cpp")
+
+val cmakeConfigureHost by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Configure the CMake host build of jni_cb_term"
+    inputs.dir(cppSourceDir)
+    outputs.dir(hostJniDir)
+    commandLine(
+        "cmake",
+        "-S",
+        cppSourceDir.asFile.absolutePath,
+        "-B",
+        hostJniDir.get().asFile.absolutePath,
+        "-DCMAKE_BUILD_TYPE=Debug",
+    )
+}
+
+val cmakeBuildHost by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Build libjni_cb_term for the host JVM"
+    dependsOn(cmakeConfigureHost)
+    inputs.dir(hostJniDir)
+    commandLine(
+        "cmake",
+        "--build",
+        hostJniDir.get().asFile.absolutePath,
+        "--target",
+        "jni_cb_term",
+    )
+    outputs.dir(hostJniDir)
+}
+
 android {
     namespace = "org.connectbot.terminal"
     compileSdk = 36
@@ -80,6 +113,16 @@ android {
     packaging {
         jniLibs {
             keepDebugSymbols.add("**/*.so")
+        }
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { testTask ->
+                testTask.dependsOn(cmakeBuildHost)
+                testTask.jvmArgs("-Djava.library.path=${hostJniDir.get().asFile.absolutePath}")
+            }
         }
     }
 }
@@ -149,11 +192,10 @@ dependencies {
 
     // Testing
     testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.test.ext.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(composeBom)
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.mockk.android)
+    testImplementation(libs.robolectric)
+    testImplementation(composeBom)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.mockk)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
