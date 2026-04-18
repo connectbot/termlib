@@ -63,7 +63,7 @@ internal class KeyboardHandler(
      * [android.view.KeyEvent.getUnicodeChar]. Injectable for testing dead-key logic without
      * requiring a physical keyboard with dead keys.
      *
-     * The [deviceId] is the keyboard device ID from the [android.view.KeyEvent] and is used to
+     * The `deviceId` is the keyboard device ID from the [android.view.KeyEvent] and is used to
      * load the correct [KeyCharacterMap] so that physical keyboard layouts (e.g. German) are
      * honored. Falls back to [KeyCharacterMap.VIRTUAL_KEYBOARD] if the device map is
      * unavailable.
