@@ -873,6 +873,7 @@ fun TerminalWithAccessibility(
 
                         // 3. Setup tracking for velocity and multi-touch
                         val velocityTracker = VelocityTracker()
+                        val primaryPointerId = down.id
                         velocityTracker.addPosition(down.uptimeMillis, down.position)
 
                         var secondPointer: PointerInputChange? = null
@@ -884,21 +885,25 @@ fun TerminalWithAccessibility(
                         while (true) {
                             val event: PointerEvent =
                                 awaitPointerEvent(PointerEventPass.Main)
-                            if (event.changes.all { !it.pressed }) break
 
-                            val change = event.changes.first()
+                            // Use the same pointer that started the gesture for consistency
+                            val change = event.changes.find { it.id == primaryPointerId } ?: event.changes.first()
 
-                            // 4a. Check for multi-touch (zoom)
-                            // Only allow zoom if we are still undetermined and within the initial grace period.
-                            if (gestureType == GestureType.Undetermined && change.uptimeMillis <= multiTouchTimeout && event.changes.size > 1) {
-                                secondPointer = event.changes.firstOrNull { it.id != down.id && it.pressed }
-                                if (secondPointer != null) break
-                            }
-
+                            // Add position to tracker BEFORE breaking to include the final UP event
                             velocityTracker.addPosition(
                                 change.uptimeMillis,
                                 change.position,
                             )
+
+                            if (event.changes.all { !it.pressed }) break
+
+                            // 4a. Check for multi-touch (zoom)
+                            // Only allow zoom if we are still undetermined and within the initial grace period.
+                            if (gestureType == GestureType.Undetermined && change.uptimeMillis <= multiTouchTimeout && event.changes.size > 1) {
+                                secondPointer = event.changes.firstOrNull { it.id != primaryPointerId && it.pressed }
+                                if (secondPointer != null) break
+                            }
+
                             val dragAmount = change.positionChange()
                             panAccumulator += dragAmount
 
@@ -910,7 +915,8 @@ fun TerminalWithAccessibility(
                                 if (!isGracePeriod && panAccumulator.getDistanceSquared() > touchSlopSquared) {
                                     longPressJob.cancel()
                                     gestureType = GestureType.Scroll
-                                    initialScrollOffset = scrollOffset.value
+                                    // Adjust initialScrollOffset so (initial + panAccumulator) matches current offset
+                                    initialScrollOffset = scrollOffset.value - panAccumulator.y
                                     // Clear any active selection when scrolling starts
                                     if (selectionManager.mode != SelectionMode.NONE) {
                                         selectionManager.clearSelection()
