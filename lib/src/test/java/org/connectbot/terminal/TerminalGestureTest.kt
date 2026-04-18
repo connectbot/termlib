@@ -76,6 +76,8 @@ class TerminalGestureTest {
             )
         }
 
+        composeTestRule.waitUntil { selectionController != null }
+
         composeTestRule.onRoot().performTouchInput {
             longClick()
         }
@@ -105,6 +107,8 @@ class TerminalGestureTest {
             )
         }
 
+        composeTestRule.waitUntil { selectionController != null }
+
         // Swipe up to scroll down
         composeTestRule.onRoot().performTouchInput {
             swipeUp()
@@ -131,6 +135,8 @@ class TerminalGestureTest {
                 onSelectionControllerAvailable = { selectionController = it },
             )
         }
+
+        composeTestRule.waitUntil { selectionController != null }
 
         // First swipe
         composeTestRule.onRoot().performTouchInput {
@@ -160,6 +166,8 @@ class TerminalGestureTest {
                 onSelectionControllerAvailable = { selectionController = it },
             )
         }
+
+        composeTestRule.waitUntil { selectionController != null }
 
         composeTestRule.onRoot().performTouchInput {
             // Simulate pinch gesture
@@ -191,6 +199,8 @@ class TerminalGestureTest {
                 onSelectionControllerAvailable = { selectionController = it },
             )
         }
+
+        composeTestRule.waitUntil { selectionController != null }
 
         composeTestRule.onRoot().performTouchInput {
             down(0, center + Offset(-10f, 0f))
