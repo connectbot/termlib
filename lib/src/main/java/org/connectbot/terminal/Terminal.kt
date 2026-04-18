@@ -178,11 +178,6 @@ private val COPY_BUTTON_SIZE = 48.dp
 private val COPY_BUTTON_OFFSET = 48.dp
 
 /**
- * Background color for selected text (blue highlight).
- */
-private val SELECTION_HIGHLIGHT_COLOR = Color(0xFF4A90E2)
-
-/**
  * Touch radius in pixels for detecting selection handle touches.
  */
 private const val HANDLE_HIT_RADIUS = 80f
@@ -289,6 +284,8 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
  * @param forcedSize Force terminal to specific dimensions (rows, cols). When set, font size is calculated to fit.
  * @param onSelectionControllerAvailable Optional callback providing access to the SelectionController for controlling selection mode
  * @param onHyperlinkClick Callback when user taps on an OSC8 hyperlink. Receives the URL as parameter.
+ * @param selectionBackgroundColor Background color for selected text (default: 0xFFB3D7FF)
+ * @param selectionForegroundColor Foreground color for selected text (default: Black)
  */
 @Composable
 fun Terminal(
@@ -300,6 +297,8 @@ fun Terminal(
     maxFontSize: TextUnit = 30.sp,
     backgroundColor: Color = Color.Black,
     foregroundColor: Color = Color.White,
+    selectionBackgroundColor: Color = Color(0xFFB3D7FF),
+    selectionForegroundColor: Color = Color.Black,
     keyboardEnabled: Boolean = false,
     showSoftKeyboard: Boolean = true,
     focusRequester: FocusRequester = remember { FocusRequester() },
@@ -340,6 +339,8 @@ fun Terminal(
         onScrollControllerAvailable = null,
         onPasteRequest = onPasteRequest,
         rightAltMode = rightAltMode,
+        selectionBackgroundColor = selectionBackgroundColor,
+        selectionForegroundColor = selectionForegroundColor,
     )
 }
 
@@ -373,6 +374,8 @@ internal fun TerminalWithAccessibility(
     onScrollControllerAvailable: ((ScrollController) -> Unit)? = null,
     onPasteRequest: (() -> Unit)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
+    selectionBackgroundColor: Color = Color(0xFFB3D7FF),
+    selectionForegroundColor: Color = Color.Black,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -1244,6 +1247,8 @@ internal fun TerminalWithAccessibility(
                         defaultBg = backgroundColor,
                         selectionManager = selectionManager,
                         autoDetectUrls = terminalEmulator.autoDetectUrls,
+                        selectionBackgroundColor = selectionBackgroundColor,
+                        selectionForegroundColor = selectionForegroundColor,
                     )
                 }
 
@@ -1337,6 +1342,8 @@ internal fun TerminalWithAccessibility(
                 autoDetectUrls = terminalEmulator.autoDetectUrls,
                 componentWidth = availableWidth,
                 componentHeight = availableHeight,
+                selectionBackgroundColor = selectionBackgroundColor,
+                selectionForegroundColor = selectionForegroundColor,
             )
         }
 
@@ -1514,6 +1521,8 @@ private fun DrawScope.drawLine(
     defaultBg: Color,
     selectionManager: SelectionManager,
     autoDetectUrls: Boolean = false,
+    selectionBackgroundColor: Color = Color(0xFFB3D7FF),
+    selectionForegroundColor: Color = Color.Black,
 ) {
     val y = row * charHeight
     var x = 0f
@@ -1528,11 +1537,11 @@ private fun DrawScope.drawLine(
         val isHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
 
         // Determine colors (handle reverse video and selection)
-        val fgColor = if (cell.reverse) cell.bgColor else cell.fgColor
+        val baseFgColor = if (cell.reverse) cell.bgColor else cell.fgColor
         val bgColor = if (cell.reverse) cell.fgColor else cell.bgColor
 
         // Draw background (with selection highlight)
-        val finalBgColor = if (isSelected) SELECTION_HIGHLIGHT_COLOR else bgColor
+        val finalBgColor = if (isSelected) selectionBackgroundColor else bgColor
         if (finalBgColor != defaultBg || isSelected) {
             drawRect(
                 color = finalBgColor,
@@ -1547,6 +1556,9 @@ private fun DrawScope.drawLine(
                 append(cell.char)
                 cell.combiningChars.forEach { append(it) }
             }
+
+            // Force high contrast for text on the selection background
+            val fgColor = if (isSelected) selectionForegroundColor else baseFgColor
 
             // Configure text paint for this cell
             textPaint.color = fgColor.toArgb()
@@ -1868,6 +1880,8 @@ private fun MagnifyingGlass(
     autoDetectUrls: Boolean = false,
     componentWidth: Int = 0,
     componentHeight: Int = 0,
+    selectionBackgroundColor: Color = Color(0xFFB3D7FF),
+    selectionForegroundColor: Color = Color.Black,
 ) {
     val magnifierSize = MAGNIFIER_SIZE_DP.dp
     val magnifierScale = MAGNIFIER_SCALE
@@ -1938,6 +1952,8 @@ private fun MagnifyingGlass(
                             defaultBg = backgroundColor,
                             selectionManager = selectionManager,
                             autoDetectUrls = autoDetectUrls,
+                            selectionBackgroundColor = selectionBackgroundColor,
+                            selectionForegroundColor = selectionForegroundColor,
                         )
                     }
                 }
