@@ -60,20 +60,24 @@ internal class ComposeMode {
     }
 
     /**
-     * Commit the composed text. Returns the buffer text and deactivates compose mode.
-     * Returns null if inactive or buffer is empty.
+     * Commit the composed text. Returns the buffer text and clears it, keeping compose
+     * mode active so subsequent input continues to be buffered. Returns null if inactive
+     * or buffer is empty.
      */
     fun commit(): String? {
-        if (!isActive || buffer.isEmpty()) {
-            deactivate()
-            return null
-        }
+        if (!isActive) return null
+        if (buffer.isEmpty()) return null
         val text = buffer
-        deactivate()
+        buffer = ""
         return text
     }
 
+    /**
+     * Drop the current composition without committing. Compose mode remains active so
+     * the user can keep composing; only the explicit toggle (deactivate) leaves the mode.
+     */
     fun cancel() {
-        deactivate()
+        if (!isActive) return
+        buffer = ""
     }
 }

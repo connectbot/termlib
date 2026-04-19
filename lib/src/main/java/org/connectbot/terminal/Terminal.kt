@@ -21,6 +21,8 @@ import android.content.Intent
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
+import android.icu.lang.UCharacter
+import android.icu.lang.UProperty
 import android.text.TextPaint
 import android.util.Log
 import androidx.annotation.VisibleForTesting
@@ -639,7 +641,12 @@ internal fun TerminalWithAccessibility(
             }
 
             override fun stopComposeMode() {
-                composeMode.cancel()
+                // Flush any in-flight IME composition into the terminal before leaving
+                // compose mode, so the user's typing isn't silently dropped on toggle off.
+                composeMode.commit()?.codePoints()?.forEach { codepoint ->
+                    terminalEmulator.dispatchCharacter(0, codepoint)
+                }
+                composeMode.deactivate()
             }
 
             override fun toggleComposeMode() {
@@ -2131,14 +2138,19 @@ private fun DrawScope.drawComposeOverlay(
     val y = cursorRow * charHeight
     val availableCols = totalCols - cursorCol
 
-    // Determine displayed text with slide-left behavior
-    val displayText = if (buffer.length > availableCols) {
-        "\u2026" + buffer.takeLast(availableCols - 1)
-    } else {
-        buffer
-    }
+    // No active composition — nothing to draw. Suppressing the empty-buffer block here
+    // avoids a stray green square sitting next to (or briefly over) just-committed chars
+    // after Enter while the terminal snapshot catches up with the cursor advance.
+    if (buffer.isEmpty()) return
 
-    val displayWidth = displayText.length * charWidth
+    // Truncation is column-based (CJK fullwidth/wide chars take 2 columns) so the buffer
+    // is clipped to what fits between the cursor and the right edge of the row. The pixel
+    // width, however, comes from the paint that actually draws the text — fonts don't
+    // always render "あ" at exactly 2 × measureText("M"), and using column math for pixels
+    // makes the trailing cursor drift further past the glyphs as the buffer grows.
+    val displayText = truncateForOverlay(buffer, availableCols)
+    if (displayText.isEmpty()) return
+    val displayWidth = textPaint.measureText(displayText)
 
     // Draw background
     drawRect(
@@ -2176,13 +2188,68 @@ private fun DrawScope.drawComposeOverlay(
     }
 
     // Draw cursor bar at end of displayed text
-    val cursorX = x + displayText.length * charWidth
+    val cursorX = x + displayWidth
     drawRect(
         color = Color.White,
         topLeft = Offset(cursorX, y),
         size = Size(COMPOSE_CURSOR_BAR_WIDTH, charHeight),
         alpha = CURSOR_LINE_ALPHA,
     )
+}
+
+/**
+ * Visual column width of a single codepoint. Fullwidth/wide East Asian characters
+ * (kanji, kana, hangul, fullwidth ASCII, etc.) occupy two terminal columns; everything
+ * else occupies one. Combining marks aren't special-cased here because the IME-composed
+ * buffer rarely contains them on their own; if needed they can be treated as zero-width.
+ */
+private fun codepointColumns(codepoint: Int): Int {
+    val eastAsianWidth = UCharacter.getIntPropertyValue(codepoint, UProperty.EAST_ASIAN_WIDTH)
+    return if (eastAsianWidth == UCharacter.EastAsianWidth.FULLWIDTH ||
+        eastAsianWidth == UCharacter.EastAsianWidth.WIDE
+    ) {
+        2
+    } else {
+        1
+    }
+}
+
+private fun String.visualColumnWidth(): Int {
+    var total = 0
+    var i = 0
+    while (i < length) {
+        val cp = codePointAt(i)
+        total += codepointColumns(cp)
+        i += Character.charCount(cp)
+    }
+    return total
+}
+
+/**
+ * Trim the buffer so its visual column width fits in [availableCols], keeping the right
+ * end of the buffer (most recent characters) and prefixing an ellipsis when truncating.
+ */
+private fun truncateForOverlay(buffer: String, availableCols: Int): String {
+    if (availableCols <= 0) return ""
+    if (buffer.visualColumnWidth() <= availableCols) return buffer
+
+    // Walk codepoints from the right, accumulating width up to availableCols - 1 (one
+    // column reserved for the leading ellipsis).
+    val budget = availableCols - 1
+    val codepoints = mutableListOf<Int>()
+    var taken = 0
+    var i = buffer.length
+    while (i > 0) {
+        val cp = buffer.codePointBefore(i)
+        val w = codepointColumns(cp)
+        if (taken + w > budget) break
+        codepoints.add(0, cp)
+        taken += w
+        i -= Character.charCount(cp)
+    }
+    val builder = StringBuilder("\u2026")
+    codepoints.forEach { builder.appendCodePoint(it) }
+    return builder.toString()
 }
 
 /**

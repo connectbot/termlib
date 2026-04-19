@@ -103,22 +103,54 @@ internal class KeyboardHandler(
         val key = event.key
         val ctrl = event.isCtrlPressed
         val shift = event.isShiftPressed
+        val modifierState = resolveEventModifierState(event)
+        val alt = modifierState.alt
+        val stripAltGr = modifierState.stripAltGr
 
         // If compose mode is active, intercept all input
         val compose = composeMode
         if (compose != null && compose.isActive) {
             when (key) {
                 Key.Enter -> {
+                    // Flush any IME-composed text, then dispatch a real Enter so the shell
+                    // sees a newline. Compose mode stays active (sticky toggle).
                     val text = compose.commit()
                     text?.codePoints()?.forEach { codepoint ->
                         terminalEmulator.dispatchCharacter(0, codepoint)
                     }
+                    val modifiers = buildModifierMask(ctrl, alt, shift)
+                    terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
+                    modifierManager?.clearTransients()
                     onInputProcessed?.invoke()
                 }
 
-                Key.Escape -> compose.cancel()
+                Key.Escape -> {
+                    // If a composition is in progress, Esc just cancels it (vim-like). With
+                    // an empty buffer, Esc passes through to the shell. Compose mode stays
+                    // active either way.
+                    if (compose.buffer.isNotEmpty()) {
+                        compose.cancel()
+                    } else {
+                        val modifiers = buildModifierMask(ctrl, alt, shift)
+                        terminalEmulator.dispatchKey(modifiers, VTermKey.ESCAPE)
+                        modifierManager?.clearTransients()
+                        onInputProcessed?.invoke()
+                    }
+                }
 
-                Key.Backspace -> compose.deleteLastChar()
+                Key.Backspace -> {
+                    // With a composition in progress, Backspace edits the buffer. With an
+                    // empty buffer it passes through so users can still delete characters
+                    // that were typed into the shell before entering compose mode.
+                    if (compose.buffer.isNotEmpty()) {
+                        compose.deleteLastChar()
+                    } else {
+                        val modifiers = buildModifierMask(ctrl, alt, shift)
+                        terminalEmulator.dispatchKey(modifiers, VTermKey.BACKSPACE)
+                        modifierManager?.clearTransients()
+                        onInputProcessed?.invoke()
+                    }
+                }
 
                 else -> {
                     if (!ctrl && !event.isAltPressed) {
@@ -184,14 +216,6 @@ internal class KeyboardHandler(
         }
 
         // Determine whether right-alt counts as a terminal modifier or a character selector.
-        val nativeEvent = event.nativeKeyEvent
-        val rightAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_RIGHT_ON)
-        val rightAltIsMeta = rightAltPressed && rightAltMode == RightAltMode.Meta
-        val leftAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_LEFT_ON) ||
-            (!rightAltPressed && nativeEvent.metaState and AndroidKeyEvent.META_ALT_ON != 0)
-        val alt = leftAltPressed || rightAltIsMeta
-        val stripAltGr = rightAltIsMeta
-
         // Check if this is a special key that libvterm handles
         val vtermKey = mapToVTermKey(key)
         if (vtermKey != null) {
@@ -266,6 +290,48 @@ internal class KeyboardHandler(
     }
 
     /**
+     * Dispatch finalized IME text directly to the terminal, bypassing composeMode.buffer.
+     *
+     * setComposingText() updates the local compose overlay while the IME is still composing.
+     * Once the IME calls commitText(), that text is final and should become terminal input
+     * immediately rather than staying attached to the sticky compose buffer.
+     */
+    fun onCommittedText(text: String) {
+        if (text.isEmpty()) return
+
+        val normalized = if (Normalizer.isNormalized(text, Normalizer.Form.NFC)) {
+            text
+        } else {
+            Normalizer.normalize(text, Normalizer.Form.NFC)
+        }
+        val modifiers = getModifierMask()
+
+        var index = 0
+        while (index < normalized.length) {
+            when (val ch = normalized[index]) {
+                '\n' -> {
+                    terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
+                    index += 1
+                }
+
+                '\r' -> {
+                    terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
+                    index += if (index + 1 < normalized.length && normalized[index + 1] == '\n') 2 else 1
+                }
+
+                else -> {
+                    val codepoint = normalized.codePointAt(index)
+                    terminalEmulator.dispatchCharacter(modifiers, codepoint)
+                    index += Character.charCount(codepoint)
+                }
+            }
+        }
+
+        modifierManager?.clearTransients()
+        onInputProcessed?.invoke()
+    }
+
+    /**
      * Build VTerm modifier mask.
      * Bit 0: Shift
      * Bit 1: Alt
@@ -277,6 +343,19 @@ internal class KeyboardHandler(
         if (alt) mask = mask or 2
         if (ctrl) mask = mask or 4
         return mask
+    }
+
+    private fun resolveEventModifierState(event: ComposeKeyEvent): EventModifierState {
+        val nativeEvent = event.nativeKeyEvent
+        val rightAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_RIGHT_ON)
+        val rightAltIsMeta = rightAltPressed && rightAltMode == RightAltMode.Meta
+        val leftAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_LEFT_ON) ||
+            (!rightAltPressed && nativeEvent.metaState and AndroidKeyEvent.META_ALT_ON != 0)
+
+        return EventModifierState(
+            alt = leftAltPressed || rightAltIsMeta,
+            stripAltGr = rightAltIsMeta,
+        )
     }
 
     /**
@@ -485,6 +564,11 @@ internal class KeyboardHandler(
         else -> null
     }
 }
+
+private data class EventModifierState(
+    val alt: Boolean,
+    val stripAltGr: Boolean,
+)
 
 /**
  * VTerm key codes from libvterm.
