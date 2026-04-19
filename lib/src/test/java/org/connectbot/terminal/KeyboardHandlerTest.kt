@@ -634,6 +634,37 @@ class KeyboardHandlerTest {
         assertEquals(expected.toList(), bytes.toList())
     }
 
+    @Test
+    fun testDeadKeyReturnsTrue() {
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+        )
+        val handler = KeyboardHandler(emulator, unicodeCharLookup = fakeDeadKeyLookup)
+        val handled = handler.onKeyEvent(createRawKeyEvent(FAKE_DEAD_GRAVE))
+        assertTrue("Dead key should be handled by KeyboardHandler", handled)
+    }
+
+    @Test
+    fun testLargeDeadKeyFollowedByNonCombinableBaseEmitsBothChars() {
+        val largeAccent = 0x1AB0
+        val fakeLargeDeadKeyLookup: (Int, Int, Int) -> Int = { _, keyCode, _ ->
+            when (keyCode) {
+                FAKE_DEAD_GRAVE -> KeyCharacterMap.COMBINING_ACCENT or largeAccent
+                FAKE_KEY_B -> 'b'.code
+                else -> 0
+            }
+        }
+        val output = collectOutput(
+            listOf(
+                createRawKeyEvent(FAKE_DEAD_GRAVE),
+                createRawKeyEvent(FAKE_KEY_B),
+            ),
+            lookup = fakeLargeDeadKeyLookup,
+        )
+        assertEquals(String(Character.toChars(largeAccent)) + "b", output)
+    }
+
     private fun keyToAndroidKeyCode(key: Key): Int = when (key) {
         Key.A -> AndroidKeyEvent.KEYCODE_A
         Key.B -> AndroidKeyEvent.KEYCODE_B
