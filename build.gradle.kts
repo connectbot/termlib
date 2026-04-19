@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.release)
     alias(libs.plugins.wasm2class) apply false
+    alias(libs.plugins.jmh) apply false
 }
 
 spotless {

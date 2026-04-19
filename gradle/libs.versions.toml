@@ -23,6 +23,7 @@ mockk = "1.14.9"
 
 junitClassic = "4.13.2"
 robolectric = "4.16.1"
+jmh = "0.7.3"
 ui = "1.11.0"
 
 [libraries]
@@ -65,3 +66,4 @@ release = { id = "net.researchgate.release", version.ref = "release" }
 metalava = { id = "me.tylerbwong.gradle.metalava", version.ref = "metalava" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 wasm2class = { id = "at.released.wasm2class.plugin", version.ref = "wasm2class" }
+jmh = { id = "me.champeau.jmh", version.ref = "jmh" }
