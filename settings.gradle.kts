@@ -18,5 +18,6 @@ rootProject.name = "termlib"
 
 include(":lib-intf")
 include(":lib-native")
+include(":lib-wasm")
 include(":lib")
 include(":test-app")
