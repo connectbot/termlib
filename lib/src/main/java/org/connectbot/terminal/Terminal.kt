@@ -2247,7 +2247,11 @@ private fun codepointColumns(codepoint: Int): Int {
     val eastAsianWidth = UCharacter.getIntPropertyValue(codepoint, UProperty.EAST_ASIAN_WIDTH)
     return if (eastAsianWidth == UCharacter.EastAsianWidth.FULLWIDTH ||
         eastAsianWidth == UCharacter.EastAsianWidth.WIDE
-    ) 2 else 1
+    ) {
+        2
+    } else {
+        1
+    }
 }
 
 private fun String.visualColumnWidth(): Int {
