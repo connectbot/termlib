@@ -261,7 +261,7 @@ class ImeInputViewTest {
         val ic: InputConnection,
         val outputs: MutableList<ByteArray>,
         val composeMode: ComposeMode,
-        val restartRequests: MutableList<View>
+        val restartRequests: MutableList<View>,
     )
 
     private fun createComposeReplayCapture(): ComposeReplayCapture {
@@ -271,7 +271,7 @@ class ImeInputViewTest {
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
-            onKeyboardInput = { data -> outputs.add(data.copyOf()) }
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
         val handler = KeyboardHandler(emulator).also { it.composeMode = composeMode }
         var ic: InputConnection? = null
@@ -280,7 +280,7 @@ class ImeInputViewTest {
                 context = context,
                 keyboardHandler = handler,
                 inputMethodManager = noOpImm,
-                onRestartInput = { restartRequests.add(it) }
+                onRestartInput = { restartRequests.add(it) },
             ).also { v ->
                 v.isComposeModeActive = true
                 v.setOnKeyListener { _, _, event ->
