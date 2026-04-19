@@ -47,7 +47,7 @@ internal class ImeInputView(
             inputMethodManager.updateSelection(view, selStart, selEnd, candidatesStart, candidatesEnd)
         },
     internal val onRestartInput: (view: View) -> Unit =
-        { view -> inputMethodManager.restartInput(view) }
+        { view -> inputMethodManager.restartInput(view) },
 ) : View(context) {
 
     init {

@@ -141,6 +141,7 @@ internal class KeyboardHandler(
                     modifierManager?.clearTransients()
                     onInputProcessed?.invoke()
                 }
+
                 Key.Escape -> {
                     // If a composition is in progress, Esc just cancels it (vim-like). With
                     // an empty buffer, Esc passes through to the shell. Compose mode stays
@@ -154,6 +155,7 @@ internal class KeyboardHandler(
                         onInputProcessed?.invoke()
                     }
                 }
+
                 Key.Backspace -> {
                     // With a composition in progress, Backspace edits the buffer. With an
                     // empty buffer it passes through so users can still delete characters
@@ -167,6 +169,7 @@ internal class KeyboardHandler(
                         onInputProcessed?.invoke()
                     }
                 }
+
                 else -> {
                     if (!ctrl && !event.isAltPressed) {
                         val codepoint = getCodePointFromKeyEvent(event)
@@ -340,8 +343,11 @@ internal class KeyboardHandler(
     fun onCommittedText(text: String) {
         if (text.isEmpty()) return
 
-        val normalized = if (Normalizer.isNormalized(text, Normalizer.Form.NFC)) text
-                         else Normalizer.normalize(text, Normalizer.Form.NFC)
+        val normalized = if (Normalizer.isNormalized(text, Normalizer.Form.NFC)) {
+            text
+        } else {
+            Normalizer.normalize(text, Normalizer.Form.NFC)
+        }
         val modifiers = getModifierMask()
 
         var index = 0
@@ -351,10 +357,12 @@ internal class KeyboardHandler(
                     terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
                     index += 1
                 }
+
                 '\r' -> {
                     terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
                     index += if (index + 1 < normalized.length && normalized[index + 1] == '\n') 2 else 1
                 }
+
                 else -> {
                     val codepoint = normalized.codePointAt(index)
                     terminalEmulator.dispatchCharacter(modifiers, codepoint)
