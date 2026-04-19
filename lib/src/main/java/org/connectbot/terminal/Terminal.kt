@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
@@ -650,6 +651,9 @@ internal fun TerminalWithAccessibility(
             }
 
             override fun getComposedText(): String = composeMode.buffer
+
+            override val pendingDeadChar: Int
+                get() = keyboardHandler.pendingDeadChar
         }
     }
 
@@ -1260,7 +1264,11 @@ internal fun TerminalWithAccessibility(
                         charWidth = baseCharWidth,
                         charHeight = baseCharHeight,
                         foregroundColor = foregroundColor,
+                        backgroundColor = backgroundColor,
                         cursorShape = screenState.snapshot.cursorShape,
+                        pendingDeadChar = composeController.pendingDeadChar,
+                        charBaseline = baseCharBaseline,
+                        textPaint = textPaint,
                     )
                 }
 
@@ -2012,7 +2020,11 @@ private fun DrawScope.drawCursor(
     charWidth: Float,
     charHeight: Float,
     foregroundColor: Color,
+    backgroundColor: Color = Color.Transparent,
     cursorShape: CursorShape = CursorShape.BLOCK,
+    pendingDeadChar: Int = 0,
+    charBaseline: Float = 0f,
+    textPaint: TextPaint? = null,
 ) {
     val x = col * charWidth
     val y = row * charHeight
@@ -2049,6 +2061,42 @@ private fun DrawScope.drawCursor(
                 alpha = CURSOR_LINE_ALPHA,
             )
         }
+    }
+
+    // Draw pending dead character if present
+    if (pendingDeadChar != 0 && textPaint != null) {
+        val savedColor = textPaint.color
+        val savedBold = textPaint.isFakeBoldText
+        val savedSkew = textPaint.textSkewX
+        val savedUnderline = textPaint.isUnderlineText
+        val savedStrike = textPaint.isStrikeThruText
+
+        // Use opposite color for block cursor to ensure visibility
+        val accentColor =
+            if (cursorShape == CursorShape.BLOCK) {
+                if (foregroundColor.luminance() > 0.5f) Color.Black else Color.White
+            } else {
+                foregroundColor
+            }
+
+        textPaint.color = accentColor.toArgb()
+        textPaint.isFakeBoldText = false
+        textPaint.textSkewX = 0f
+        textPaint.isUnderlineText = false
+        textPaint.isStrikeThruText = false
+
+        drawContext.canvas.nativeCanvas.drawText(
+            String(Character.toChars(pendingDeadChar)),
+            x,
+            y + charBaseline,
+            textPaint,
+        )
+
+        textPaint.color = savedColor
+        textPaint.isFakeBoldText = savedBold
+        textPaint.textSkewX = savedSkew
+        textPaint.isUnderlineText = savedUnderline
+        textPaint.isStrikeThruText = savedStrike
     }
 }
 

@@ -17,6 +17,9 @@
 package org.connectbot.terminal
 
 import android.view.KeyCharacterMap
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
@@ -78,8 +81,15 @@ internal class KeyboardHandler(
         },
 ) {
     var composeMode: ComposeMode? = null
+        set(value) {
+            if (field != value) {
+                pendingDeadChar = 0
+            }
+            field = value
+        }
 
-    private var pendingDeadChar: Int = 0
+    var pendingDeadChar: Int by mutableStateOf(0)
+        internal set
 
     /**
      * Process a Compose KeyEvent and send to terminal.
