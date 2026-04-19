@@ -47,4 +47,11 @@ interface ComposeController {
      * Get the currently composed (buffered) text.
      */
     fun getComposedText(): String
+
+    /**
+     * The current pending dead character (accent) waiting for a base character.
+     * 0 if no dead character is pending.
+     */
+    val pendingDeadChar: Int
+        get() = 0
 }

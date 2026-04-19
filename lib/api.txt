@@ -3,11 +3,13 @@ package org.connectbot.terminal {
 
   public interface ComposeController {
     method public String getComposedText();
+    method @InaccessibleFromKotlin public default int getPendingDeadChar();
     method @InaccessibleFromKotlin public boolean isComposeModeActive();
     method public void startComposeMode();
     method public void stopComposeMode();
     method public void toggleComposeMode();
     property public abstract boolean isComposeModeActive;
+    property public default int pendingDeadChar;
   }
 
   public interface ModifierManager {
