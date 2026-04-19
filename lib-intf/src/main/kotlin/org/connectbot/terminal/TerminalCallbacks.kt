@@ -22,7 +22,7 @@ package org.connectbot.terminal
  * IMPORTANT: Callbacks MUST NOT call back into Terminal methods, as the native
  * mutex is not reentrant. This will cause a deadlock.
  */
-internal interface TerminalCallbacks {
+interface TerminalCallbacks {
     /**
      * Called when a region of the screen needs to be redrawn.
      *
@@ -32,7 +32,30 @@ internal interface TerminalCallbacks {
      * @param endCol Last column that changed (exclusive)
      * @return 0 on success
      */
-    fun damage(startRow: Int, endRow: Int, startCol: Int, endCol: Int): Int
+    fun damage(
+        startRow: Int,
+        endRow: Int,
+        startCol: Int,
+        endCol: Int,
+    ): Int
+
+    /**
+     * Batched damage notification: [rects] is a flat int array of (startRow, endRow, startCol,
+     * endCol) quads, [count] quads total. Delivered in one JNI call after a write or resize
+     * to eliminate per-rect JNI overhead.
+     *
+     * Default implementation loops and calls [damage] for each quad.
+     */
+    fun damageBatch(
+        rects: IntArray,
+        count: Int,
+    ) {
+        var i = 0
+        repeat(count) {
+            damage(rects[i], rects[i + 1], rects[i + 2], rects[i + 3])
+            i += 4
+        }
+    }
 
     /**
      * Called when a rectangular region needs to be moved/scrolled.
@@ -43,7 +66,10 @@ internal interface TerminalCallbacks {
      * @param src Source rectangle
      * @return 1 if handled, 0 to fall back to damage events
      */
-    fun moverect(dest: TermRect, src: TermRect): Int
+    fun moverect(
+        dest: TermRect,
+        src: TermRect,
+    ): Int
 
     /**
      * Called when cursor position changes.
@@ -53,7 +79,11 @@ internal interface TerminalCallbacks {
      * @param visible Whether cursor should be visible
      * @return 0 on success
      */
-    fun moveCursor(pos: CursorPosition, oldPos: CursorPosition, visible: Boolean): Int
+    fun moveCursor(
+        pos: CursorPosition,
+        oldPos: CursorPosition,
+        visible: Boolean,
+    ): Int
 
     /**
      * Called when a terminal property changes (title, cursor shape, etc.).
@@ -62,7 +92,10 @@ internal interface TerminalCallbacks {
      * @param value Property value
      * @return 0 on success
      */
-    fun setTermProp(prop: Int, value: TerminalProperty): Int
+    fun setTermProp(
+        prop: Int,
+        value: TerminalProperty,
+    ): Int
 
     /**
      * Called when the terminal bell should be triggered.
@@ -82,7 +115,11 @@ internal interface TerminalCallbacks {
      *                    in wrapped long commands.
      * @return 0 on success
      */
-    fun pushScrollbackLine(cols: Int, cells: Array<ScreenCell>, softWrapped: Boolean): Int
+    fun pushScrollbackLine(
+        cols: Int,
+        cells: Array<ScreenCell>,
+        softWrapped: Boolean,
+    ): Int
 
     /**
      * Called when a line should be popped from scrollback buffer.
@@ -91,7 +128,10 @@ internal interface TerminalCallbacks {
      * @param cells Array to fill with screen cells
      * @return 0 on success
      */
-    fun popScrollbackLine(cols: Int, cells: Array<ScreenCell>): Int
+    fun popScrollbackLine(
+        cols: Int,
+        cells: Array<ScreenCell>,
+    ): Int
 
     /**
      * Called when keyboard input is generated (user types, terminal generates escape sequences).
@@ -112,41 +152,59 @@ internal interface TerminalCallbacks {
      * @param cursorCol Current cursor column from native terminal
      * @return 1 if handled, 0 otherwise
      */
-    fun onOscSequence(command: Int, payload: String, cursorRow: Int, cursorCol: Int): Int
+    fun onOscSequence(
+        command: Int,
+        payload: String,
+        cursorRow: Int,
+        cursorCol: Int,
+    ): Int
 }
 
 /**
  * Rectangular region in the terminal.
  */
-internal data class TermRect(
+data class TermRect(
     val startRow: Int,
     val endRow: Int,
     val startCol: Int,
-    val endCol: Int
+    val endCol: Int,
 )
 
 /**
  * Cursor position in the terminal.
  */
-internal data class CursorPosition(
+data class CursorPosition(
     val row: Int,
-    val col: Int
+    val col: Int,
 )
 
 /**
  * Terminal property values (title, colors, cursor state, etc.).
  */
-internal sealed class TerminalProperty {
-    data class BoolValue(val value: Boolean) : TerminalProperty()
-    data class IntValue(val value: Int) : TerminalProperty()
-    data class StringValue(val value: String) : TerminalProperty()
-    data class ColorValue(val red: Int, val green: Int, val blue: Int) : TerminalProperty()
+sealed class TerminalProperty {
+    data class BoolValue(
+        val value: Boolean,
+    ) : TerminalProperty()
+
+    data class IntValue(
+        val value: Int,
+    ) : TerminalProperty()
+
+    data class StringValue(
+        val value: String,
+    ) : TerminalProperty()
+
+    data class ColorValue(
+        val red: Int,
+        val green: Int,
+        val blue: Int,
+    ) : TerminalProperty()
 }
 
 /**
  * A single screen cell with character and attributes.
  */
-internal data class ScreenCell(
+data class ScreenCell(
     val char: Char,
     val combiningChars: List<Char> = emptyList(),
     val fgRed: Int,
@@ -157,8 +215,10 @@ internal data class ScreenCell(
     val bgBlue: Int,
     val bold: Boolean = false,
     val italic: Boolean = false,
-    val underline: Int = 0,  // 0=none, 1=single, 2=double
+    // 0=none, 1=single, 2=double
+    val underline: Int = 0,
     val reverse: Boolean = false,
     val strike: Boolean = false,
-    val width: Int = 1  // 1 for normal, 2 for fullwidth (CJK)
+    // 1 for normal, 2 for fullwidth (CJK)
+    val width: Int = 1,
 )

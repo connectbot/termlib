@@ -26,38 +26,7 @@ abstract class DokkaMarkdownPlugin : DokkaFormatPlugin(formatName = "markdown") 
 
 apply<DokkaMarkdownPlugin>()
 
-val hostJniDir = layout.buildDirectory.dir("host-jni")
-val cppSourceDir = layout.projectDirectory.dir("src/main/cpp")
-
-val cmakeConfigureHost by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Configure the CMake host build of jni_cb_term"
-    inputs.dir(cppSourceDir)
-    outputs.dir(hostJniDir)
-    commandLine(
-        "cmake",
-        "-S",
-        cppSourceDir.asFile.absolutePath,
-        "-B",
-        hostJniDir.get().asFile.absolutePath,
-        "-DCMAKE_BUILD_TYPE=Debug",
-    )
-}
-
-val cmakeBuildHost by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Build libjni_cb_term for the host JVM"
-    dependsOn(cmakeConfigureHost)
-    inputs.dir(hostJniDir)
-    commandLine(
-        "cmake",
-        "--build",
-        hostJniDir.get().asFile.absolutePath,
-        "--target",
-        "jni_cb_term",
-    )
-    outputs.dir(hostJniDir)
-}
+val libNativeHostJniDir = project(":lib-native").layout.buildDirectory.dir("host-jni")
 
 android {
     namespace = "org.connectbot.terminal"
@@ -119,8 +88,8 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             all { testTask ->
-                testTask.dependsOn(cmakeBuildHost)
-                testTask.jvmArgs("-Djava.library.path=${hostJniDir.get().asFile.absolutePath}")
+                testTask.dependsOn(project(":lib-native").tasks.named("cmakeBuildHost"))
+                testTask.jvmArgs("-Djava.library.path=${libNativeHostJniDir.get().asFile.absolutePath}")
             }
         }
     }
@@ -133,6 +102,7 @@ kotlin {
 }
 
 dependencies {
+    api(project(":lib-native"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

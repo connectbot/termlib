@@ -2,37 +2,32 @@ cmake_minimum_required(VERSION 3.18.1)
 
 project("cb_term")
 
-# libvterm static library
+set(LIB_NATIVE_CPP "${CMAKE_CURRENT_SOURCE_DIR}/../../../../lib-native/src/main/cpp")
+
 add_library(vterm STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/encoding.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/keyboard.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/mouse.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/parser.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/pen.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/screen.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/state.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/unicode.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/vterm.c
+    ${LIB_NATIVE_CPP}/libvterm/src/encoding.c
+    ${LIB_NATIVE_CPP}/libvterm/src/keyboard.c
+    ${LIB_NATIVE_CPP}/libvterm/src/mouse.c
+    ${LIB_NATIVE_CPP}/libvterm/src/parser.c
+    ${LIB_NATIVE_CPP}/libvterm/src/pen.c
+    ${LIB_NATIVE_CPP}/libvterm/src/screen.c
+    ${LIB_NATIVE_CPP}/libvterm/src/state.c
+    ${LIB_NATIVE_CPP}/libvterm/src/unicode.c
+    ${LIB_NATIVE_CPP}/libvterm/src/vterm.c
 )
 
-target_include_directories(vterm PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/include
-)
-
-target_compile_definitions(vterm PRIVATE
-    VTERM_STATIC
-)
-
+target_include_directories(vterm PUBLIC ${LIB_NATIVE_CPP}/libvterm/include)
+target_compile_definitions(vterm PRIVATE VTERM_STATIC)
 set_target_properties(vterm PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# JNI wrapper library
 add_library(jni_cb_term SHARED
-    ${CMAKE_CURRENT_SOURCE_DIR}/Terminal.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/mutf8.cpp
+    ${LIB_NATIVE_CPP}/Terminal.cpp
+    ${LIB_NATIVE_CPP}/mutf8.cpp
 )
 
 target_include_directories(jni_cb_term PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/include
+    ${LIB_NATIVE_CPP}
+    ${LIB_NATIVE_CPP}/libvterm/include
 )
 
 target_compile_features(jni_cb_term PRIVATE cxx_std_17)
@@ -48,7 +43,5 @@ if(ANDROID)
 else()
     find_package(JNI REQUIRED)
     target_include_directories(jni_cb_term PRIVATE ${JNI_INCLUDE_DIRS})
-    target_link_libraries(jni_cb_term
-        vterm
-    )
+    target_link_libraries(jni_cb_term vterm)
 endif()
