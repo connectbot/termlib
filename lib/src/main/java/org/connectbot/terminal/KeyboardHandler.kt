@@ -296,7 +296,8 @@ internal class KeyboardHandler(
      * including keys not present in the static mapping (e.g. Key.At, non-US layouts).
      *
      * Dead keys (combining accents) are tracked across calls:
-     * - On a dead key, the accent is saved and null is returned (the key is silently consumed).
+     * - On a dead key, the accent is saved and 0L is returned (the key is handled but produces no
+     *   immediate output).
      * - On the next printable key, [KeyCharacterMap.getDeadChar] combines them. If the
      *   combination is valid, the composed character is returned. If not (e.g. ´ + z on a
      *   layout with no ź), the pending accent is emitted first and then the base character,
@@ -307,13 +308,13 @@ internal class KeyboardHandler(
      * @param extraShift if true, adds META_SHIFT_ON to the meta state (for sticky shift)
      * @param stripAlt if true, also strips [AndroidKeyEvent.META_ALT_RIGHT_ON] from the KCM
      *   lookup; left-alt is always stripped. Use when right-alt is [RightAltMode.Meta]
-     * @return the resolved codepoint, or null if the event was a dead key that has been buffered
+     * @return the resolved codepoint(s), 0L if a dead key was buffered, or null if not handled
      */
     private fun getCodePointFromKeyEvent(
         event: ComposeKeyEvent,
         extraShift: Boolean = false,
         stripAlt: Boolean = false,
-    ): Int? {
+    ): Long? {
         val nativeEvent = event.nativeKeyEvent
         // Always strip left-alt and the shared ALT_ON bit; only strip right-alt when it is
         // acting as Meta rather than a character selector.
@@ -337,38 +338,39 @@ internal class KeyboardHandler(
             if (pendingDeadChar == accent) {
                 // Same dead key twice: emit the spacing (non-combining) version of the accent.
                 pendingDeadChar = 0
-                return accent
+                return accent.toLong()
             }
             pendingDeadChar = accent
-            return null
+            return 0L
         }
 
         val dead = pendingDeadChar
         pendingDeadChar = 0
         if (dead != 0) {
             val composed = KeyCharacterMap.getDeadChar(dead, raw)
-            if (composed != 0) return composed
+            if (composed != 0) return composed.toLong()
+
             // Combination not possible: the caller will emit `dead` first, then we return `raw`.
-            // We signal this by returning a negative sentinel; the caller unpacks both values.
-            return -(dead shl 21 or raw)
+            // Use bit 63 as a flag for multiple codepoints.
+            return (1L shl 63) or (dead.toLong() shl 32) or raw.toLong()
         }
 
-        return raw
+        return raw.toLong()
     }
 
     /**
-     * Dispatch one or two codepoints produced by [getCodePointFromKeyEvent].
-     *
-     * A negative return value encodes a failed dead-key combination as -(accent<<21 | base).
-     * This helper unpacks that and dispatches both characters.
+     * Dispatch one or more codepoints produced by [getCodePointFromKeyEvent].
      */
-    private fun dispatchCodePoint(codepoint: Int, dispatch: (Int) -> Unit) {
-        if (codepoint >= 0) {
-            dispatch(codepoint)
+    private fun dispatchCodePoint(codepoint: Long, dispatch: (Int) -> Unit) {
+        if (codepoint == 0L) return
+        if (codepoint < 0) {
+            // Failed dead-key combination: dispatch both characters.
+            val accent = ((codepoint ushr 32) and 0x7FFFFFFFL).toInt()
+            val base = (codepoint and 0xFFFFFFFFL).toInt()
+            dispatch(accent)
+            dispatch(base)
         } else {
-            val packed = -codepoint
-            dispatch(packed ushr 21) // the stranded accent
-            dispatch(packed and 0x1FFFFF) // the base character
+            dispatch(codepoint.toInt())
         }
     }
 
