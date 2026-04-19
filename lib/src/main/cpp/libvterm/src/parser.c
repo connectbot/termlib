@@ -50,7 +50,12 @@ static void do_escape(VTerm *vt, char command)
   char seq[INTERMED_MAX+1];
 
   size_t len = vt->parser.intermedlen;
-  strncpy(seq, vt->parser.intermed, len);
+  if (len >= sizeof(seq) - 1) {
+    DEBUG_LOG("libvterm: Escape sequence too long; ignoring\n");
+    return;
+  }
+
+  memcpy(seq, vt->parser.intermed, len);
   seq[len++] = command;
   seq[len]   = 0;
 
