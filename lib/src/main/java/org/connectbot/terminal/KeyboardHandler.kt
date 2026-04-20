@@ -164,7 +164,11 @@ internal class KeyboardHandler(
                         compose.deleteLastChar()
                     } else {
                         val modifiers = buildModifierMask(ctrl, alt, shift)
-                        terminalEmulator.dispatchKey(modifiers, VTermKey.BACKSPACE)
+                        if (delKeyMode is DelKeyMode.Backspace) {
+                            terminalEmulator.dispatchCharacter(modifiers, 0x08)
+                        } else {
+                            terminalEmulator.dispatchKey(modifiers, VTermKey.BACKSPACE)
+                        }
                         modifierManager?.clearTransients()
                         onInputProcessed?.invoke()
                     }
@@ -233,7 +237,6 @@ internal class KeyboardHandler(
             }
         }
 
-        // Determine whether right-alt counts as a terminal modifier or a character selector.
         // When DelKeyMode.Backspace is active, swap the byte sequences:
         // Backspace → ^H (0x08), Delete → DEL (0x7f).
         if (delKeyMode is DelKeyMode.Backspace) {
