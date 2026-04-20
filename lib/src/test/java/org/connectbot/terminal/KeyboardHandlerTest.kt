@@ -314,6 +314,30 @@ class KeyboardHandlerTest {
     }
 
     @Test
+    fun testComposeModeBackspacePassthroughRespectsDelKeyModeBackspace() {
+        // When compose buffer is empty and DelKeyMode.Backspace is active, the pass-through
+        // Backspace must send ^H (0x08), not DEL (0x7f).
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val handler = KeyboardHandler(emulator)
+        handler.delKeyMode = DelKeyMode.Backspace
+        val composeMode = ComposeMode()
+        composeMode.activate()
+        handler.composeMode = composeMode
+
+        handler.onKeyEvent(createKeyEvent(Key.Backspace, KeyEventType.KeyDown))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("Expected ^H (0x08) in Backspace mode", received.contains(0x08.toByte()))
+        assertFalse("Should NOT send DEL (0x7f) in Backspace mode", received.contains(0x7F.toByte()))
+    }
+
+    @Test
     fun testComposeModeEscapeCancelsCompositionInProgress() {
         val composeMode = ComposeMode()
         composeMode.activate()
