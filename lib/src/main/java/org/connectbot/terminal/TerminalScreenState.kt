@@ -139,12 +139,26 @@ internal class TerminalScreenState(
 
     /**
      * Update the snapshot while preserving UI state (scroll position).
-     * This allows the terminal content to update without resetting the scroll position.
+     *
+     * When a user is scrolled up reading history and new content arrives (or a
+     * resize / reconnect changes the scrollback size), the content at their
+     * current viewport must stay visible. That requires adjusting
+     * [scrollbackPosition] by the delta between old and new scrollback sizes —
+     * otherwise the visible lines shift with each update.
+     *
+     * A user already at the bottom ([scrollbackPosition] == 0) stays at the
+     * bottom by definition and needs no adjustment.
      *
      * @param newSnapshot The new snapshot to use
      */
     internal fun updateSnapshot(newSnapshot: TerminalSnapshot) {
+        val oldScrollbackSize = snapshot.scrollback.size
+        val newScrollbackSize = newSnapshot.scrollback.size
         snapshot = newSnapshot
+        if (scrollbackPosition != 0) {
+            val delta = newScrollbackSize - oldScrollbackSize
+            scrollbackPosition = (scrollbackPosition + delta).coerceIn(0, newScrollbackSize)
+        }
     }
 }
 
