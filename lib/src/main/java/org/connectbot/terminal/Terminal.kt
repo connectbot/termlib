@@ -424,6 +424,7 @@ internal fun TerminalWithAccessibility(
     var zoomOrigin by remember(terminalEmulator) { mutableStateOf(TransformOrigin.Center) }
     var isZooming by remember(terminalEmulator) { mutableStateOf(false) }
     var isUserScrolling by remember(terminalEmulator) { mutableStateOf(false) }
+    var isDraggingHandle by remember(terminalEmulator) { mutableStateOf(false) }
     var calculatedFontSize by remember(terminalEmulator) { mutableStateOf(initialFontSize) }
 
     // Magnifying glass state
@@ -931,6 +932,7 @@ internal fun TerminalWithAccessibility(
                                 )
                                 if (touchingStart || touchingEnd) {
                                     gestureType = GestureType.HandleDrag
+                                    isDraggingHandle = true
                                     // Handle drag
                                     showMagnifier = true
                                     magnifierPosition = down.position
@@ -938,37 +940,41 @@ internal fun TerminalWithAccessibility(
                                     // Local variable to keep track of which handle we are moving in case they cross
                                     var isMovingStart = touchingStart
 
-                                    drag(down.id) { change ->
-                                        val newCol =
-                                            (change.position.x / baseCharWidth).toInt()
-                                                .coerceIn(0, screenState.snapshot.cols - 1)
-                                        val newRow =
-                                            (change.position.y / baseCharHeight).toInt()
-                                                .coerceIn(0, screenState.snapshot.rows - 1)
+                                    try {
+                                        drag(down.id) { change ->
+                                            val newCol =
+                                                (change.position.x / baseCharWidth).toInt()
+                                                    .coerceIn(0, screenState.snapshot.cols - 1)
+                                            val newRow =
+                                                (change.position.y / baseCharHeight).toInt()
+                                                    .coerceIn(0, screenState.snapshot.rows - 1)
 
-                                        val current = selectionManager.selectionRange
-                                        if (current != null) {
-                                            val result = applyHandleDrag(
-                                                startRow = current.startRow,
-                                                startCol = current.startCol,
-                                                endRow = current.endRow,
-                                                endCol = current.endCol,
-                                                isMovingStart = isMovingStart,
-                                                newRow = newRow,
-                                                newCol = newCol,
-                                            )
-                                            isMovingStart = result.isMovingStart
-                                            selectionManager.updateSelectionStart(result.startRow, result.startCol)
-                                            selectionManager.updateSelectionEnd(result.endRow, result.endCol)
-                                            selectionManager.adjustSelectionForMode(
-                                                screenState.snapshot.cols,
-                                                screenState.snapshot,
-                                                screenState.scrollbackPosition,
-                                            )
+                                            val current = selectionManager.selectionRange
+                                            if (current != null) {
+                                                val result = applyHandleDrag(
+                                                    startRow = current.startRow,
+                                                    startCol = current.startCol,
+                                                    endRow = current.endRow,
+                                                    endCol = current.endCol,
+                                                    isMovingStart = isMovingStart,
+                                                    newRow = newRow,
+                                                    newCol = newCol,
+                                                )
+                                                isMovingStart = result.isMovingStart
+                                                selectionManager.updateSelectionStart(result.startRow, result.startCol)
+                                                selectionManager.updateSelectionEnd(result.endRow, result.endCol)
+                                                selectionManager.adjustSelectionForMode(
+                                                    screenState.snapshot.cols,
+                                                    screenState.snapshot,
+                                                    screenState.scrollbackPosition,
+                                                )
+                                            }
+
+                                            magnifierPosition = change.position
+                                            change.consume()
                                         }
-
-                                        magnifierPosition = change.position
-                                        change.consume()
+                                    } finally {
+                                        isDraggingHandle = false
                                     }
 
                                     // After lifting finger, ensure selection is fully adjusted and handles snap
@@ -1376,15 +1382,29 @@ internal fun TerminalWithAccessibility(
         }
 
         // Copy button (+ overflow menu) when text is selected
-        if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
+        if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting && !isDraggingHandle) {
             val range = selectionManager.selectionRange
             if (range != null) {
                 val endPosition = range.getEndPosition()
                 val buttonRowWidthPx = with(density) { (COPY_BUTTON_SIZE * 2 + 8.dp).toPx() }
+                val buttonHeightPx = with(density) { COPY_BUTTON_SIZE.toPx() }
+
                 val buttonX = (endPosition.second * baseCharWidth)
                     .coerceAtMost(availableWidth - buttonRowWidthPx)
                     .coerceAtLeast(0f)
-                val buttonY = endPosition.first * baseCharHeight - with(density) { COPY_BUTTON_OFFSET.toPx() }
+
+                // Try placing below the selection first
+                val handleHeightPx = with(density) { SELECTION_HANDLE_WIDTH.toPx() }
+                val marginPx = with(density) { 8.dp.toPx() }
+                var buttonY = (endPosition.first + 1) * baseCharHeight + handleHeightPx + marginPx
+
+                if (buttonY + buttonHeightPx > availableHeight) {
+                    // Doesn't fit below, place above the selection (clearing the handle if it's there)
+                    // Note: endPosition might have a handle pointing down, but if the selection is
+                    // short, we might be overlapping the start handle which points up.
+                    buttonY = endPosition.first * baseCharHeight - handleHeightPx - buttonHeightPx - marginPx
+                }
+
                 val context = LocalContext.current
                 var overflowMenuExpanded by remember { mutableStateOf(false) }
 
