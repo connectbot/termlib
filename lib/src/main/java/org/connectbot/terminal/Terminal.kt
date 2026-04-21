@@ -423,6 +423,7 @@ internal fun TerminalWithAccessibility(
     var zoomOffset by remember(terminalEmulator) { mutableStateOf(Offset.Zero) }
     var zoomOrigin by remember(terminalEmulator) { mutableStateOf(TransformOrigin.Center) }
     var isZooming by remember(terminalEmulator) { mutableStateOf(false) }
+    var isUserScrolling by remember(terminalEmulator) { mutableStateOf(false) }
     var calculatedFontSize by remember(terminalEmulator) { mutableStateOf(initialFontSize) }
 
     // Magnifying glass state
@@ -865,7 +866,7 @@ internal fun TerminalWithAccessibility(
         // Sync scrollOffset when scrollbackPosition changes externally (but not during user scrolling)
         LaunchedEffect(screenState.scrollbackPosition) {
             val targetOffset = screenState.scrollbackPosition * baseCharHeight
-            if (!scrollOffset.isRunning && scrollOffset.value != targetOffset) {
+            if (!isUserScrolling && !scrollOffset.isRunning && scrollOffset.value != targetOffset) {
                 scrollOffset.snapTo(targetOffset)
             }
         }
@@ -899,6 +900,7 @@ internal fun TerminalWithAccessibility(
                     awaitEachGesture {
                         var gestureType: GestureType = GestureType.Undetermined
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        scrollJob?.cancel()
 
                         // 1a. Check for double-tap to start word selection
                         val isDoubleTap = (down.uptimeMillis - tapTracker.lastTimestamp) < viewConfiguration.doubleTapTimeoutMillis &&
@@ -1029,91 +1031,100 @@ internal fun TerminalWithAccessibility(
                         var initialScrollOffset = 0f
 
                         // 4. Main event loop
-                        while (true) {
-                            val event: PointerEvent =
-                                awaitPointerEvent(PointerEventPass.Main)
+                        try {
+                            while (true) {
+                                val event: PointerEvent =
+                                    awaitPointerEvent(PointerEventPass.Main)
 
-                            // Use the same pointer that started the gesture for consistency
-                            val change = event.changes.find { it.id == primaryPointerId } ?: event.changes.first()
+                                // Use the same pointer that started the gesture for consistency
+                                val change =
+                                    event.changes.find { it.id == primaryPointerId } ?: event.changes.first()
 
-                            // Track velocity for all events, including the final UP event.
-                            // addPointerInputChange handles historical positions for better accuracy.
-                            velocityTracker.addPointerInputChange(change)
+                                // Track velocity for all events, including the final UP event.
+                                // addPointerInputChange handles historical positions for better accuracy.
+                                velocityTracker.addPointerInputChange(change)
 
-                            val dragAmount = change.positionChange()
-                            panAccumulator += dragAmount
+                                val dragAmount = change.positionChange()
+                                panAccumulator += dragAmount
 
-                            // 4a. Check for multi-touch (zoom)
-                            // Only allow zoom if we are still undetermined and within the initial grace period.
-                            if (gestureType == GestureType.Undetermined && change.uptimeMillis <= multiTouchTimeout && event.changes.size > 1) {
-                                secondPointer = event.changes.firstOrNull { it.id != primaryPointerId && it.pressed }
-                                if (secondPointer != null) break
-                            }
-
-                            // 4b. Determine gesture if still undetermined
-                            if (gestureType == GestureType.Undetermined && !longPressDetected) {
-                                // Ignore touch slop if within multi-touch grace period
-                                val isGracePeriod = change.uptimeMillis <= multiTouchTimeout
-
-                                if (!isGracePeriod && panAccumulator.getDistanceSquared() > touchSlopSquared) {
-                                    longPressJob?.cancel()
-                                    gestureType = GestureType.Scroll
-                                    // Adjust initialScrollOffset so (initial + panAccumulator) matches current offset
-                                    initialScrollOffset = scrollOffset.value - panAccumulator.y
-                                    // Clear any active selection when scrolling starts
-                                    if (selectionManager.mode != SelectionMode.NONE) {
-                                        selectionManager.clearSelection()
-                                    }
+                                // 4a. Check for multi-touch (zoom)
+                                // Only allow zoom if we are still undetermined and within the initial grace period.
+                                if (gestureType == GestureType.Undetermined && change.uptimeMillis <= multiTouchTimeout && event.changes.size > 1) {
+                                    secondPointer =
+                                        event.changes.firstOrNull { it.id != primaryPointerId && it.pressed }
+                                    if (secondPointer != null) break
                                 }
-                            }
 
-                            // 4c. Handle based on gesture type
-                            when (gestureType) {
-                                GestureType.Selection -> {
-                                    if (selectionManager.isSelecting) {
-                                        val dragCol =
-                                            (change.position.x / baseCharWidth).toInt()
-                                                .coerceIn(0, screenState.snapshot.cols - 1)
-                                        val dragRow =
-                                            (change.position.y / baseCharHeight).toInt()
-                                                .coerceIn(0, screenState.snapshot.rows - 1)
-                                        selectionManager.updateSelection(
-                                            dragRow,
-                                            dragCol,
-                                        )
-                                        selectionManager.adjustSelectionForMode(
-                                            screenState.snapshot.cols,
-                                            screenState.snapshot,
-                                            screenState.scrollbackPosition,
-                                        )
-                                        magnifierPosition = change.position
+                                // 4b. Determine gesture if still undetermined
+                                if (gestureType == GestureType.Undetermined && !longPressDetected) {
+                                    // Ignore touch slop if within multi-touch grace period
+                                    val isGracePeriod = change.uptimeMillis <= multiTouchTimeout
+
+                                    if (!isGracePeriod && panAccumulator.getDistanceSquared() > touchSlopSquared) {
+                                        longPressJob?.cancel()
+                                        gestureType = GestureType.Scroll
+                                        isUserScrolling = true
+                                        // Adjust initialScrollOffset so (initial + panAccumulator) matches current offset
+                                        initialScrollOffset = scrollOffset.value - panAccumulator.y
+                                        // Clear any active selection when scrolling starts
+                                        if (selectionManager.mode != SelectionMode.NONE) {
+                                            selectionManager.clearSelection()
+                                        }
                                     }
                                 }
 
-                                GestureType.Scroll -> {
-                                    // Update scroll offset using total pan from the start of the gesture
-                                    // to avoid stuttering from stale scrollOffset.value.
-                                    val newOffset = (initialScrollOffset + panAccumulator.y)
-                                        .coerceIn(0f, maxScroll)
-
-                                    // Cancel any ongoing scroll or fling and snap to the new position.
-                                    // Using launch with cancel ensures the latest snap always wins.
-                                    scrollJob?.cancel()
-                                    scrollJob = launch {
-                                        scrollOffset.snapTo(newOffset)
+                                // 4c. Handle based on gesture type
+                                when (gestureType) {
+                                    GestureType.Selection -> {
+                                        if (selectionManager.isSelecting) {
+                                            val dragCol =
+                                                (change.position.x / baseCharWidth).toInt()
+                                                    .coerceIn(0, screenState.snapshot.cols - 1)
+                                            val dragRow =
+                                                (change.position.y / baseCharHeight).toInt()
+                                                    .coerceIn(0, screenState.snapshot.rows - 1)
+                                            selectionManager.updateSelection(
+                                                dragRow,
+                                                dragCol,
+                                            )
+                                            selectionManager.adjustSelectionForMode(
+                                                screenState.snapshot.cols,
+                                                screenState.snapshot,
+                                                screenState.scrollbackPosition,
+                                            )
+                                            magnifierPosition = change.position
+                                        }
                                     }
 
-                                    // Update terminal buffer scrollback position
-                                    val scrolledLines =
-                                        (newOffset / baseCharHeight).toInt()
-                                    screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                    GestureType.Scroll -> {
+                                        // Update scroll offset using total pan from the start of the gesture
+                                        // to avoid stuttering from stale scrollOffset.value.
+                                        val currentMaxScroll =
+                                            screenState.snapshot.scrollback.size * baseCharHeight
+                                        val newOffset = (initialScrollOffset + panAccumulator.y)
+                                            .coerceIn(0f, currentMaxScroll)
+
+                                        // Cancel any ongoing scroll or fling and snap to the new position.
+                                        // Using launch with cancel ensures the latest snap always wins.
+                                        scrollJob?.cancel()
+                                        scrollJob = launch {
+                                            scrollOffset.snapTo(newOffset)
+                                        }
+
+                                        // Update terminal buffer scrollback position
+                                        val scrolledLines =
+                                            (newOffset / baseCharHeight).toInt()
+                                        screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                    }
+
+                                    else -> {}
                                 }
 
-                                else -> {}
+                                if (event.changes.all { !it.pressed }) break
+                                change.consume()
                             }
-
-                            if (event.changes.all { !it.pressed }) break
-                            change.consume()
+                        } finally {
+                            isUserScrolling = false
                         }
 
                         // 5. Handle zoom if multi-touch was detected
