@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -87,6 +88,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -397,6 +399,7 @@ internal fun TerminalWithAccessibility(
     val currentOnHyperlinkClick by rememberUpdatedState(onHyperlinkClick)
 
     val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
     val clipboardManager = LocalClipboardManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
@@ -908,6 +911,7 @@ internal fun TerminalWithAccessibility(
                             val tapRow = (down.position.y / baseCharHeight).toInt()
                                 .coerceIn(0, screenState.snapshot.rows - 1)
                             selectionManager.startSelection(tapRow, tapCol, screenState.snapshot.cols, SelectionMode.WORD, screenState.snapshot, screenState.scrollbackPosition)
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             showMagnifier = true
                             magnifierPosition = down.position
                             tapTracker.lastTimestamp = 0L // prevent triple-tap double triggers
@@ -1005,6 +1009,7 @@ internal fun TerminalWithAccessibility(
                                         screenState.snapshot.cols,
                                         SelectionMode.CHARACTER,
                                     )
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     showMagnifier = true
                                     magnifierPosition = down.position
                                 }
