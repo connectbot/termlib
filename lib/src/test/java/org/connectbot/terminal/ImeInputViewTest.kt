@@ -49,6 +49,7 @@ class ImeInputViewTest {
 
     private fun makeView(
         selectionUpdates: MutableList<SelectionUpdate>? = null,
+        handler: KeyboardHandler = keyboardHandler,
     ): ImeInputView {
         val onUpdateSelection: (View, Int, Int, Int, Int) -> Unit =
             if (selectionUpdates != null) {
@@ -58,7 +59,7 @@ class ImeInputViewTest {
             } else {
                 { _, _, _, _, _ -> }
             }
-        return ImeInputView(context, keyboardHandler, noOpImm, onUpdateSelection)
+        return ImeInputView(context, handler, noOpImm, onUpdateSelection)
     }
 
     data class SelectionUpdate(
@@ -737,6 +738,10 @@ class ImeInputViewTest {
      */
     @Test
     fun testResetImeBufferDropsCompositionSoNextSetComposingStartsClean() {
+        // Uses an output-capturing KeyboardHandler so we can observe the
+        // backspace bytes dispatched by setComposingText, then runs through
+        // makeView()/view.ic(composeMode = true) so the setup matches the
+        // other resetImeBuffer tests.
         val outputs = mutableListOf<ByteArray>()
         val captureEmulator = TerminalEmulatorFactory.create(
             initialRows = 24,
@@ -744,34 +749,26 @@ class ImeInputViewTest {
             onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
         val captureHandler = KeyboardHandler(captureEmulator)
+        val view = makeView(handler = captureHandler)
+        val ic = view.ic(composeMode = true)
 
-        lateinit var view: ImeInputView
-        lateinit var ic: InputConnection
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            view = ImeInputView(context, captureHandler)
-            view.isComposeModeActive = true
-            ic = view.onCreateInputConnection(EditorInfo())!!
-        }
+        // Build up a 5-char composition in the background
+        ic.setComposingText("hello", 1)
+        // External key path interrupts — buffer reset
+        view.resetImeBuffer()
+        // New composition starts from scratch. Without the reset, the internal
+        // composingText would still read "hello" and the next setComposingText
+        // would dispatch 5 backspaces before projecting "a".
+        ic.setComposingText("a", 1)
 
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            // Build up a 5-char composition in the background
-            ic.setComposingText("hello", 1)
-            // External key path interrupts — buffer reset
-            view.resetImeBuffer()
-            // New composition starts from scratch. Without the reset, the internal
-            // composingText would still read "hello" and the next setComposingText
-            // would dispatch 5 backspaces before projecting "a".
-            ic.setComposingText("a", 1)
+        // With the reset, no DEL (0x7F) bytes should be dispatched for the
+        // second setComposingText. Before the fix the count was 5 — one DEL
+        // per char of the stale "hello" composition. Counts 0x7F only to
+        // match the companion test (testDeleteSurroundingTextCapsAbsurdLeftLength)
+        // — KeyboardHandler's default DEL-key mapping emits 0x7F.
+        val delCount = outputs.sumOf { bytes ->
+            bytes.count { (it.toInt() and 0xFF) == 0x7F }
         }
-        drainMainLooper()
-
-        // Final state should reflect just "a", with no stray backspaces from the
-        // pre-reset composition length.
-        val del = outputs.sumOf { bytes ->
-            bytes.count { b -> (b.toInt() and 0xFF) == 0x7F || (b.toInt() and 0xFF) == 0x08 }
-        }
-        // With the reset, del count from the second setComposingText must be 0.
-        // (Before the fix, del count was 5 — one DEL per char of "hello".)
-        assertEquals("no backspaces should be dispatched after a fresh reset", 0, del)
+        assertEquals("no backspaces should be dispatched after a fresh reset", 0, delCount)
     }
 }

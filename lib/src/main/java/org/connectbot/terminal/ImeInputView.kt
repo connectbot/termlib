@@ -311,7 +311,7 @@ internal class ImeInputView(
          * conversion) doesn't leave stale length state that a subsequent
          * [setComposingText] would compute its backspace count against.
          */
-        internal fun resetComposition() {
+        fun resetComposition() {
             composingText = ""
         }
     }
