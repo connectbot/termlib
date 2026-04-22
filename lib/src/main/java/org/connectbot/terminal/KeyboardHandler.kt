@@ -101,7 +101,19 @@ internal class KeyboardHandler(
      * Process a Compose KeyEvent and send to terminal.
      * Returns true if the event was handled.
      */
+    @Suppress("DEPRECATION")
     fun onKeyEvent(event: ComposeKeyEvent): Boolean {
+        val nativeEvent = event.nativeKeyEvent
+        if (nativeEvent.action == AndroidKeyEvent.ACTION_MULTIPLE &&
+            nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_UNKNOWN
+        ) {
+            val characters = nativeEvent.characters
+            if (!characters.isNullOrEmpty()) {
+                onTextInput(characters.toByteArray(Charsets.UTF_8))
+                return true
+            }
+        }
+
         if (event.type != KeyEventType.KeyDown) {
             return false
         }
@@ -190,7 +202,6 @@ internal class KeyboardHandler(
         }
 
         // Determine whether right-alt counts as a terminal modifier or a character selector.
-        val nativeEvent = event.nativeKeyEvent
         val rightAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_RIGHT_ON)
         val rightAltIsMeta = rightAltPressed && rightAltMode == RightAltMode.Meta
         val leftAltPressed = nativeEvent.hasModifiers(AndroidKeyEvent.META_ALT_LEFT_ON) ||
