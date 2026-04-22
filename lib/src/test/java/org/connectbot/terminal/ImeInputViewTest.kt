@@ -17,6 +17,8 @@
 package org.connectbot.terminal
 
 import android.content.Context
+import android.os.SystemClock
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
@@ -605,6 +607,34 @@ class ImeInputViewTest {
 
         val received = outputs.flatMap { it.toList() }.toByteArray()
         assertTrue("ENTER via sendKeyEvent did not reach the terminal", received.contains(0x0D.toByte()))
+    }
+
+    /**
+     * Some IMEs deliver enter-like input as ACTION_MULTIPLE + KEYCODE_UNKNOWN carrying a raw
+     * newline string instead of KEYCODE_ENTER. Old ConnectBot accepted this path; ensure the
+     * terminal still receives it.
+     */
+    @Test
+    fun testTypeNullActionMultipleUnknownNewlineReachesTerminal() {
+        val (_, view, outputs) = createNonComposeModeCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.dispatchKeyEvent(
+                KeyEvent(
+                    SystemClock.uptimeMillis(),
+                    "\n",
+                    KeyCharacterMap.VIRTUAL_KEYBOARD,
+                    0,
+                ),
+            )
+        }
+        drainMainLooper()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue(
+            "ACTION_MULTIPLE newline did not reach the terminal",
+            received.contains('\n'.code.toByte()),
+        )
     }
 
     // === Ctrl/Alt modifier key routing from soft keyboards (issue-2050) ===
