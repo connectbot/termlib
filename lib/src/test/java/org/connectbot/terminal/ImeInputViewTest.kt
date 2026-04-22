@@ -720,9 +720,7 @@ class ImeInputViewTest {
         drainMainLooper()
 
         // Cap is 4096 — assert we got no more than that many DEL bytes.
-        val delCount = outputs.sumOf { bytes ->
-            bytes.count { (it.toInt() and 0xFF) == 0x7F }
-        }
+        val delCount = countDelBytes(outputs)
         assertTrue("delete count should be capped, got $delCount", delCount <= 4096)
     }
 
@@ -763,12 +761,19 @@ class ImeInputViewTest {
 
         // With the reset, no DEL (0x7F) bytes should be dispatched for the
         // second setComposingText. Before the fix the count was 5 — one DEL
-        // per char of the stale "hello" composition. Counts 0x7F only to
-        // match the companion test (testDeleteSurroundingTextCapsAbsurdLeftLength)
-        // — KeyboardHandler's default DEL-key mapping emits 0x7F.
-        val delCount = outputs.sumOf { bytes ->
-            bytes.count { (it.toInt() and 0xFF) == 0x7F }
-        }
-        assertEquals("no backspaces should be dispatched after a fresh reset", 0, delCount)
+        // per char of the stale "hello" composition.
+        assertEquals(
+            "no backspaces should be dispatched after a fresh reset",
+            0,
+            countDelBytes(outputs),
+        )
     }
+
+    /**
+     * KeyboardHandler's default DEL-key mapping emits 0x7F for
+     * `KEYCODE_DEL`. Both robustness tests above dispatch DEL through the
+     * identical sendKeyEvent path, so they share this helper instead of
+     * inlining the byte-counter twice.
+     */
+    private fun countDelBytes(outputs: List<ByteArray>): Int = outputs.sumOf { bytes -> bytes.count { (it.toInt() and 0xFF) == 0x7F } }
 }
