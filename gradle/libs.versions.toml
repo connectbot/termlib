@@ -21,7 +21,7 @@ mockk = "1.14.9"
 
 junitClassic = "4.13.2"
 robolectric = "4.16.1"
-ui = "1.10.6"
+ui = "1.11.0"
 
 [libraries]
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
