@@ -262,17 +262,20 @@ internal class ImeInputView(
 
         override fun sendKeyEvent(event: KeyEvent): Boolean {
             if (fullEditor) {
+                val isKeyDown = event.action == KeyEvent.ACTION_DOWN
+                val postEnterSubmittedBeforeDispatch = if (isKeyDown && event.keyCode == KeyEvent.KEYCODE_ENTER) {
+                    composingText.takeIf { it.isNotEmpty() }
+                } else {
+                    null
+                }
+
                 // Compose mode (TYPE_CLASS_TEXT): route through dispatchKeyEvent so the
                 // setOnKeyListener chain handles it. Clear the editable buffer afterward so
                 // Gboard does not accumulate terminal input as suggestion candidates.
                 val result = this@ImeInputView.dispatchKeyEvent(event)
-                if (event.action == KeyEvent.ACTION_DOWN) {
+                if (isKeyDown) {
                     awaitingPostEnterCommitReplay = event.keyCode == KeyEvent.KEYCODE_ENTER
-                    postEnterSubmittedText = if (awaitingPostEnterCommitReplay) {
-                        composingText.takeIf { it.isNotEmpty() }
-                    } else {
-                        null
-                    }
+                    postEnterSubmittedText = postEnterSubmittedBeforeDispatch
                     editable?.clear()
                     onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
                 }
