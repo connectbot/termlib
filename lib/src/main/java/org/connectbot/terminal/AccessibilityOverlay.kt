@@ -25,6 +25,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,7 +70,6 @@ internal fun AccessibilityOverlay(
     isReviewMode: Boolean = false,
 ) {
     val density = LocalDensity.current
-    val snapshot = screenState.snapshot
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -77,7 +78,9 @@ internal fun AccessibilityOverlay(
     val announcementCounter = remember { mutableIntStateOf(0) }
 
     // Include both scrollback and visible lines in the list
-    val allLines = snapshot.scrollback + snapshot.lines
+    val allLines by remember(screenState) {
+        derivedStateOf { screenState.snapshot.scrollback + screenState.snapshot.lines }
+    }
 
     // Sync LazyColumn scroll with terminal scrollback position
     LaunchedEffect(screenState.scrollbackPosition) {
@@ -85,7 +88,7 @@ internal fun AccessibilityOverlay(
             // Convert scrollbackPosition to LazyColumn index
             // scrollbackPosition = 0 means bottom (index = scrollback.size)
             // scrollbackPosition = scrollback.size means top (index = 0)
-            val targetIndex = snapshot.scrollback.size - screenState.scrollbackPosition
+            val targetIndex = screenState.snapshot.scrollback.size - screenState.scrollbackPosition
             if (targetIndex >= 0 && targetIndex < allLines.size) {
                 lazyListState.scrollToItem(targetIndex)
             }

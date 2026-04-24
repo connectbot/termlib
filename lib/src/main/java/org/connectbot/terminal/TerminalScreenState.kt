@@ -17,8 +17,8 @@
 package org.connectbot.terminal
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -161,17 +161,19 @@ internal class TerminalScreenState(
 internal fun rememberTerminalScreenState(
     terminalEmulator: TerminalEmulatorImpl,
 ): TerminalScreenState {
-    val snapshot by remember(terminalEmulator) {
-        terminalEmulator.snapshot
-    }.collectAsState()
-
-    // Create state instance once per emulator, but update its snapshot when it changes
+    // Create state instance once per emulator, using the current value as initial
     val state = remember(terminalEmulator) {
-        TerminalScreenState(snapshot)
+        TerminalScreenState(terminalEmulator.snapshot.value)
     }
 
-    // Update the snapshot without recreating the state object (preserves scrollbackPosition)
-    state.updateSnapshot(snapshot)
+    // Collecting in a LaunchedEffect keeps this adapter composable stable instead of
+    // recomposing it because of Flow collection in this function. Updates to
+    // state.snapshot still invalidate/recompose any composables that read it.
+    LaunchedEffect(terminalEmulator) {
+        terminalEmulator.snapshot.collect { newSnapshot ->
+            state.updateSnapshot(newSnapshot)
+        }
+    }
 
     return state
 }
