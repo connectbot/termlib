@@ -17,6 +17,7 @@
 package org.connectbot.terminal
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Paint
 import android.graphics.Path
@@ -25,6 +26,7 @@ import android.icu.lang.UCharacter
 import android.icu.lang.UProperty
 import android.text.TextPaint
 import android.util.Log
+import android.view.KeyEvent
 import androidx.annotation.VisibleForTesting
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.splineBasedDecay
@@ -52,14 +54,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -84,10 +89,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -108,6 +111,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
 
@@ -417,8 +421,6 @@ internal fun TerminalWithAccessibility(
     val keyboardHandler = remember(terminalEmulator) {
         KeyboardHandler(terminalEmulator, modifierManager)
     }
-    keyboardHandler.rightAltMode = rightAltMode
-    keyboardHandler.delKeyMode = delKeyMode
 
     // Font size and zoom state
     var zoomScale by remember(terminalEmulator) { mutableStateOf(1f) }
@@ -503,23 +505,23 @@ internal fun TerminalWithAccessibility(
     }
 
     // Cursor blink animation
-    LaunchedEffect(
-        screenState.snapshot.cursorVisible,
-        screenState.snapshot.cursorBlink,
-        screenState.snapshot.cursorRow,
-        screenState.snapshot.cursorCol,
-    ) {
-        if (screenState.snapshot.cursorVisible) {
-            cursorBlinkVisible = true
-            if (screenState.snapshot.cursorBlink) {
-                // Show cursor immediately when it moves or becomes visible
-                while (true) {
-                    delay(CURSOR_BLINK_RATE_MS)
-                    cursorBlinkVisible = !cursorBlinkVisible
+    LaunchedEffect(screenState) {
+        snapshotFlow {
+            val s = screenState.snapshot
+            Triple(s.cursorVisible, s.cursorBlink, s.cursorRow to s.cursorCol)
+        }.collectLatest { (visible, blink, _) ->
+            if (visible) {
+                cursorBlinkVisible = true
+                if (blink) {
+                    // Show cursor immediately when it moves or becomes visible
+                    while (true) {
+                        delay(CURSOR_BLINK_RATE_MS)
+                        cursorBlinkVisible = !cursorBlinkVisible
+                    }
                 }
+            } else {
+                cursorBlinkVisible = false
             }
-        } else {
-            cursorBlinkVisible = false
         }
     }
 
@@ -551,8 +553,8 @@ internal fun TerminalWithAccessibility(
 
     // Scroll animation state
     val scrollOffset = remember(terminalEmulator) { Animatable(0f) }
-    val maxScroll = remember(screenState.snapshot.scrollback.size, baseCharHeight) {
-        screenState.snapshot.scrollback.size * baseCharHeight
+    val maxScroll by remember(terminalEmulator, baseCharHeight) {
+        derivedStateOf { screenState.snapshot.scrollback.size * baseCharHeight }
     }
     LaunchedEffect(maxScroll) {
         scrollOffset.updateBounds(0f, maxScroll)
@@ -564,7 +566,7 @@ internal fun TerminalWithAccessibility(
     }
 
     // Selection controller - expose API for external control
-    val selectionController = remember(terminalEmulator, selectionManager) {
+    val selectionController = remember(terminalEmulator, selectionManager, clipboardManager, screenState) {
         object : SelectionController {
             override val isSelectionActive: Boolean
                 get() = selectionManager.mode != SelectionMode.NONE
@@ -639,7 +641,7 @@ internal fun TerminalWithAccessibility(
     }
 
     // Compose controller - expose API for external control
-    val composeController = remember(terminalEmulator, composeMode, selectionController) {
+    val composeController = remember(terminalEmulator, composeMode, keyboardHandler, selectionController) {
         object : ComposeController {
             override val isComposeModeActive: Boolean
                 get() = composeMode.isActive
@@ -682,6 +684,12 @@ internal fun TerminalWithAccessibility(
     LaunchedEffect(selectionController) {
         keyboardHandler.selectionController = selectionController
         onSelectionControllerAvailable?.invoke(selectionController)
+    }
+
+    // Update keyboard handler modes without triggering recomposition
+    LaunchedEffect(keyboardHandler, rightAltMode, delKeyMode) {
+        keyboardHandler.rightAltMode = rightAltMode
+        keyboardHandler.delKeyMode = delKeyMode
     }
 
     // Provide compose controller to caller
@@ -862,13 +870,15 @@ internal fun TerminalWithAccessibility(
             forcedSize?.first ?: charsPerDimension(availableHeight, baseCharHeight)
 
         // Auto-scroll to bottom when new content arrives (if not manually scrolled)
-        val wasAtBottom = screenState.scrollbackPosition == 0
-        LaunchedEffect(screenState.snapshot.lines.size, screenState.snapshot.scrollback.size) {
-            // Only auto-scroll if user was already at bottom
-            if (wasAtBottom && screenState.scrollbackPosition != 0) {
-                screenState.scrollToBottom()
-                scrollOffset.snapTo(0f)
-            }
+        LaunchedEffect(screenState) {
+            snapshotFlow { screenState.snapshot.lines.size to screenState.snapshot.scrollback.size }
+                .collect {
+                    // Only auto-scroll if user was already at bottom
+                    if (screenState.scrollbackPosition == 0) {
+                        screenState.scrollToBottom()
+                        scrollOffset.snapTo(0f)
+                    }
+                }
         }
 
         // Sync scrollOffset when scrollbackPosition changes externally (but not during user scrolling)
@@ -1250,11 +1260,11 @@ internal fun TerminalWithAccessibility(
                 }
             },
         ) {
-            Canvas(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .clearAndSetSemantics {
-                        // Hide Canvas from accessibility tree - AccessibilityOverlay provides semantic structure
+                        // Hide from accessibility tree - AccessibilityOverlay provides semantic structure
                     }
                     .graphicsLayer {
                         translationX = zoomOffset.x * zoomScale
@@ -1262,89 +1272,93 @@ internal fun TerminalWithAccessibility(
                         scaleX = zoomScale
                         scaleY = zoomScale
                         transformOrigin = zoomOrigin
-                    },
-            ) {
-                // Fill background
-                drawRect(
-                    color = backgroundColor,
-                    size = size,
-                )
-
-                // Draw each line (zoom/pan applied via graphicsLayer)
-                for (row in 0 until screenState.snapshot.rows) {
-                    val line = screenState.getVisibleLine(row)
-                    drawLine(
-                        line = line,
-                        row = row,
-                        charWidth = baseCharWidth,
-                        charHeight = baseCharHeight,
-                        charBaseline = baseCharBaseline,
-                        textPaint = textPaint,
-                        defaultFg = foregroundColor,
-                        defaultBg = backgroundColor,
-                        selectionManager = selectionManager,
-                        autoDetectUrls = terminalEmulator.autoDetectUrls,
-                        selectionBackgroundColor = selectionBackgroundColor,
-                        selectionForegroundColor = selectionForegroundColor,
-                    )
-                }
-
-                // Draw cursor (only when viewing current screen, not scrollback)
-                if (screenState.snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
-                    drawCursor(
-                        row = screenState.snapshot.cursorRow,
-                        col = screenState.snapshot.cursorCol,
-                        charWidth = baseCharWidth,
-                        charHeight = baseCharHeight,
-                        foregroundColor = foregroundColor,
-                        backgroundColor = backgroundColor,
-                        cursorShape = screenState.snapshot.cursorShape,
-                        pendingDeadChar = composeController.pendingDeadChar,
-                        charBaseline = baseCharBaseline,
-                        textPaint = textPaint,
-                    )
-                }
-
-                // Draw compose mode overlay
-                if (composeMode.isActive && screenState.scrollbackPosition == 0) {
-                    drawComposeOverlay(
-                        buffer = composeMode.buffer,
-                        cursorRow = screenState.snapshot.cursorRow,
-                        cursorCol = screenState.snapshot.cursorCol,
-                        totalCols = screenState.snapshot.cols,
-                        charWidth = baseCharWidth,
-                        charHeight = baseCharHeight,
-                        charBaseline = baseCharBaseline,
-                        textPaint = textPaint,
-                    )
-                }
-
-                // Draw selection handles
-                if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
-                    val range = selectionManager.selectionRange
-                    if (range != null) {
-                        // Start handle
-                        val startPosition = range.getStartPosition()
-                        drawSelectionHandle(
-                            row = startPosition.first,
-                            col = startPosition.second,
-                            charWidth = baseCharWidth,
-                            charHeight = baseCharHeight,
-                            pointingDown = false,
-                        )
-
-                        // End handle
-                        val endPosition = range.getEndPosition()
-                        drawSelectionHandle(
-                            row = endPosition.first,
-                            col = endPosition.second,
-                            charWidth = baseCharWidth,
-                            charHeight = baseCharHeight,
-                            pointingDown = true,
-                        )
                     }
-                }
-            }
+                    .drawBehind {
+                        // Fill background
+                        drawRect(
+                            color = backgroundColor,
+                            size = size,
+                        )
+
+                        // Draw each line
+                        // Accessing screenState.snapshot inside drawBehind only triggers a redraw,
+                        // not a recomposition of the outer TerminalWithAccessibility composable.
+                        val snapshot = screenState.snapshot
+                        for (row in 0 until snapshot.rows) {
+                            val line = screenState.getVisibleLine(row)
+                            drawLine(
+                                line = line,
+                                row = row,
+                                charWidth = baseCharWidth,
+                                charHeight = baseCharHeight,
+                                charBaseline = baseCharBaseline,
+                                textPaint = textPaint,
+                                defaultFg = foregroundColor,
+                                defaultBg = backgroundColor,
+                                selectionManager = selectionManager,
+                                autoDetectUrls = terminalEmulator.autoDetectUrls,
+                                selectionBackgroundColor = selectionBackgroundColor,
+                                selectionForegroundColor = selectionForegroundColor,
+                            )
+                        }
+
+                        // Draw cursor (only when viewing current screen, not scrollback)
+                        if (snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
+                            drawCursor(
+                                row = snapshot.cursorRow,
+                                col = snapshot.cursorCol,
+                                charWidth = baseCharWidth,
+                                charHeight = baseCharHeight,
+                                foregroundColor = foregroundColor,
+                                backgroundColor = backgroundColor,
+                                cursorShape = snapshot.cursorShape,
+                                pendingDeadChar = composeController.pendingDeadChar,
+                                charBaseline = baseCharBaseline,
+                                textPaint = textPaint,
+                            )
+                        }
+
+                        // Draw compose mode overlay
+                        if (composeMode.isActive && screenState.scrollbackPosition == 0) {
+                            drawComposeOverlay(
+                                buffer = composeMode.buffer,
+                                cursorRow = snapshot.cursorRow,
+                                cursorCol = snapshot.cursorCol,
+                                totalCols = snapshot.cols,
+                                charWidth = baseCharWidth,
+                                charHeight = baseCharHeight,
+                                charBaseline = baseCharBaseline,
+                                textPaint = textPaint,
+                            )
+                        }
+
+                        // Draw selection handles
+                        if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
+                            val range = selectionManager.selectionRange
+                            if (range != null) {
+                                // Start handle
+                                val startPosition = range.getStartPosition()
+                                drawSelectionHandle(
+                                    row = startPosition.first,
+                                    col = startPosition.second,
+                                    charWidth = baseCharWidth,
+                                    charHeight = baseCharHeight,
+                                    pointingDown = false,
+                                )
+
+                                // End handle
+                                val endPosition = range.getEndPosition()
+                                drawSelectionHandle(
+                                    row = endPosition.first,
+                                    col = endPosition.second,
+                                    charWidth = baseCharWidth,
+                                    charHeight = baseCharHeight,
+                                    pointingDown = true,
+                                )
+                            }
+                        }
+                    },
+            )
 
             if (accessibilityEnabled) {
                 AccessibilityOverlay(
@@ -1496,7 +1510,7 @@ internal fun TerminalWithAccessibility(
                                         }
                                         try {
                                             context.startActivity(Intent.createChooser(intent, null))
-                                        } catch (_: android.content.ActivityNotFoundException) {
+                                        } catch (_: ActivityNotFoundException) {
                                             // No app available to handle the share intent; silently ignore
                                         }
                                         overflowMenuExpanded = false
@@ -1542,7 +1556,7 @@ internal fun TerminalWithAccessibility(
                     ImeInputView(context, keyboardHandler).apply {
                         // Set up key event handling
                         setOnKeyListener { _, _, event ->
-                            if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                            if (event.action == KeyEvent.ACTION_DOWN) {
                                 resetImeBuffer()
                             }
                             keyboardHandler.onKeyEvent(
