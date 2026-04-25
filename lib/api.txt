@@ -106,6 +106,7 @@ package org.connectbot.terminal {
     method @InaccessibleFromKotlin public boolean getBoldAsBright();
     method @InaccessibleFromKotlin public org.connectbot.terminal.TerminalDimensions getDimensions();
     method public String? getLastCommandOutput();
+    method public java.util.List<java.lang.String> getSnapshotLineTexts();
     method public void resize(int newRows, int newCols);
     method public int setAnsiPalette(int[] ansiColors);
     method public int setDefaultColors(int foreground, int background);

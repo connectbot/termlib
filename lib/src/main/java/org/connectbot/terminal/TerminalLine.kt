@@ -37,7 +37,7 @@ internal data class TerminalLine(
      * long commands. For example, a command like "echo foo bar baz..." that wraps to
      * multiple lines should be copied as a single line without embedded newlines.
      */
-    val softWrapped: Boolean = false
+    val softWrapped: Boolean = false,
 ) {
     /**
      * Get the text content of this line as a string.
@@ -55,17 +55,13 @@ internal data class TerminalLine(
      * Get the semantic type at a specific column.
      * Returns DEFAULT if no segment covers that column.
      */
-    fun getSemanticTypeAt(col: Int): SemanticType {
-        return semanticSegments.firstOrNull { it.contains(col) }?.semanticType
-            ?: SemanticType.DEFAULT
-    }
+    fun getSemanticTypeAt(col: Int): SemanticType = semanticSegments.firstOrNull { it.contains(col) }?.semanticType
+        ?: SemanticType.DEFAULT
 
     /**
      * Get all segments of a specific semantic type.
      */
-    fun getSegmentsOfType(type: SemanticType): List<SemanticSegment> {
-        return semanticSegments.filter { it.semanticType == type }
-    }
+    fun getSegmentsOfType(type: SemanticType): List<SemanticSegment> = semanticSegments.filter { it.semanticType == type }
 
     /**
      * Check if this line contains any prompt segments.
@@ -121,11 +117,13 @@ internal data class TerminalLine(
         val bgColor: Color,
         val bold: Boolean = false,
         val italic: Boolean = false,
-        val underline: Int = 0,  // 0=none, 1=single, 2=double, 3=curly
+        // 0=none, 1=single, 2=double, 3=curly
+        val underline: Int = 0,
         val blink: Boolean = false,
         val reverse: Boolean = false,
         val strike: Boolean = false,
-        val width: Int = 1  // 1 for normal, 2 for fullwidth (CJK)
+        // 1 for normal, 2 for fullwidth (CJK)
+        val width: Int = 1,
     )
 
     companion object {
@@ -146,30 +144,28 @@ internal data class TerminalLine(
         internal val URL_REGEX = Regex(
             // Scheme URLs: http(s)://... or ftp://...
             """(?:https?://|ftp://)[^\s<>"{}|\\^`\[\]]+""" +
-            // Bare domains with common TLDs, optional :port and /path
-            """|(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+""" +
-            """(?:com|org|net|edu|gov|io|dev|app|co|uk|de|fr|jp|ru|br|in|au|us|info|biz|me|tv|cc)""" +
-            """(?::\d{1,5})?""" +
-            """(?:/[^\s<>"{}|\\^`\[\]]*)?""" +
-            // IP:port (e.g. 192.168.1.1:8080) — require port to avoid matching version numbers
-            """|(?:\d{1,3}\.){3}\d{1,3}:\d{1,5}(?:/[^\s<>"{}|\\^`\[\]]*)?"""
+                // Bare domains with common TLDs, optional :port and /path
+                """|(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+""" +
+                """(?:com|org|net|edu|gov|io|dev|app|co|uk|de|fr|jp|ru|br|in|au|us|info|biz|me|tv|cc)""" +
+                """(?::\d{1,5})?""" +
+                """(?:/[^\s<>"{}|\\^`\[\]]*)?""" +
+                // IP:port (e.g. 192.168.1.1:8080) — require port to avoid matching version numbers
+                """|(?:\d{1,3}\.){3}\d{1,3}:\d{1,5}(?:/[^\s<>"{}|\\^`\[\]]*)?""",
         )
 
         /**
          * Create an empty line with default cells.
          */
-        fun empty(row: Int, cols: Int, defaultFg: Color = Color.White, defaultBg: Color = Color.Black): TerminalLine {
-            return TerminalLine(
-                row = row,
-                cells = List(cols) {
-                    Cell(
-                        char = '\u0000',
-                        fgColor = defaultFg,
-                        bgColor = defaultBg
-                    )
-                },
-                softWrapped = false
-            )
-        }
+        fun empty(row: Int, cols: Int, defaultFg: Color = Color.White, defaultBg: Color = Color.Black): TerminalLine = TerminalLine(
+            row = row,
+            cells = List(cols) {
+                Cell(
+                    char = ' ',
+                    fgColor = defaultFg,
+                    bgColor = defaultBg,
+                )
+            },
+            softWrapped = false,
+        )
     }
 }

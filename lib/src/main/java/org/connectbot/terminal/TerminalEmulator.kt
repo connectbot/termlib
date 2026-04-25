@@ -139,6 +139,15 @@ sealed interface TerminalEmulator {
      * @return The command output text, or null if no completed command is found
      */
     fun getLastCommandOutput(): String?
+
+    /**
+     * Plain-text lines of the current terminal snapshot. Public accessor
+     * so consumers outside this module (notably Haven's SelectionToolbar
+     * for smart copy and word expansion) can read line text without
+     * reflecting into the internal `snapshot` StateFlow. Returns a fresh
+     * list at call time.
+     */
+    fun getSnapshotLineTexts(): List<String>
 }
 
 class TerminalEmulatorFactory {
@@ -263,6 +272,8 @@ internal class TerminalEmulatorImpl(
         TerminalSnapshot.empty(initialRows, initialCols, currentDefaultForeground, currentDefaultBackground),
     )
     internal val snapshot: StateFlow<TerminalSnapshot> = _snapshot.asStateFlow()
+
+    override fun getSnapshotLineTexts(): List<String> = _snapshot.value.lines.map { it.text }
 
     // Sequence number for ordering snapshots
     private var sequenceNumber = 0L
