@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("java-library")
     alias(libs.plugins.kotlin.jvm)
+    id("termlib-publish")
 }
 
 java {
@@ -53,8 +54,18 @@ tasks.withType<Test> {
 }
 
 dependencies {
-    api(project(":lib-intf"))
+    implementation(project(":lib-intf"))
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
+}
+
+mavenPublishing {
+    coordinates(groupId = "org.connectbot", artifactId = "termlib-native")
+
+    pom {
+        name.set("termlib-native")
+        description.set("ConnectBot terminal library JNI bindings")
+        inceptionYear.set("2026")
+    }
 }

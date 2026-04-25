@@ -5,6 +5,7 @@ plugins {
     id("java-library")
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.wasm2class)
+    id("termlib-publish")
 }
 
 java {
@@ -88,9 +89,13 @@ wasm2class {
 }
 
 dependencies {
-    api(project(":lib-intf"))
+    compileOnly(project(":lib-intf"))
     implementation(libs.chicory.wasi)
+    compileOnly(project(":lib-native"))
+    compileOnly(libs.robolectric)
+    annotationProcessor(libs.robolectric)
 
+    testImplementation(project(":lib-intf"))
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
 
@@ -98,4 +103,14 @@ dependencies {
     // the runtime version. The plugin uses defaultDependencies, so adding our own dependency
     // to the chicoryCompiler configuration before resolution takes precedence.
     add("chicoryCompiler", libs.chicory.buildTimeCompiler)
+}
+
+mavenPublishing {
+    coordinates(groupId = "org.connectbot", artifactId = "termlib-host")
+
+    pom {
+        name.set("termlib-host")
+        description.set("Robolectric host-testing support for termlib using a WASM backend (no native .so required)")
+        inceptionYear.set("2026")
+    }
 }
