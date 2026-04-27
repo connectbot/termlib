@@ -96,6 +96,7 @@ private:
 
     // Java callback invocation helpers
     void invokeDamage(int startRow, int endRow, int startCol, int endCol);
+    void flushDamageBatch(JNIEnv* env);
     int invokeMoverect(VTermRect dest, VTermRect src);
     void invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool visible);
     void invokeSetTermProp(VTermProp prop, VTermValue* val);
@@ -134,6 +135,13 @@ private:
     JavaVM* mJavaVM{};
     jobject mCallbacks;  // Global reference
     jmethodID mDamageMethod;
+    jmethodID mDamageBatchMethod;
+
+    // Damage accumulator: flat (startRow,endRow,startCol,endCol) quads, max 256 rects
+    static constexpr int MAX_DAMAGE_RECTS = 256;
+    int mDamageRects[MAX_DAMAGE_RECTS * 4]{};
+    int mDamageCount{0};
+    bool mInBatchedWrite{false};
     jmethodID mMoverectMethod;
     jmethodID mMoveCursorMethod;
     jmethodID mSetTermPropMethod;

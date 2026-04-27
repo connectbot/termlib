@@ -1,11 +1,13 @@
 [versions]
 androidGradlePlugin = "9.2.0"
 kotlin = "2.3.21"
+chicory = "1.5.1"
 spotless = "8.4.0"
 publish = "0.36.0"
 release = "3.1.0"
 metalava = "0.5.0"
 dokka = "2.2.0"
+wasm2class = "0.5.0"
 
 composeBom = "2026.04.01"
 lifecycleViewModel = "2.10.0"
@@ -21,6 +23,7 @@ mockk = "1.14.9"
 
 junitClassic = "4.13.2"
 robolectric = "4.16.1"
+jmh = "0.7.3"
 ui = "1.11.0"
 
 [libraries]
@@ -46,13 +49,21 @@ androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtim
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui", version.ref = "ui" }
 
+chicory-runtime = { module = "com.dylibso.chicory:runtime", version.ref = "chicory" }
+chicory-wasm = { module = "com.dylibso.chicory:wasm", version.ref = "chicory" }
+chicory-wasi = { module = "com.dylibso.chicory:wasi", version.ref = "chicory" }
+chicory-buildTimeCompiler = { module = "com.dylibso.chicory:build-time-compiler", version.ref = "chicory" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
 android-library = { id = "com.android.library", version.ref = "androidGradlePlugin" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 publish = { id = "com.vanniktech.maven.publish", version.ref = "publish" }
 release = { id = "net.researchgate.release", version.ref = "release" }
 metalava = { id = "me.tylerbwong.gradle.metalava", version.ref = "metalava" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
+wasm2class = { id = "at.released.wasm2class.plugin", version.ref = "wasm2class" }
+jmh = { id = "me.champeau.jmh", version.ref = "jmh" }
