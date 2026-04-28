@@ -62,9 +62,9 @@ class CursorAndModeEscapeTest {
         // Move to row 5 (CUP is 1-based), save, move elsewhere, restore.
         // ESC[6;20H → row 5, col 19 (0-based).
         emulator.send("\u001B[6;20H")
-        emulator.send("\u001B7")                     // DECSC: save
-        emulator.send("\u001B[1;1H")                 // move to (0, 0)
-        emulator.send("\u001B8")                     // DECRC: restore
+        emulator.send("\u001B7") // DECSC: save
+        emulator.send("\u001B[1;1H") // move to (0, 0)
+        emulator.send("\u001B8") // DECRC: restore
 
         val s = getSnapshot(impl)
         assertEquals("restored row", 5, s.cursorRow)
@@ -79,8 +79,8 @@ class CursorAndModeEscapeTest {
         val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
         val impl = emulator as TerminalEmulatorImpl
 
-        emulator.send("\u001B[6;20H")     // move away from origin
-        emulator.send("\u001B8")           // DECRC with no saved state
+        emulator.send("\u001B[6;20H") // move away from origin
+        emulator.send("\u001B8") // DECRC with no saved state
 
         val s = getSnapshot(impl)
         assertEquals("no-save DECRC row", 0, s.cursorRow)
@@ -92,10 +92,10 @@ class CursorAndModeEscapeTest {
         val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
         val impl = emulator as TerminalEmulatorImpl
 
-        emulator.send("\u001B[3;10H")              // (2, 9)
-        emulator.send("\u001B7")                    // save
-        emulator.send("line\r\nmore\r\nstuff\r\n")  // scribble, moving cursor
-        emulator.send("\u001B8")                    // restore
+        emulator.send("\u001B[3;10H") // (2, 9)
+        emulator.send("\u001B7") // save
+        emulator.send("line\r\nmore\r\nstuff\r\n") // scribble, moving cursor
+        emulator.send("\u001B8") // restore
 
         val s = getSnapshot(impl)
         assertEquals(2, s.cursorRow)
@@ -108,10 +108,10 @@ class CursorAndModeEscapeTest {
         val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
         val impl = emulator as TerminalEmulatorImpl
 
-        emulator.send("\u001B[2;5H\u001B7")         // save (1, 4)
-        emulator.send("\u001B[6;20H\u001B7")        // save (5, 19) — replaces
-        emulator.send("\u001B[1;1H")                 // move to (0, 0)
-        emulator.send("\u001B8")                     // restore
+        emulator.send("\u001B[2;5H\u001B7") // save (1, 4)
+        emulator.send("\u001B[6;20H\u001B7") // save (5, 19) — replaces
+        emulator.send("\u001B[1;1H") // move to (0, 0)
+        emulator.send("\u001B8") // restore
 
         val s = getSnapshot(impl)
         assertEquals(5, s.cursorRow)
@@ -125,13 +125,13 @@ class CursorAndModeEscapeTest {
         val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
         val impl = emulator as TerminalEmulatorImpl
 
-        emulator.send("\u001B[5;5H")     // (4, 4)
-        emulator.send("abc")             // types 'abc' → cursor now (4, 7)
-        emulator.send("\u001B7")         // save (4, 7)
-        emulator.send("\u001B[1;1H")     // jump to (0, 0)
-        emulator.send("status")          // write elsewhere
-        emulator.send("\u001B8")         // restore
-        emulator.send("XYZ")             // resume typing
+        emulator.send("\u001B[5;5H") // (4, 4)
+        emulator.send("abc") // types 'abc' → cursor now (4, 7)
+        emulator.send("\u001B7") // save (4, 7)
+        emulator.send("\u001B[1;1H") // jump to (0, 0)
+        emulator.send("status") // write elsewhere
+        emulator.send("\u001B8") // restore
+        emulator.send("XYZ") // resume typing
 
         val s = getSnapshot(impl)
         assertEquals("text on row 4", "    abcXYZ", s.lines[4].text.trimEnd())
@@ -262,11 +262,11 @@ class CursorAndModeEscapeTest {
         val impl = emulator as TerminalEmulatorImpl
 
         emulator.send("protected row 0\r\n")
-        emulator.send("\u001B[3;10r")  // region rows 3..10
+        emulator.send("\u001B[3;10r") // region rows 3..10
         // Reset to full screen
         emulator.send("\u001B[r")
         // Full-screen scroll: write past the bottom
-        emulator.send("\u001B[10;1H")  // last row
+        emulator.send("\u001B[10;1H") // last row
         repeat(3) { emulator.send("\n") }
 
         val after = getSnapshot(impl)
