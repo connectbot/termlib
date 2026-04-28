@@ -301,7 +301,7 @@ internal class KeyboardHandler(
 
         val modifiers = buildModifierMask(ctrl, alt, false)
 
-        terminalEmulator.dispatchCharacter(modifiers, char.code)
+        dispatchCodepointOrEnter(modifiers, char.code)
         modifierManager?.clearTransients()
         onInputProcessed?.invoke()
         return true
@@ -330,7 +330,7 @@ internal class KeyboardHandler(
         val modifiers = getModifierMask()
 
         text.codePoints().forEach { codepoint ->
-            terminalEmulator.dispatchCharacter(modifiers, codepoint)
+            dispatchCodepointOrEnter(modifiers, codepoint)
         }
         modifierManager?.clearTransients()
         onInputProcessed?.invoke()
@@ -494,6 +494,14 @@ internal class KeyboardHandler(
         }
 
         return base.toLong()
+    }
+
+    private fun dispatchCodepointOrEnter(modifiers: Int, codepoint: Int) {
+        if (codepoint == '\n'.code) {
+            terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
+        } else {
+            terminalEmulator.dispatchCharacter(modifiers, codepoint)
+        }
     }
 
     /**

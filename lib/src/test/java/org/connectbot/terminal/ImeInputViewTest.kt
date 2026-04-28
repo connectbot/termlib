@@ -776,8 +776,8 @@ class ImeInputViewTest {
 
         val received = outputs.flatMap { it.toList() }.toByteArray()
         assertTrue(
-            "ACTION_MULTIPLE newline did not reach the terminal",
-            received.contains('\n'.code.toByte()),
+            "ACTION_MULTIPLE newline should send Enter (CR) to the terminal",
+            received.contains('\r'.code.toByte()),
         )
     }
 

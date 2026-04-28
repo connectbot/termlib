@@ -793,6 +793,70 @@ class KeyboardHandlerTest {
         assertEquals(String(Character.toChars(largeAccent)) + "b", output)
     }
 
+    // === Newline (0x0A) handling tests ===
+
+    private fun collectCharacterOutput(block: (KeyboardHandler) -> Unit): ByteArray {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val handler = KeyboardHandler(emulator)
+        block(handler)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        return outputs.flatMap { it.toList() }.toByteArray()
+    }
+
+    @Test
+    fun testCharacterInputNewlineWithoutCtrlSendsEnter() {
+        // '\n' from keyboard (no ctrl) → VTermKey.ENTER, same as pressing the Enter key
+        val withEnterKey = collectCharacterOutput { it.onKeyEvent(createKeyEvent(Key.Enter, KeyEventType.KeyDown)) }
+        val withNewline = collectCharacterOutput { it.onCharacterInput('\n', ctrl = false) }
+        assertEquals(withEnterKey.toList(), withNewline.toList())
+    }
+
+    @Test
+    fun testCharacterInputNewlineWithCtrlSendsCtrlEnter() {
+        // '\n' with ctrl → dispatchKey(CTRL, VTermKey.ENTER), not raw LF (0x0A)
+        val received = collectCharacterOutput { it.onCharacterInput('\n', ctrl = true) }
+        assertFalse("Ctrl+newline should not send bare LF (0x0A)", received.contentEquals(byteArrayOf(0x0A)))
+        assertTrue("Ctrl+newline should produce output", received.isNotEmpty())
+    }
+
+    @Test
+    fun testTextInputNewlineWithoutStickyCtrlSendsEnter() {
+        // '\n' in text input (no sticky ctrl) → VTermKey.ENTER, same as pressing the Enter key
+        val withEnterKey = collectCharacterOutput { it.onKeyEvent(createKeyEvent(Key.Enter, KeyEventType.KeyDown)) }
+        val withNewline = collectCharacterOutput { it.onTextInput("\n".toByteArray(Charsets.UTF_8)) }
+        assertEquals(withEnterKey.toList(), withNewline.toList())
+    }
+
+    @Test
+    fun testTextInputNewlineWithStickyCtrlSendsCtrlEnter() {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val modifierManager = object : ModifierManager {
+            override fun isCtrlActive() = true
+            override fun isAltActive() = false
+            override fun isShiftActive() = false
+            override fun clearTransients() {}
+        }
+        val handler = KeyboardHandler(emulator, modifierManager = modifierManager)
+
+        handler.onTextInput("\n".toByteArray(Charsets.UTF_8))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        // With sticky Ctrl active, '\n' → dispatchKey(CTRL, ENTER), NOT raw 0x0A
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertFalse("Sticky Ctrl+newline should not send bare LF", received.contentEquals(byteArrayOf(0x0A)))
+        assertTrue("Sticky Ctrl+newline should produce output", received.isNotEmpty())
+    }
+
     private fun keyToAndroidKeyCode(key: Key): Int = when (key) {
         Key.A -> AndroidKeyEvent.KEYCODE_A
         Key.B -> AndroidKeyEvent.KEYCODE_B
