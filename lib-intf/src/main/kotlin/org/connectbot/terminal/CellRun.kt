@@ -22,7 +22,7 @@ package org.connectbot.terminal
  *
  * This class is reusable - call reset() before each getCellRun() call.
  */
-internal class CellRun {
+class CellRun {
     // Foreground color (RGB)
     var fgRed: Int = 0
     var fgGreen: Int = 0

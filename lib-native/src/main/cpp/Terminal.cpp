@@ -63,6 +63,11 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
         LOGE("Failed to find damage method");
         env->ExceptionClear();
     }
+    mDamageBatchMethod = env->GetMethodID(callbacksClass, "damageBatch", "([II)V");
+    if (!mDamageBatchMethod || env->ExceptionCheck()) {
+        LOGE("Failed to find damageBatch method");
+        env->ExceptionClear();
+    }
     mMoverectMethod = env->GetMethodID(callbacksClass, "moverect",
         "(Lorg/connectbot/terminal/TermRect;Lorg/connectbot/terminal/TermRect;)I");
     if (!mMoverectMethod) {
@@ -277,11 +282,20 @@ int Terminal::writeInput(const uint8_t* data, size_t length) {
         return 0;
     }
 
-    // Feed data to libvterm for processing
-    size_t written = vterm_input_write(mVt, (const char*)data, length);
+    mInBatchedWrite = true;
+    mDamageCount = 0;
 
-    // Flush screen state to trigger callbacks
+    size_t written = vterm_input_write(mVt, (const char*)data, length);
     vterm_screen_flush_damage(mVts);
+
+    mInBatchedWrite = false;
+
+    if (mDamageCount > 0 && mDamageBatchMethod) {
+        JNIEnv* env;
+        if (mJavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_OK) {
+            flushDamageBatch(env);
+        }
+    }
 
     return static_cast<int>(written);
 }
@@ -294,8 +308,20 @@ int Terminal::resize(int rows, int cols) {
     mCols = cols;
 
     if (mVt) {
+        mInBatchedWrite = true;
+        mDamageCount = 0;
+
         vterm_set_size(mVt, rows, cols);
         vterm_screen_flush_damage(mVts);
+
+        mInBatchedWrite = false;
+
+        if (mDamageCount > 0 && mDamageBatchMethod) {
+            JNIEnv* env;
+            if (mJavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_OK) {
+                flushDamageBatch(env);
+            }
+        }
     }
 
     return 0;
@@ -667,6 +693,24 @@ int Terminal::termSelectionQuery(VTermSelectionMask mask, void* user) {
 
 // Java callback invocations
 void Terminal::invokeDamage(int startRow, int endRow, int startCol, int endCol) {
+    if (mInBatchedWrite) {
+        if (mDamageCount < MAX_DAMAGE_RECTS) {
+            int i = mDamageCount * 4;
+            mDamageRects[i]     = startRow;
+            mDamageRects[i + 1] = endRow;
+            mDamageRects[i + 2] = startCol;
+            mDamageRects[i + 3] = endCol;
+            mDamageCount++;
+        } else {
+            // Buffer full — flush immediately so the UI stays responsive.
+            JNIEnv* env;
+            if (mJavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_OK) {
+                flushDamageBatch(env);
+            }
+        }
+        return;
+    }
+
     if (!mDamageMethod) {
         return;
     }
@@ -677,6 +721,17 @@ void Terminal::invokeDamage(int startRow, int endRow, int startCol, int endCol) 
     }
 
     env->CallIntMethod(mCallbacks, mDamageMethod, startRow, endRow, startCol, endCol);
+    JNI_CHECK_EXCEPTION(env);
+}
+
+void Terminal::flushDamageBatch(JNIEnv* env) {
+    int n = mDamageCount;
+    mDamageCount = 0;
+    if (n == 0 || !mDamageBatchMethod) return;
+
+    ScopedLocalRef<jintArray> arr(env, env->NewIntArray(n * 4));
+    env->SetIntArrayRegion(arr, 0, n * 4, mDamageRects);
+    env->CallVoidMethod(mCallbacks, mDamageBatchMethod, arr.get(), n);
     JNI_CHECK_EXCEPTION(env);
 }
 
