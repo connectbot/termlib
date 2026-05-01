@@ -637,6 +637,19 @@ internal class TerminalEmulatorImpl(
         return 0
     }
 
+    override fun clearScrollback(): Int {
+        synchronized(damageLock) {
+            scrollback.clear()
+            scrollbackDirty = true
+            propertyChanged = true
+            if (!damagePosted) {
+                handler.post { processPendingUpdates() }
+                damagePosted = true
+            }
+        }
+        return 0
+    }
+
     override fun popScrollbackLine(cols: Int, cells: Array<ScreenCell>): Int {
         synchronized(damageLock) {
             if (scrollback.isEmpty()) return 0

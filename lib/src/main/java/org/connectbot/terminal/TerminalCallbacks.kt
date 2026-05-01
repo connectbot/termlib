@@ -94,6 +94,13 @@ internal interface TerminalCallbacks {
     fun popScrollbackLine(cols: Int, cells: Array<ScreenCell>): Int
 
     /**
+     * Called when the entire scrollback buffer should be cleared.
+     *
+     * @return 0 on success
+     */
+    fun clearScrollback(): Int
+
+    /**
      * Called when keyboard input is generated (user types, terminal generates escape sequences).
      * The caller should write this data to the PTY/transport.
      *
@@ -122,7 +129,7 @@ internal data class TermRect(
     val startRow: Int,
     val endRow: Int,
     val startCol: Int,
-    val endCol: Int
+    val endCol: Int,
 )
 
 /**
@@ -130,7 +137,7 @@ internal data class TermRect(
  */
 internal data class CursorPosition(
     val row: Int,
-    val col: Int
+    val col: Int,
 )
 
 /**
@@ -157,8 +164,10 @@ internal data class ScreenCell(
     val bgBlue: Int,
     val bold: Boolean = false,
     val italic: Boolean = false,
-    val underline: Int = 0,  // 0=none, 1=single, 2=double
+    // 0=none, 1=single, 2=double
+    val underline: Int = 0,
     val reverse: Boolean = false,
     val strike: Boolean = false,
-    val width: Int = 1  // 1 for normal, 2 for fullwidth (CJK)
+    // 1 for normal, 2 for fullwidth (CJK)
+    val width: Int = 1,
 )
