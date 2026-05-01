@@ -145,6 +145,7 @@ internal class TerminalScreenState(
      */
     internal fun updateSnapshot(newSnapshot: TerminalSnapshot) {
         snapshot = newSnapshot
+        scrollbackPosition = scrollbackPosition.coerceIn(0, newSnapshot.scrollback.size)
     }
 }
 

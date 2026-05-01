@@ -687,6 +687,21 @@ internal class TerminalEmulatorImpl(
         return 1
     }
 
+    override fun clearScrollback(): Int {
+        synchronized(damageLock) {
+            if (scrollback.isNotEmpty()) {
+                scrollback.clear()
+                scrollbackDirty = true
+            }
+            propertyChanged = true
+            if (!damagePosted) {
+                handler.post { processPendingUpdates() }
+                damagePosted = true
+            }
+        }
+        return 1
+    }
+
     override fun onKeyboardInput(data: ByteArray): Int {
         // Keyboard output callback - post to handler
         handler.post {

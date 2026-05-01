@@ -205,6 +205,21 @@ class CursorAndModeEscapeTest {
         )
     }
 
+    @Test
+    fun testEraseDisplay3ClearsScrollback() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 5, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        repeat(10) { emulator.send("history line $it\r\n") }
+        val before = getSnapshot(impl)
+        assertNotEquals("test setup should create scrollback", 0, before.scrollback.size)
+
+        emulator.send("\u001B[3J")
+
+        val after = getSnapshot(impl)
+        assertEquals("ESC[3J should clear scrollback", 0, after.scrollback.size)
+    }
+
     // -----------------------------------------------------------------------
     // DECSTBM — scroll region (tmux status bar)
     // -----------------------------------------------------------------------
