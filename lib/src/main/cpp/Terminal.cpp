@@ -92,6 +92,10 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     if (!mPopScrollbackMethod) {
         LOGE("Failed to find popScrollbackLine method");
     }
+    mClearScrollbackMethod = env->GetMethodID(callbacksClass, "clearScrollback", "()I");
+    if (!mClearScrollbackMethod) {
+        LOGE("Failed to find clearScrollback method");
+    }
     mKeyboardInputMethod = env->GetMethodID(callbacksClass, "onKeyboardInput", "([B)I");
     if (!mKeyboardInputMethod) {
         LOGE("Failed to find onKeyboardInput method");
@@ -198,7 +202,7 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
         .resize = nullptr,  // We handle resize explicitly
         .sb_pushline = termSbPushline,
         .sb_popline = termSbPopline,
-        .sb_clear = nullptr  // Not needed
+        .sb_clear = termSbClear
     };
     vterm_screen_set_callbacks(mVts, &mScreenCallbacks, this);
 
@@ -573,6 +577,12 @@ int Terminal::termSbPushline(int cols, const VTermScreenCell* cells, void* user)
 int Terminal::termSbPopline(int cols, VTermScreenCell* cells, void* user) {
     auto* term = static_cast<Terminal*>(user);
     return term->invokePopScrollbackLine(cols, cells);
+}
+
+int Terminal::termSbClear(void* user) {
+    auto* term = static_cast<Terminal*>(user);
+    term->invokeClearScrollback();
+    return 1;
 }
 
 void Terminal::termOutput(const char* s, size_t len, void* user) {
@@ -1017,6 +1027,20 @@ int Terminal::invokePopScrollbackLine(int cols, VTermScreenCell* cells) {
     }
 
     return 1;
+}
+
+void Terminal::invokeClearScrollback() {
+    if (!mClearScrollbackMethod) {
+        return;
+    }
+
+    JNIEnv* env;
+    if (mJavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) {
+        return;
+    }
+
+    env->CallIntMethod(mCallbacks, mClearScrollbackMethod);
+    JNI_CHECK_EXCEPTION(env);
 }
 
 void Terminal::invokeKeyboardOutput(const char* data, size_t len) {

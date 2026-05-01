@@ -83,6 +83,7 @@ private:
     static int termBell(void* user);
     static int termSbPushline(int cols, const VTermScreenCell* cells, void* user);
     static int termSbPopline(int cols, VTermScreenCell* cells, void* user);
+    static int termSbClear(void* user);
 
     // libvterm output callback (keyboard generates this)
     static void termOutput(const char* s, size_t len, void* user);
@@ -102,6 +103,7 @@ private:
     void invokeBell();
     void invokePushScrollbackLine(int cols, const VTermScreenCell* cells, bool softWrapped);
     int invokePopScrollbackLine(int cols, VTermScreenCell* cells);
+    void invokeClearScrollback();
     void invokeKeyboardOutput(const char* data, size_t len);
     int invokeOscSequence(int command, const std::string& payload, int cursorRow, int cursorCol);
 
@@ -140,6 +142,7 @@ private:
     jmethodID mBellMethod;
     jmethodID mPushScrollbackMethod;
     jmethodID mPopScrollbackMethod;
+    jmethodID mClearScrollbackMethod;
     jmethodID mKeyboardInputMethod;
     jmethodID mOscSequenceMethod;
 
