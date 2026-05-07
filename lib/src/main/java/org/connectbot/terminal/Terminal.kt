@@ -115,6 +115,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
 
+private val DRAW_TEXT_BUFFER = ThreadLocal.withInitial { CharArray(1) }
+private val CURLY_UNDERLINE_PATH = ThreadLocal.withInitial { Path() }
+
 /**
  * Gesture type for unified gesture handling state machine.
  */
@@ -549,6 +552,12 @@ internal fun TerminalWithAccessibility(
 
     val baseCharBaseline = remember(textPaint) {
         ceil(-textPaint.fontMetrics.ascent)
+    }
+    val underlinePaint = remember {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
     }
 
     // Scroll animation state
@@ -1293,6 +1302,7 @@ internal fun TerminalWithAccessibility(
                                 charHeight = baseCharHeight,
                                 charBaseline = baseCharBaseline,
                                 textPaint = textPaint,
+                                underlinePaint = underlinePaint,
                                 defaultFg = foregroundColor,
                                 defaultBg = backgroundColor,
                                 selectionManager = selectionManager,
@@ -1586,6 +1596,7 @@ private fun DrawScope.drawLine(
     charHeight: Float,
     charBaseline: Float,
     textPaint: TextPaint,
+    underlinePaint: Paint,
     defaultFg: Color,
     defaultBg: Color,
     selectionManager: SelectionManager,
@@ -1620,12 +1631,7 @@ private fun DrawScope.drawLine(
         }
 
         // Draw character
-        if (cell.char != ' ' || cell.combiningChars.isNotEmpty()) {
-            val text = buildString {
-                append(cell.char)
-                cell.combiningChars.forEach { append(it) }
-            }
-
+        if ((cell.char != ' ' && cell.char != '\u0000') || cell.combiningChars.isNotEmpty()) {
             // Force high contrast for text on the selection background
             val fgColor = if (isSelected) selectionForegroundColor else baseFgColor
 
@@ -1638,12 +1644,29 @@ private fun DrawScope.drawLine(
             textPaint.isStrikeThruText = cell.strike
 
             // Draw text
-            drawContext.canvas.nativeCanvas.drawText(
-                text,
-                x,
-                y + charBaseline,
-                textPaint,
-            )
+            if (cell.combiningChars.isEmpty()) {
+                val textBuffer = DRAW_TEXT_BUFFER.get()!!
+                textBuffer[0] = cell.char
+                drawContext.canvas.nativeCanvas.drawText(
+                    textBuffer,
+                    0,
+                    1,
+                    x,
+                    y + charBaseline,
+                    textPaint,
+                )
+            } else {
+                val text = buildString {
+                    append(cell.char)
+                    cell.combiningChars.forEach { append(it) }
+                }
+                drawContext.canvas.nativeCanvas.drawText(
+                    text,
+                    x,
+                    y + charBaseline,
+                    textPaint,
+                )
+            }
 
             // Draw double underline if needed
             if (cell.underline == 2) {
@@ -1652,6 +1675,7 @@ private fun DrawScope.drawLine(
                     y = y + charBaseline,
                     width = cellWidth,
                     color = fgColor,
+                    paint = underlinePaint,
                 )
             }
 
@@ -1663,6 +1687,7 @@ private fun DrawScope.drawLine(
                     width = cellWidth,
                     charWidth = charWidth,
                     color = fgColor,
+                    paint = underlinePaint,
                 )
             }
         }
@@ -1684,13 +1709,9 @@ private fun DrawScope.drawDoubleUnderline(
     y: Float,
     width: Float,
     color: Color,
+    paint: Paint,
 ) {
-    val paint = Paint().apply {
-        this.color = color.toArgb()
-        style = Paint.Style.STROKE
-        strokeWidth = 1f
-        isAntiAlias = true
-    }
+    paint.color = color.toArgb()
 
     val baseY = y + 2f
     val canvas = drawContext.canvas.nativeCanvas
@@ -1719,8 +1740,9 @@ private fun DrawScope.drawCurlyUnderline(
     width: Float,
     charWidth: Float,
     color: Color,
+    paint: Paint,
 ) {
-    val path = Path()
+    val path = CURLY_UNDERLINE_PATH.get()!!.apply { reset() }
     val wavelength = charWidth / CURLY_UNDERLINE_CYCLES_PER_CHAR
     val amplitude = CURLY_UNDERLINE_AMPLITUDE
     val halfWave = wavelength / 2
@@ -1747,14 +1769,10 @@ private fun DrawScope.drawCurlyUnderline(
     }
 
     // Draw the path
+    paint.color = color.toArgb()
     drawContext.canvas.nativeCanvas.drawPath(
         path,
-        Paint().apply {
-            this.color = color.toArgb()
-            style = Paint.Style.STROKE
-            strokeWidth = 1f
-            isAntiAlias = true
-        },
+        paint,
     )
 }
 
@@ -1959,6 +1977,12 @@ private fun MagnifyingGlass(
 
     val verticalOffset = with(density) { MAGNIFIER_VERTICAL_OFFSET.toPx() }
     val fingerHeightPx = with(density) { FINGER_HEIGHT_DP.toPx() }
+    val underlinePaint = remember {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+    }
 
     val magnifierPos = magnifierOffset(
         position = position,
@@ -2017,6 +2041,7 @@ private fun MagnifyingGlass(
                             charHeight = baseCharHeight,
                             charBaseline = baseCharBaseline,
                             textPaint = textPaint,
+                            underlinePaint = underlinePaint,
                             defaultFg = foregroundColor,
                             defaultBg = backgroundColor,
                             selectionManager = selectionManager,

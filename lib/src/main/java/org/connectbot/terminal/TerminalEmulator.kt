@@ -876,7 +876,7 @@ internal class TerminalEmulatorImpl(
             currentDefaultBg = currentDefaultBackground
         }
 
-        val cells = mutableListOf<TerminalLine.Cell>()
+        val cells = ArrayList<TerminalLine.Cell>(cols)
         var col = 0
 
         while (col < cols) {
@@ -910,27 +910,31 @@ internal class TerminalEmulatorImpl(
                 val char = cellRun.chars[charIndex]
                 if (char == 0.toChar()) break
 
-                val combiningChars = mutableListOf<Char>()
+                var combiningChars: MutableList<Char>? = null
                 charIndex++
 
                 // Handle surrogate pairs (characters > U+FFFF like emoji)
                 if (char.isHighSurrogate() && charIndex < cellRun.chars.size) {
                     val nextChar = cellRun.chars[charIndex]
                     if (nextChar.isLowSurrogate()) {
-                        combiningChars.add(nextChar)
+                        combiningChars = mutableListOf(nextChar)
                         charIndex++
                     }
                 }
 
                 // Collect combining characters
                 while (charIndex < cellRun.chars.size && isCombiningCharacter(cellRun.chars[charIndex])) {
+                    if (combiningChars == null) {
+                        combiningChars = mutableListOf()
+                    }
                     combiningChars.add(cellRun.chars[charIndex])
                     charIndex++
                 }
 
                 // Determine cell width
-                val width = if (combiningChars.isNotEmpty() && combiningChars[0].isLowSurrogate()) {
-                    val codepoint = Character.toCodePoint(char, combiningChars[0])
+                val extraChars = combiningChars ?: TerminalLine.EMPTY_COMBINING_CHARS
+                val width = if (extraChars.isNotEmpty() && extraChars[0].isLowSurrogate()) {
+                    val codepoint = Character.toCodePoint(char, extraChars[0])
                     if (isFullwidthCodepoint(codepoint)) 2 else 1
                 } else {
                     if (isFullwidthCharacter(char)) 2 else 1
@@ -939,7 +943,7 @@ internal class TerminalEmulatorImpl(
                 cells.add(
                     TerminalLine.Cell(
                         char = char,
-                        combiningChars = combiningChars,
+                        combiningChars = extraChars,
                         fgColor = fgColor,
                         bgColor = bgColor,
                         bold = cellRun.bold,
