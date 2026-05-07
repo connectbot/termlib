@@ -16,6 +16,8 @@
  */
 package org.connectbot.terminal
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Semantic type for terminal content, derived from shell integration sequences.
  *
@@ -59,6 +61,7 @@ internal enum class SemanticType {
  * @param metadata Optional metadata (e.g., exit code for COMMAND_FINISHED)
  * @param promptId Groups segments that belong to the same command execution
  */
+@Immutable
 internal data class SemanticSegment(
     val startCol: Int,
     val endCol: Int,
