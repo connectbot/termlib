@@ -1660,97 +1660,251 @@ private fun DrawScope.drawLine(
 ) {
     val y = row * charHeight
     var x = 0f
+    val cells = line.cells
 
-    line.cells.forEachIndexed { col, cell ->
+    var col = 0
+    while (col < cells.size) {
+        val cell = cells[col]
         val cellWidth = charWidth * cell.width
-
-        // Check if this cell is selected
         val isSelected = selectionManager?.isCellSelected(row, col, line) == true
         if (selectedOnly && !isSelected) {
             x += cellWidth
-            return@forEachIndexed
+            col++
+            continue
         }
 
-        // Check if this cell is part of a hyperlink
-        val isHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
-
-        // Determine colors (handle reverse video and selection)
-        val baseFgColor = if (cell.reverse) cell.bgColor else cell.fgColor
         val bgColor = if (cell.reverse) cell.fgColor else cell.bgColor
-
-        // Draw background (with selection highlight)
         val finalBgColor = if (isSelected) selectionBackgroundColor else bgColor
-        if (finalBgColor != defaultBg || isSelected) {
-            drawRect(
-                color = finalBgColor,
-                topLeft = Offset(x, y),
-                size = Size(cellWidth, charHeight),
+        if (finalBgColor == defaultBg && !isSelected) {
+            x += cellWidth
+            col++
+            continue
+        }
+
+        val runStartX = x
+        var runWidth = cellWidth
+        x += cellWidth
+        col++
+
+        while (col < cells.size) {
+            val next = cells[col]
+            val nextWidth = charWidth * next.width
+            val nextSelected = selectionManager?.isCellSelected(row, col, line) == true
+            if (selectedOnly && !nextSelected) break
+
+            val nextBgColor = if (next.reverse) next.fgColor else next.bgColor
+            val nextFinalBgColor = if (nextSelected) selectionBackgroundColor else nextBgColor
+            if (nextFinalBgColor != finalBgColor || (nextFinalBgColor == defaultBg && !nextSelected)) break
+
+            runWidth += nextWidth
+            x += nextWidth
+            col++
+        }
+
+        drawRect(
+            color = finalBgColor,
+            topLeft = Offset(runStartX, y),
+            size = Size(runWidth, charHeight),
+        )
+    }
+
+    col = 0
+    x = 0f
+    while (col < cells.size) {
+        val cell = cells[col]
+        val cellWidth = charWidth * cell.width
+
+        val isSelected = selectionManager?.isCellSelected(row, col, line) == true
+        if (selectedOnly && !isSelected) {
+            x += cellWidth
+            col++
+            continue
+        }
+
+        val isHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
+        if (!cell.hasRenderableText()) {
+            x += cellWidth
+            col++
+            continue
+        }
+
+        val style = cell.textDrawStyle(
+            isSelected = isSelected,
+            isHyperlink = isHyperlink,
+            selectionForegroundColor = selectionForegroundColor,
+        )
+
+        if (!cell.canBatchText()) {
+            drawCellText(
+                cell = cell,
+                x = x,
+                y = y,
+                charWidth = charWidth,
+                charBaseline = charBaseline,
+                textPaint = textPaint,
+                underlinePaint = underlinePaint,
+                style = style,
+            )
+            x += cellWidth
+            col++
+            continue
+        }
+
+        val runStartX = x
+        val text = StringBuilder().append(cell.char)
+        var runWidth = cellWidth
+        x += cellWidth
+        col++
+
+        while (col < cells.size) {
+            val next = cells[col]
+            val nextWidth = charWidth * next.width
+            val nextSelected = selectionManager?.isCellSelected(row, col, line) == true
+            if (selectedOnly && !nextSelected) break
+            if (!next.hasRenderableText() || !next.canBatchText()) break
+
+            val nextHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
+            val nextStyle = next.textDrawStyle(
+                isSelected = nextSelected,
+                isHyperlink = nextHyperlink,
+                selectionForegroundColor = selectionForegroundColor,
+            )
+            if (nextStyle != style) break
+
+            text.append(next.char)
+            runWidth += nextWidth
+            x += nextWidth
+            col++
+        }
+
+        textPaint.applyStyle(style)
+        drawContext.canvas.nativeCanvas.drawText(
+            text.toString(),
+            runStartX,
+            y + charBaseline,
+            textPaint,
+        )
+
+        if (style.doubleUnderline) {
+            drawDoubleUnderline(
+                x = runStartX,
+                y = y + charBaseline,
+                width = runWidth,
+                color = Color(style.color),
+                paint = underlinePaint,
             )
         }
-
-        // Draw character
-        if ((cell.char != ' ' && cell.char != '\u0000') || cell.combiningChars.isNotEmpty()) {
-            // Force high contrast for text on the selection background
-            val fgColor = if (isSelected) selectionForegroundColor else baseFgColor
-
-            // Configure text paint for this cell
-            textPaint.color = fgColor.toArgb()
-            textPaint.isFakeBoldText = cell.bold
-            textPaint.textSkewX = if (cell.italic) -0.25f else 0f
-            // Underline if cell has underline OR if it's a hyperlink
-            textPaint.isUnderlineText = cell.underline == 1 || isHyperlink
-            textPaint.isStrikeThruText = cell.strike
-
-            // Draw text
-            if (cell.combiningChars.isEmpty()) {
-                val textBuffer = DRAW_TEXT_BUFFER.get()!!
-                textBuffer[0] = cell.char
-                drawContext.canvas.nativeCanvas.drawText(
-                    textBuffer,
-                    0,
-                    1,
-                    x,
-                    y + charBaseline,
-                    textPaint,
-                )
-            } else {
-                val text = buildString {
-                    append(cell.char)
-                    cell.combiningChars.forEach { append(it) }
-                }
-                drawContext.canvas.nativeCanvas.drawText(
-                    text,
-                    x,
-                    y + charBaseline,
-                    textPaint,
-                )
-            }
-
-            // Draw double underline if needed
-            if (cell.underline == 2) {
-                drawDoubleUnderline(
-                    x = x,
-                    y = y + charBaseline,
-                    width = cellWidth,
-                    color = fgColor,
-                    paint = underlinePaint,
-                )
-            }
-
-            // Draw curly underline if needed
-            if (cell.underline == 3) {
-                drawCurlyUnderline(
-                    x = x,
-                    y = y + charBaseline,
-                    width = cellWidth,
-                    charWidth = charWidth,
-                    color = fgColor,
-                    paint = underlinePaint,
-                )
-            }
+        if (style.curlyUnderline) {
+            drawCurlyUnderline(
+                x = runStartX,
+                y = y + charBaseline,
+                width = runWidth,
+                charWidth = charWidth,
+                color = Color(style.color),
+                paint = underlinePaint,
+            )
         }
+    }
+}
 
-        x += cellWidth
+private data class TextDrawStyle(
+    val color: Int,
+    val bold: Boolean,
+    val italic: Boolean,
+    val underline: Boolean,
+    val doubleUnderline: Boolean,
+    val curlyUnderline: Boolean,
+    val strike: Boolean,
+)
+
+private fun TerminalLine.Cell.hasRenderableText(): Boolean = (char != ' ' && char != '\u0000') || combiningChars.isNotEmpty()
+
+private fun TerminalLine.Cell.canBatchText(): Boolean = width == 1 &&
+    combiningChars.isEmpty() &&
+    underline != 2 &&
+    underline != 3
+
+private fun TerminalLine.Cell.textDrawStyle(
+    isSelected: Boolean,
+    isHyperlink: Boolean,
+    selectionForegroundColor: Color,
+): TextDrawStyle {
+    val baseFgColor = if (reverse) bgColor else fgColor
+    val finalFgColor = if (isSelected) selectionForegroundColor else baseFgColor
+    return TextDrawStyle(
+        color = finalFgColor.toArgb(),
+        bold = bold,
+        italic = italic,
+        underline = underline == 1 || isHyperlink,
+        doubleUnderline = underline == 2,
+        curlyUnderline = underline == 3,
+        strike = strike,
+    )
+}
+
+private fun TextPaint.applyStyle(style: TextDrawStyle) {
+    color = style.color
+    isFakeBoldText = style.bold
+    textSkewX = if (style.italic) -0.25f else 0f
+    isUnderlineText = style.underline
+    isStrikeThruText = style.strike
+}
+
+private fun DrawScope.drawCellText(
+    cell: TerminalLine.Cell,
+    x: Float,
+    y: Float,
+    charWidth: Float,
+    charBaseline: Float,
+    textPaint: TextPaint,
+    underlinePaint: Paint,
+    style: TextDrawStyle,
+) {
+    textPaint.applyStyle(style)
+
+    if (cell.combiningChars.isEmpty()) {
+        val textBuffer = DRAW_TEXT_BUFFER.get()!!
+        textBuffer[0] = cell.char
+        drawContext.canvas.nativeCanvas.drawText(
+            textBuffer,
+            0,
+            1,
+            x,
+            y + charBaseline,
+            textPaint,
+        )
+    } else {
+        val text = buildString {
+            append(cell.char)
+            cell.combiningChars.forEach { append(it) }
+        }
+        drawContext.canvas.nativeCanvas.drawText(
+            text,
+            x,
+            y + charBaseline,
+            textPaint,
+        )
+    }
+
+    val width = charWidth * cell.width
+    if (style.doubleUnderline) {
+        drawDoubleUnderline(
+            x = x,
+            y = y + charBaseline,
+            width = width,
+            color = Color(style.color),
+            paint = underlinePaint,
+        )
+    }
+    if (style.curlyUnderline) {
+        drawCurlyUnderline(
+            x = x,
+            y = y + charBaseline,
+            width = width,
+            charWidth = charWidth,
+            color = Color(style.color),
+            paint = underlinePaint,
+        )
     }
 }
 
