@@ -16,6 +16,7 @@
  */
 package org.connectbot.terminal
 
+import java.io.File
 import java.nio.ByteBuffer
 
 /**
@@ -219,12 +220,39 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeSetBoldHighbright(ptr: Long, enabled: Boolean): Int
 
     companion object {
+        private const val LIBRARY_NAME = "jni_cb_term"
+
         init {
+            loadNativeLibrary()
+        }
+
+        private fun loadNativeLibrary() {
             try {
-                System.loadLibrary("jni_cb_term")
-            } catch (e: Exception) {
-                System.err.println("Failed to load JNI library: ${e.message}")
+                System.loadLibrary(LIBRARY_NAME)
+            } catch (e: UnsatisfiedLinkError) {
+                if (!e.message.orEmpty().contains("already loaded in another classloader")) {
+                    throw e
+                }
+
+                loadCopiedNativeLibrary(e)
             }
+        }
+
+        private fun loadCopiedNativeLibrary(cause: UnsatisfiedLinkError) {
+            val mappedName = System.mapLibraryName(LIBRARY_NAME)
+            val source = System.getProperty("java.library.path")
+                .orEmpty()
+                .split(File.pathSeparator)
+                .asSequence()
+                .filter { it.isNotBlank() }
+                .map { File(it, mappedName) }
+                .firstOrNull { it.isFile }
+                ?: throw cause
+
+            val target = File.createTempFile("${LIBRARY_NAME}-", "-$mappedName")
+            target.deleteOnExit()
+            source.copyTo(target, overwrite = true)
+            System.load(target.absolutePath)
         }
     }
 }
