@@ -21,6 +21,7 @@ import android.icu.lang.UProperty
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Choreographer
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -467,10 +468,7 @@ internal class TerminalEmulatorImpl(
     override fun damage(startRow: Int, endRow: Int, startCol: Int, endCol: Int): Int {
         synchronized(damageLock) {
             addDamageRegion(startRow, endRow, startCol, endCol)
-            if (!damagePosted) {
-                handler.post { processPendingUpdates() }
-                damagePosted = true
-            }
+            requestProcessPendingUpdatesLocked()
         }
         return 0
     }
@@ -493,10 +491,7 @@ internal class TerminalEmulatorImpl(
             cursorCol = pos.col
             cursorVisible = visible
             cursorMoved = true
-            if (!damagePosted) {
-                handler.post { processPendingUpdates() }
-                damagePosted = true
-            }
+            requestProcessPendingUpdatesLocked()
         }
         return 0
     }
@@ -551,9 +546,8 @@ internal class TerminalEmulatorImpl(
                     // Other properties not handled
                 }
             }
-            if (propertyChanged && !damagePosted) {
-                handler.post { processPendingUpdates() }
-                damagePosted = true
+            if (propertyChanged) {
+                requestProcessPendingUpdatesLocked()
             }
         }
         return 0
@@ -629,10 +623,7 @@ internal class TerminalEmulatorImpl(
             }
 
             propertyChanged = true
-            if (!damagePosted) {
-                handler.post { processPendingUpdates() }
-                damagePosted = true
-            }
+            requestProcessPendingUpdatesLocked()
         }
         return 0
     }
@@ -642,10 +633,7 @@ internal class TerminalEmulatorImpl(
             scrollback.clear()
             scrollbackDirty = true
             propertyChanged = true
-            if (!damagePosted) {
-                handler.post { processPendingUpdates() }
-                damagePosted = true
-            }
+            requestProcessPendingUpdatesLocked()
         }
         return 0
     }
@@ -692,10 +680,7 @@ internal class TerminalEmulatorImpl(
             }
 
             propertyChanged = true
-            if (!damagePosted) {
-                handler.post { processPendingUpdates() }
-                damagePosted = true
-            }
+            requestProcessPendingUpdatesLocked()
         }
         return 1
     }
@@ -731,10 +716,7 @@ internal class TerminalEmulatorImpl(
                     is OscParser.Action.SetCursorShape -> {
                         cursorShape = action.shape
                         propertyChanged = true
-                        if (!damagePosted) {
-                            handler.post { processPendingUpdates() }
-                            damagePosted = true
-                        }
+                        requestProcessPendingUpdatesLocked()
                     }
 
                     is OscParser.Action.ClipboardCopy -> {
@@ -790,10 +772,7 @@ internal class TerminalEmulatorImpl(
 
             // Mark for update so processPendingUpdates runs
             propertyChanged = true
-            if (!damagePosted) {
-                handler.post { processPendingUpdates() }
-                damagePosted = true
-            }
+            requestProcessPendingUpdatesLocked()
         }
     }
 
@@ -1047,9 +1026,31 @@ internal class TerminalEmulatorImpl(
         synchronized(damageLock) {
             pendingDamageRegions.clear()
             pendingDamageRegions.add(DamageRegion(0, rows, 0, cols))
-            if (!damagePosted) {
-                handler.post { processPendingUpdates() }
-                damagePosted = true
+            requestProcessPendingUpdatesLocked()
+        }
+    }
+
+    /**
+     * Schedule snapshot work at display-frame cadence.
+     *
+     * libvterm can report many small damage/cursor callbacks while a single PTY read is
+     * processed. Running updateLine/buildSnapshot for every callback burst can outpace
+     * vsync and make Compose redraw the terminal multiple times for one displayed frame.
+     *
+     * MUST be called with damageLock held.
+     */
+    private fun requestProcessPendingUpdatesLocked() {
+        if (damagePosted) return
+        damagePosted = true
+        if (looper == Looper.getMainLooper()) {
+            handler.post {
+                Choreographer.getInstance().postFrameCallback {
+                    processPendingUpdates()
+                }
+            }
+        } else {
+            handler.post {
+                processPendingUpdates()
             }
         }
     }
