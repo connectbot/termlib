@@ -21,6 +21,7 @@ mockk = "1.14.9"
 
 junitClassic = "4.13.2"
 robolectric = "4.16.1"
+roborazzi = "1.59.0"
 ui = "1.11.0"
 
 [libraries]
@@ -30,6 +31,7 @@ androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx"
 junit = { module = "junit:junit", version.ref = "junitClassic" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
 
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { module = "androidx.compose.ui:ui" }
@@ -56,3 +58,4 @@ publish = { id = "com.vanniktech.maven.publish", version.ref = "publish" }
 release = { id = "net.researchgate.release", version.ref = "release" }
 metalava = { id = "me.tylerbwong.gradle.metalava", version.ref = "metalava" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
