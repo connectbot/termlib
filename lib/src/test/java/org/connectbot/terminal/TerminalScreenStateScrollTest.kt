@@ -44,15 +44,14 @@ class TerminalScreenStateScrollTest {
         }
     }
 
-    private fun lineOf(row: Int, text: String, cols: Int): TerminalLine =
-        TerminalLine(row = row, cells = cells(text, cols))
+    private fun lineOf(row: Int, text: String, cols: Int): TerminalLine = TerminalLine(row = row, cells = cells(text, cols))
 
     private fun snapshot(
         cols: Int = 80,
         rows: Int = 24,
         screenLines: List<String> = List(rows) { "" },
         scrollback: List<String> = emptyList(),
-        seqNum: Long = 0L
+        seqNum: Long = 0L,
     ): TerminalSnapshot {
         val lines = screenLines.mapIndexed { i, t -> lineOf(i, t, cols) }
         val sb = scrollback.mapIndexed { i, t -> lineOf(-(i + 1), t, cols) }
@@ -159,7 +158,7 @@ class TerminalScreenStateScrollTest {
     fun `scrollback cleared on reconnect resets scroll position`() {
         // Before disconnect: user has scrollback and is scrolled up
         val state = TerminalScreenState(
-            snapshot(scrollback = (1..20).map { "old $it" })
+            snapshot(scrollback = (1..20).map { "old $it" }),
         )
         state.scrollBy(10)
         assertEquals(10, state.scrollbackPosition)
@@ -176,7 +175,7 @@ class TerminalScreenStateScrollTest {
     fun `scrollback replaced on reconnect adjusts position`() {
         // Before disconnect: 20 scrollback lines, scrolled up 5
         val state = TerminalScreenState(
-            snapshot(scrollback = (1..20).map { "old $it" })
+            snapshot(scrollback = (1..20).map { "old $it" }),
         )
         state.scrollBy(5)
         assertEquals(5, state.scrollbackPosition)
@@ -195,7 +194,7 @@ class TerminalScreenStateScrollTest {
     fun `getVisibleLine at bottom returns screen lines`() {
         val screen = listOf("screen line 0", "screen line 1", "screen line 2")
         val state = TerminalScreenState(
-            snapshot(rows = 3, cols = 80, screenLines = screen, scrollback = listOf("sb1", "sb2"))
+            snapshot(rows = 3, cols = 80, screenLines = screen, scrollback = listOf("sb1", "sb2")),
         )
 
         assertEquals(0, state.scrollbackPosition)
@@ -209,7 +208,7 @@ class TerminalScreenStateScrollTest {
         val screen = listOf("screen 0", "screen 1", "screen 2")
         val sb = listOf("sb0", "sb1", "sb2")
         val state = TerminalScreenState(
-            snapshot(rows = 3, cols = 80, screenLines = screen, scrollback = sb)
+            snapshot(rows = 3, cols = 80, screenLines = screen, scrollback = sb),
         )
 
         state.scrollBy(2) // Scroll up 2 lines
@@ -225,7 +224,7 @@ class TerminalScreenStateScrollTest {
         val screen = listOf("screen 0", "screen 1", "screen 2")
         val sb = listOf("sb0", "sb1", "sb2")
         val state = TerminalScreenState(
-            snapshot(rows = 3, cols = 80, screenLines = screen, scrollback = sb)
+            snapshot(rows = 3, cols = 80, screenLines = screen, scrollback = sb),
         )
 
         state.scrollToTop() // scrollbackPosition = 3
@@ -241,7 +240,7 @@ class TerminalScreenStateScrollTest {
         val screen = listOf("screen 0", "screen 1")
         val sb = listOf("sb0")
         val state = TerminalScreenState(
-            snapshot(rows = 2, cols = 80, screenLines = screen, scrollback = sb)
+            snapshot(rows = 2, cols = 80, screenLines = screen, scrollback = sb),
         )
 
         // Scroll to position that would read before scrollback start
@@ -259,7 +258,7 @@ class TerminalScreenStateScrollTest {
     fun `resize shrinking rows while scrolled up preserves relative position`() {
         // 24-row terminal with 50 scrollback lines, scrolled up 10
         val state = TerminalScreenState(
-            snapshot(rows = 24, scrollback = (1..50).map { "line $it" })
+            snapshot(rows = 24, scrollback = (1..50).map { "line $it" }),
         )
         state.scrollBy(10)
         assertEquals(10, state.scrollbackPosition)
@@ -267,7 +266,7 @@ class TerminalScreenStateScrollTest {
         // Resize to 20 rows pushes 4 lines to scrollback (50 → 54)
         // Simulate: lines grow by 4 in scrollback
         state.updateSnapshot(
-            snapshot(rows = 20, scrollback = (1..54).map { "line $it" }, seqNum = 1)
+            snapshot(rows = 20, scrollback = (1..54).map { "line $it" }, seqNum = 1),
         )
 
         // Delta = 54 - 50 = 4, new position = 10 + 4 = 14
@@ -278,14 +277,14 @@ class TerminalScreenStateScrollTest {
     fun `resize growing rows while scrolled up pops from scrollback`() {
         // 20-row terminal with 30 scrollback lines, scrolled up 5
         val state = TerminalScreenState(
-            snapshot(rows = 20, scrollback = (1..30).map { "line $it" })
+            snapshot(rows = 20, scrollback = (1..30).map { "line $it" }),
         )
         state.scrollBy(5)
         assertEquals(5, state.scrollbackPosition)
 
         // Resize to 24 rows pops 4 lines from scrollback (30 → 26)
         state.updateSnapshot(
-            snapshot(rows = 24, scrollback = (1..26).map { "line $it" }, seqNum = 1)
+            snapshot(rows = 24, scrollback = (1..26).map { "line $it" }, seqNum = 1),
         )
 
         // Delta = 26 - 30 = -4, new position = 5 + (-4) = 1
@@ -296,14 +295,14 @@ class TerminalScreenStateScrollTest {
     fun `resize growing rows while barely scrolled up clamps to zero`() {
         // 20-row terminal with 10 scrollback, scrolled up 2
         val state = TerminalScreenState(
-            snapshot(rows = 20, scrollback = (1..10).map { "line $it" })
+            snapshot(rows = 20, scrollback = (1..10).map { "line $it" }),
         )
         state.scrollBy(2)
         assertEquals(2, state.scrollbackPosition)
 
         // Resize pops 5 lines from scrollback (10 → 5)
         state.updateSnapshot(
-            snapshot(rows = 25, scrollback = (1..5).map { "line $it" }, seqNum = 1)
+            snapshot(rows = 25, scrollback = (1..5).map { "line $it" }, seqNum = 1),
         )
 
         // Delta = 5 - 10 = -5, new position = 2 + (-5) = -3, clamped to 0
@@ -325,7 +324,7 @@ class TerminalScreenStateScrollTest {
             assertEquals(
                 "Position should stay at bottom after scroll $i",
                 0,
-                state.scrollbackPosition
+                state.scrollbackPosition,
             )
         }
     }
@@ -335,7 +334,7 @@ class TerminalScreenStateScrollTest {
     @Test
     fun `scrollToBottom resets after scrollBy`() {
         val state = TerminalScreenState(
-            snapshot(scrollback = (1..10).map { "line $it" })
+            snapshot(scrollback = (1..10).map { "line $it" }),
         )
         state.scrollBy(5)
         assertEquals(5, state.scrollbackPosition)
@@ -348,7 +347,7 @@ class TerminalScreenStateScrollTest {
     @Test
     fun `scrollBy negative from scrolled position moves toward bottom`() {
         val state = TerminalScreenState(
-            snapshot(scrollback = (1..10).map { "line $it" })
+            snapshot(scrollback = (1..10).map { "line $it" }),
         )
         state.scrollBy(8)
         assertEquals(8, state.scrollbackPosition)
@@ -360,7 +359,7 @@ class TerminalScreenStateScrollTest {
     @Test
     fun `scrollBy negative past bottom clamps to zero`() {
         val state = TerminalScreenState(
-            snapshot(scrollback = (1..10).map { "line $it" })
+            snapshot(scrollback = (1..10).map { "line $it" }),
         )
         state.scrollBy(3)
         assertEquals(3, state.scrollbackPosition)
@@ -372,7 +371,7 @@ class TerminalScreenStateScrollTest {
     @Test
     fun `scrollBy positive past top clamps to scrollback size`() {
         val state = TerminalScreenState(
-            snapshot(scrollback = (1..10).map { "line $it" })
+            snapshot(scrollback = (1..10).map { "line $it" }),
         )
 
         state.scrollBy(100) // Way past top
@@ -393,12 +392,12 @@ class TerminalScreenStateScrollTest {
                 if (row == 0) "thinking... frame $i" else ""
             }
             state.updateSnapshot(
-                snapshot(screenLines = screen, scrollback = (1..5).map { "line $it" }, seqNum = i.toLong())
+                snapshot(screenLines = screen, scrollback = (1..5).map { "line $it" }, seqNum = i.toLong()),
             )
             assertEquals(
                 "Frame $i: position should stay at bottom for in-place update",
                 0,
-                state.scrollbackPosition
+                state.scrollbackPosition,
             )
         }
     }
@@ -416,12 +415,12 @@ class TerminalScreenStateScrollTest {
 
             val sb = (1..sbSize).map { "output $it" }
             state.updateSnapshot(
-                snapshot(scrollback = if (sbSize > 0) sb else emptyList(), seqNum = i.toLong())
+                snapshot(scrollback = if (sbSize > 0) sb else emptyList(), seqNum = i.toLong()),
             )
             assertEquals(
                 "Frame $i: position should stay at bottom",
                 0,
-                state.scrollbackPosition
+                state.scrollbackPosition,
             )
         }
     }
@@ -440,7 +439,7 @@ class TerminalScreenStateScrollTest {
     @Test
     fun `transition from scrollback to no scrollback while at bottom`() {
         val state = TerminalScreenState(
-            snapshot(scrollback = listOf("sb1", "sb2", "sb3"))
+            snapshot(scrollback = listOf("sb1", "sb2", "sb3")),
         )
         assertEquals(0, state.scrollbackPosition)
 
@@ -452,7 +451,7 @@ class TerminalScreenStateScrollTest {
     @Test
     fun `transition from scrollback to no scrollback while scrolled up`() {
         val state = TerminalScreenState(
-            snapshot(scrollback = listOf("sb1", "sb2", "sb3"))
+            snapshot(scrollback = listOf("sb1", "sb2", "sb3")),
         )
         state.scrollBy(2)
         assertEquals(2, state.scrollbackPosition)
@@ -470,7 +469,7 @@ class TerminalScreenStateScrollTest {
     fun `small scroll drift grows with scrollback updates`() {
         // Simulate: user accidentally touches screen, scrollbackPosition set to 1
         val state = TerminalScreenState(
-            snapshot(scrollback = (1..10).map { "line $it" })
+            snapshot(scrollback = (1..10).map { "line $it" }),
         )
         state.scrollBy(1) // Accidental touch
         assertEquals(1, state.scrollbackPosition)
@@ -482,7 +481,7 @@ class TerminalScreenStateScrollTest {
             assertEquals(
                 "After growth $i, position should drift",
                 1 + i,
-                state.scrollbackPosition
+                state.scrollbackPosition,
             )
         }
 
@@ -495,7 +494,7 @@ class TerminalScreenStateScrollTest {
     @Test
     fun `scrollToBottom recovers from drift`() {
         val state = TerminalScreenState(
-            snapshot(scrollback = (1..10).map { "line $it" })
+            snapshot(scrollback = (1..10).map { "line $it" }),
         )
         state.scrollBy(1)
         // Let it drift
@@ -517,18 +516,19 @@ class TerminalScreenStateScrollTest {
     fun `getVisibleLine returns correct content after scrollback growth`() {
         val screen = listOf("current A", "current B", "current C")
         val state = TerminalScreenState(
-            snapshot(rows = 3, cols = 80, screenLines = screen, scrollback = listOf("old1"))
+            snapshot(rows = 3, cols = 80, screenLines = screen, scrollback = listOf("old1")),
         )
 
         // New content scrolls, adding to scrollback
         val newScreen = listOf("current B", "current C", "new line")
         state.updateSnapshot(
             snapshot(
-                rows = 3, cols = 80,
+                rows = 3,
+                cols = 80,
                 screenLines = newScreen,
                 scrollback = listOf("old1", "current A"),
-                seqNum = 1
-            )
+                seqNum = 1,
+            ),
         )
 
         // At bottom: should show the new screen lines
@@ -541,10 +541,11 @@ class TerminalScreenStateScrollTest {
     fun `getVisibleLine shows consistent content while scrolled up during growth`() {
         val state = TerminalScreenState(
             snapshot(
-                rows = 3, cols = 80,
+                rows = 3,
+                cols = 80,
                 screenLines = listOf("screen A", "screen B", "screen C"),
-                scrollback = listOf("sb1", "sb2", "sb3")
-            )
+                scrollback = listOf("sb1", "sb2", "sb3"),
+            ),
         )
         state.scrollBy(1) // Scroll up 1 line
 
@@ -556,11 +557,12 @@ class TerminalScreenStateScrollTest {
         // Scrollback grows by 1
         state.updateSnapshot(
             snapshot(
-                rows = 3, cols = 80,
+                rows = 3,
+                cols = 80,
                 screenLines = listOf("screen B", "screen C", "new"),
                 scrollback = listOf("sb1", "sb2", "sb3", "screen A"),
-                seqNum = 1
-            )
+                seqNum = 1,
+            ),
         )
 
         // scrollbackPosition adjusted: 1 + (4 - 3) = 2
