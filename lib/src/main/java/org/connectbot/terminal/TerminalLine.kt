@@ -16,6 +16,7 @@
  */
 package org.connectbot.terminal
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.Color
  * Each line is immutable and tracks its last modification time for efficient redraws.
  * This is part of the architecture where each terminal line is a separate Kotlin class.
  */
+@Immutable
 internal data class TerminalLine(
     val row: Int,
     val cells: List<Cell>,
@@ -114,6 +116,7 @@ internal data class TerminalLine(
     /**
      * A single cell in the terminal line with character and formatting.
      */
+    @Immutable
     data class Cell(
         val char: Char,
         val combiningChars: List<Char> = emptyList(),

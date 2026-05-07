@@ -43,6 +43,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -56,6 +58,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1272,6 +1275,7 @@ internal fun TerminalWithAccessibility(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(backgroundColor)
                     .clearAndSetSemantics {
                         // Hide from accessibility tree - AccessibilityOverlay provides semantic structure
                     }
@@ -1281,18 +1285,24 @@ internal fun TerminalWithAccessibility(
                         scaleX = zoomScale
                         scaleY = zoomScale
                         transformOrigin = zoomOrigin
-                    }
-                    .drawBehind {
-                        // Fill background
-                        drawRect(
-                            color = backgroundColor,
-                            size = size,
-                        )
+                    },
+            ) {
+                TerminalRows(
+                    screenState = screenState,
+                    charWidth = baseCharWidth,
+                    charHeight = baseCharHeight,
+                    charBaseline = baseCharBaseline,
+                    textPaint = textPaint,
+                    underlinePaint = underlinePaint,
+                    defaultFg = foregroundColor,
+                    defaultBg = backgroundColor,
+                    autoDetectUrls = terminalEmulator.autoDetectUrls,
+                )
 
-                        // Draw each line
-                        // Accessing screenState.snapshot inside drawBehind only triggers a redraw,
-                        // not a recomposition of the outer TerminalWithAccessibility composable.
-                        val snapshot = screenState.snapshot
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val snapshot = screenState.snapshot
+
+                    if (selectionManager.mode != SelectionMode.NONE) {
                         for (row in 0 until snapshot.rows) {
                             val line = screenState.getVisibleLine(row)
                             drawLine(
@@ -1309,66 +1319,66 @@ internal fun TerminalWithAccessibility(
                                 autoDetectUrls = terminalEmulator.autoDetectUrls,
                                 selectionBackgroundColor = selectionBackgroundColor,
                                 selectionForegroundColor = selectionForegroundColor,
+                                selectedOnly = true,
                             )
                         }
+                    }
 
-                        // Draw cursor (only when viewing current screen, not scrollback)
-                        if (snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
-                            drawCursor(
-                                row = snapshot.cursorRow,
-                                col = snapshot.cursorCol,
+                    // Draw cursor (only when viewing current screen, not scrollback)
+                    if (snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
+                        drawCursor(
+                            row = snapshot.cursorRow,
+                            col = snapshot.cursorCol,
+                            charWidth = baseCharWidth,
+                            charHeight = baseCharHeight,
+                            foregroundColor = foregroundColor,
+                            backgroundColor = backgroundColor,
+                            cursorShape = snapshot.cursorShape,
+                            pendingDeadChar = composeController.pendingDeadChar,
+                            charBaseline = baseCharBaseline,
+                            textPaint = textPaint,
+                        )
+                    }
+
+                    // Draw compose mode overlay
+                    if (composeMode.isActive && screenState.scrollbackPosition == 0) {
+                        drawComposeOverlay(
+                            buffer = composeMode.buffer,
+                            cursorRow = snapshot.cursorRow,
+                            cursorCol = snapshot.cursorCol,
+                            totalCols = snapshot.cols,
+                            charWidth = baseCharWidth,
+                            charHeight = baseCharHeight,
+                            charBaseline = baseCharBaseline,
+                            textPaint = textPaint,
+                        )
+                    }
+
+                    // Draw selection handles
+                    if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
+                        val range = selectionManager.selectionRange
+                        if (range != null) {
+                            val startPosition = range.getStartPosition()
+                            drawSelectionHandle(
+                                row = startPosition.first,
+                                col = startPosition.second,
                                 charWidth = baseCharWidth,
                                 charHeight = baseCharHeight,
-                                foregroundColor = foregroundColor,
-                                backgroundColor = backgroundColor,
-                                cursorShape = snapshot.cursorShape,
-                                pendingDeadChar = composeController.pendingDeadChar,
-                                charBaseline = baseCharBaseline,
-                                textPaint = textPaint,
+                                pointingDown = false,
                             )
-                        }
 
-                        // Draw compose mode overlay
-                        if (composeMode.isActive && screenState.scrollbackPosition == 0) {
-                            drawComposeOverlay(
-                                buffer = composeMode.buffer,
-                                cursorRow = snapshot.cursorRow,
-                                cursorCol = snapshot.cursorCol,
-                                totalCols = snapshot.cols,
+                            val endPosition = range.getEndPosition()
+                            drawSelectionHandle(
+                                row = endPosition.first,
+                                col = endPosition.second,
                                 charWidth = baseCharWidth,
                                 charHeight = baseCharHeight,
-                                charBaseline = baseCharBaseline,
-                                textPaint = textPaint,
+                                pointingDown = true,
                             )
                         }
-
-                        // Draw selection handles
-                        if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
-                            val range = selectionManager.selectionRange
-                            if (range != null) {
-                                // Start handle
-                                val startPosition = range.getStartPosition()
-                                drawSelectionHandle(
-                                    row = startPosition.first,
-                                    col = startPosition.second,
-                                    charWidth = baseCharWidth,
-                                    charHeight = baseCharHeight,
-                                    pointingDown = false,
-                                )
-
-                                // End handle
-                                val endPosition = range.getEndPosition()
-                                drawSelectionHandle(
-                                    row = endPosition.first,
-                                    col = endPosition.second,
-                                    charWidth = baseCharWidth,
-                                    charHeight = baseCharHeight,
-                                    pointingDown = true,
-                                )
-                            }
-                        }
-                    },
-            )
+                    }
+                }
+            }
 
             if (accessibilityEnabled) {
                 AccessibilityOverlay(
@@ -1589,6 +1599,49 @@ internal fun TerminalWithAccessibility(
 /**
  * Draw a single terminal line.
  */
+@Composable
+private fun TerminalRows(
+    screenState: TerminalScreenState,
+    charWidth: Float,
+    charHeight: Float,
+    charBaseline: Float,
+    textPaint: TextPaint,
+    underlinePaint: Paint,
+    defaultFg: Color,
+    defaultBg: Color,
+    autoDetectUrls: Boolean,
+) {
+    val density = LocalDensity.current
+    val rowHeight = with(density) { charHeight.toDp() }
+    val snapshot = screenState.snapshot
+
+    for (row in 0 until snapshot.rows) {
+        val line = screenState.getVisibleLine(row)
+        key(row, line.lastModified, line.semanticSegments, screenState.scrollbackPosition) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(rowHeight)
+                    .offset(y = with(density) { (row * charHeight).toDp() }),
+            ) {
+                drawLine(
+                    line = line,
+                    row = 0,
+                    charWidth = charWidth,
+                    charHeight = charHeight,
+                    charBaseline = charBaseline,
+                    textPaint = textPaint,
+                    underlinePaint = underlinePaint,
+                    defaultFg = defaultFg,
+                    defaultBg = defaultBg,
+                    selectionManager = null,
+                    autoDetectUrls = autoDetectUrls,
+                )
+            }
+        }
+    }
+}
+
 private fun DrawScope.drawLine(
     line: TerminalLine,
     row: Int,
@@ -1599,10 +1652,11 @@ private fun DrawScope.drawLine(
     underlinePaint: Paint,
     defaultFg: Color,
     defaultBg: Color,
-    selectionManager: SelectionManager,
+    selectionManager: SelectionManager?,
     autoDetectUrls: Boolean = false,
     selectionBackgroundColor: Color = Color(0xFFB3D7FF),
     selectionForegroundColor: Color = Color.Black,
+    selectedOnly: Boolean = false,
 ) {
     val y = row * charHeight
     var x = 0f
@@ -1611,7 +1665,11 @@ private fun DrawScope.drawLine(
         val cellWidth = charWidth * cell.width
 
         // Check if this cell is selected
-        val isSelected = selectionManager.isCellSelected(row, col, line)
+        val isSelected = selectionManager?.isCellSelected(row, col, line) == true
+        if (selectedOnly && !isSelected) {
+            x += cellWidth
+            return@forEachIndexed
+        }
 
         // Check if this cell is part of a hyperlink
         val isHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
