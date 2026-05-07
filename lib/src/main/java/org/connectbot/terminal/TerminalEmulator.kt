@@ -19,6 +19,7 @@ package org.connectbot.terminal
 import android.icu.lang.UCharacter
 import android.icu.lang.UProperty
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
 import android.view.Choreographer
@@ -211,8 +212,8 @@ class TerminalEmulatorFactory {
  *
  * Threading model:
  * - JNI callbacks run on native thread and accumulate damage
- * - Handler posts to specified Looper to escape native mutex
- * - Snapshot building happens on Handler thread
+ * - Handler posts public callbacks to the specified Looper
+ * - Snapshot building is coalesced to display frames and runs off the main thread
  * - StateFlow emission is thread-safe
  *
  * @param looper The Looper to use for callback handling (typically main looper)
@@ -245,12 +246,21 @@ internal class TerminalEmulatorImpl(
     // Handler for escaping native mutex
     private val handler = Handler(looper)
 
+    // Handler for work that can scale with terminal size. Running this on the
+    // main looper shows up as sampled UI jank on large displays/foldables.
+    private val updateHandler = if (looper == Looper.getMainLooper()) {
+        sharedUpdateHandler
+    } else {
+        handler
+    }
+    private val updateProcessingLock = Any()
+
     // Default colors (can be updated via setDefaultColors)
     private var currentDefaultForeground: Color = defaultForeground
     private var currentDefaultBackground: Color = defaultBackground
 
     // Damage accumulation (thread-safe) - MUST be initialized before terminalNative
-    private val damageLock = Object()
+    private val damageLock = Any()
     private val pendingDamageRegions = mutableListOf<DamageRegion>()
     private var damagePosted = false
     private var cursorMoved = false
@@ -786,44 +796,46 @@ internal class TerminalEmulatorImpl(
      */
     @VisibleForTesting
     fun processPendingUpdates() {
-        // Collect pending changes
-        val damageRegions: List<DamageRegion>
-        val needsUpdate: Boolean
-        synchronized(damageLock) {
-            damageRegions = pendingDamageRegions.toList()
-            pendingDamageRegions.clear()
-            damagePosted = false
-            needsUpdate = damageRegions.isNotEmpty() || cursorMoved || propertyChanged
-            cursorMoved = false
-            propertyChanged = false
-        }
-
-        if (!needsUpdate) return
-
-        // Update damaged lines (safe to call getCellRun now - not in callback)
-        for (region in damageRegions) {
-            // Ensure row is within bounds [0, rows)
-            val startRow = region.startRow.coerceIn(0, rows - 1)
-            val endRow = region.endRow.coerceIn(startRow, rows) // endRow is exclusive
-            for (row in startRow until endRow) {
-                updateLine(row)
+        synchronized(updateProcessingLock) {
+            // Collect pending changes
+            val damageRegions: List<DamageRegion>
+            val needsUpdate: Boolean
+            synchronized(damageLock) {
+                damageRegions = pendingDamageRegions.toList()
+                pendingDamageRegions.clear()
+                damagePosted = false
+                needsUpdate = damageRegions.isNotEmpty() || cursorMoved || propertyChanged
+                cursorMoved = false
+                propertyChanged = false
             }
-        }
 
-        // Apply pending semantic segments now that text content is available
-        val segmentsToApply: List<PendingSemanticSegment>
-        synchronized(damageLock) {
-            segmentsToApply = pendingSemanticSegments.toList()
-            pendingSemanticSegments.clear()
-        }
+            if (!needsUpdate) return
 
-        for (segment in segmentsToApply) {
-            applySemanticSegment(segment)
-        }
+            // Update damaged lines (safe to call getCellRun now - not in callback)
+            for (region in damageRegions) {
+                // Ensure row is within bounds [0, rows)
+                val startRow = region.startRow.coerceIn(0, rows - 1)
+                val endRow = region.endRow.coerceIn(startRow, rows) // endRow is exclusive
+                for (row in startRow until endRow) {
+                    updateLine(row)
+                }
+            }
 
-        // Build and emit new snapshot
-        val newSnapshot = buildSnapshot()
-        _snapshot.value = newSnapshot
+            // Apply pending semantic segments now that text content is available
+            val segmentsToApply: List<PendingSemanticSegment>
+            synchronized(damageLock) {
+                segmentsToApply = pendingSemanticSegments.toList()
+                pendingSemanticSegments.clear()
+            }
+
+            for (segment in segmentsToApply) {
+                applySemanticSegment(segment)
+            }
+
+            // Build and emit new snapshot
+            val newSnapshot = buildSnapshot()
+            _snapshot.value = newSnapshot
+        }
     }
 
     /**
@@ -993,6 +1005,15 @@ internal class TerminalEmulatorImpl(
         // the lock here, the snapshot-building thread might see a stale reference.
         val lines: List<TerminalLine>
         val scrollbackCopy: List<TerminalLine>
+        val snapshotCursorRow: Int
+        val snapshotCursorCol: Int
+        val snapshotCursorVisible: Boolean
+        val snapshotCursorBlink: Boolean
+        val snapshotCursorShape: CursorShape
+        val snapshotTerminalTitle: String
+        val snapshotRows: Int
+        val snapshotCols: Int
+        val snapshotSequenceNumber: Long
         synchronized(damageLock) {
             if (scrollbackDirty) {
                 scrollbackSnapshot = scrollback.toList()
@@ -1000,21 +1021,30 @@ internal class TerminalEmulatorImpl(
             }
             lines = currentLines.toList() // Immutable copy (24 references)
             scrollbackCopy = scrollbackSnapshot // Reuse cached immutable copy
+            snapshotCursorRow = cursorRow
+            snapshotCursorCol = cursorCol
+            snapshotCursorVisible = cursorVisible
+            snapshotCursorBlink = cursorBlink
+            snapshotCursorShape = cursorShape
+            snapshotTerminalTitle = terminalTitle
+            snapshotRows = rows
+            snapshotCols = cols
+            snapshotSequenceNumber = sequenceNumber++
         }
 
         return TerminalSnapshot(
             lines = lines,
             scrollback = scrollbackCopy,
-            cursorRow = cursorRow,
-            cursorCol = cursorCol,
-            cursorVisible = cursorVisible,
-            cursorShape = cursorShape,
-            cursorBlink = cursorBlink,
-            terminalTitle = terminalTitle,
-            rows = rows,
-            cols = cols,
+            cursorRow = snapshotCursorRow,
+            cursorCol = snapshotCursorCol,
+            cursorVisible = snapshotCursorVisible,
+            cursorShape = snapshotCursorShape,
+            cursorBlink = snapshotCursorBlink,
+            terminalTitle = snapshotTerminalTitle,
+            rows = snapshotRows,
+            cols = snapshotCols,
             timestamp = System.currentTimeMillis(),
-            sequenceNumber = sequenceNumber++,
+            sequenceNumber = snapshotSequenceNumber,
         )
     }
 
@@ -1038,8 +1068,10 @@ internal class TerminalEmulatorImpl(
      * Schedule snapshot work at display-frame cadence.
      *
      * libvterm can report many small damage/cursor callbacks while a single PTY read is
-     * processed. Running updateLine/buildSnapshot for every callback burst can outpace
-     * vsync and make Compose redraw the terminal multiple times for one displayed frame.
+     * processed. Coalescing behind Choreographer avoids multiple emitted snapshots for
+     * one displayed frame. When the callback looper is main, the actual line rebuild is
+     * posted to [updateHandler] so JNI cell extraction and TerminalLine allocation do not
+     * run inside the UI frame.
      *
      * MUST be called with damageLock held.
      */
@@ -1049,11 +1081,13 @@ internal class TerminalEmulatorImpl(
         if (looper == Looper.getMainLooper()) {
             handler.post {
                 Choreographer.getInstance().postFrameCallback {
-                    processPendingUpdates()
+                    updateHandler.post {
+                        processPendingUpdates()
+                    }
                 }
             }
         } else {
-            handler.post {
+            updateHandler.post {
                 processPendingUpdates()
             }
         }
@@ -1118,6 +1152,14 @@ internal class TerminalEmulatorImpl(
 
     companion object {
         private const val TAG = "TerminalEmulatorImpl"
+
+        private val sharedUpdateThread by lazy {
+            HandlerThread("TerminalEmulatorUpdates").apply { start() }
+        }
+
+        private val sharedUpdateHandler by lazy {
+            Handler(sharedUpdateThread.looper)
+        }
     }
 }
 
