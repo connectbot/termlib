@@ -17,13 +17,20 @@
 package org.connectbot.terminal
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 /**
@@ -45,7 +52,7 @@ internal fun LiveOutputRegion(
     enabled: Boolean = true,
     debounceMs: Long = 300L,
     linesToMonitor: Int = 3,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val snapshot = screenState.snapshot
 
@@ -73,11 +80,14 @@ internal fun LiveOutputRegion(
         }
     }
 
-    // Invisible box with live region semantics
+    // Keep the live region's semantics bounds tiny so announcement updates do not
+    // invalidate a full-screen node in inspection and accessibility tooling.
     Box(
-        modifier = modifier.semantics {
-            liveRegion = LiveRegionMode.Polite
-            text = AnnotatedString(lastAnnouncedText)
-        }
+        modifier = modifier
+            .requiredSize(1.dp)
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+                text = AnnotatedString(lastAnnouncedText)
+            },
     )
 }

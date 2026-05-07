@@ -29,11 +29,11 @@ import androidx.compose.ui.platform.LocalContext
  * Composable that provides accessibility state as a State object.
  * Automatically handles cleanup when the composable leaves the composition.
  *
- * This tracks whether accessibility services (like TalkBack) are enabled,
- * allowing the app to conditionally enable accessibility features only when needed
- * to avoid performance penalties.
+ * This tracks whether touch exploration is enabled, which is the signal used by
+ * screen readers such as TalkBack. General accessibility services can be enabled
+ * without needing the terminal's screen-reader overlay.
  *
- * @return State<Boolean> that tracks whether accessibility is enabled
+ * @return State<Boolean> that tracks whether screen-reader navigation is enabled
  */
 @Composable
 internal fun rememberAccessibilityState(): State<Boolean> {
@@ -44,18 +44,23 @@ internal fun rememberAccessibilityState(): State<Boolean> {
     }
 
     val accessibilityState = remember {
-        mutableStateOf(accessibilityManager.isEnabled)
+        mutableStateOf(accessibilityManager.isEnabled && accessibilityManager.isTouchExplorationEnabled)
     }
 
     DisposableEffect(accessibilityManager) {
         val listener = AccessibilityManager.AccessibilityStateChangeListener { enabled ->
-            accessibilityState.value = enabled
+            accessibilityState.value = enabled && accessibilityManager.isTouchExplorationEnabled
+        }
+        val touchExplorationListener = AccessibilityManager.TouchExplorationStateChangeListener { enabled ->
+            accessibilityState.value = accessibilityManager.isEnabled && enabled
         }
 
         accessibilityManager.addAccessibilityStateChangeListener(listener)
+        accessibilityManager.addTouchExplorationStateChangeListener(touchExplorationListener)
 
         onDispose {
             accessibilityManager.removeAccessibilityStateChangeListener(listener)
+            accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationListener)
         }
     }
 
