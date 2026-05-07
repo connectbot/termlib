@@ -19,6 +19,7 @@ package org.connectbot.terminal
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
@@ -117,8 +118,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
+import android.graphics.Canvas as AndroidCanvas
 
 private val DRAW_TEXT_BUFFER = ThreadLocal.withInitial { CharArray(1) }
+private val DRAW_BACKGROUND_PAINT = ThreadLocal.withInitial { Paint() }
 private val CURLY_UNDERLINE_PATH = ThreadLocal.withInitial { Path() }
 
 /**
@@ -271,6 +274,13 @@ private const val CURLY_UNDERLINE_AMPLITUDE = 1.5f
  * Spacing between the two lines in a double underline in pixels.
  */
 private const val DOUBLE_UNDERLINE_SPACING = 2f
+
+/**
+ * Extra transparent pixels around cached row bitmaps. Text and underline drawing can bleed
+ * slightly past the terminal cell bounds; direct canvas rendering allowed that, but an exact
+ * row-height bitmap clipped it.
+ */
+private const val ROW_BITMAP_VERTICAL_BLEED_PX = 4
 
 /**
  * Terminal - A Jetpack Compose terminal screen component.
@@ -1613,11 +1623,15 @@ private fun TerminalRows(
 ) {
     val density = LocalDensity.current
     val rowHeight = with(density) { charHeight.toDp() }
+    val rowBleed = with(density) { ROW_BITMAP_VERTICAL_BLEED_PX.toDp() }
     val snapshot = screenState.snapshot
+    val rowWidthPx = ceil(snapshot.cols * charWidth).toInt().coerceAtLeast(1)
+    val rowHeightPx = ceil(charHeight).toInt().coerceAtLeast(1)
+    val rowBitmapHeightPx = rowHeightPx + ROW_BITMAP_VERTICAL_BLEED_PX * 2
 
     for (row in 0 until snapshot.rows) {
         val line = screenState.getVisibleLine(row)
-        key(row, line.lastModified, line.semanticSegments, screenState.scrollbackPosition) {
+        key("background", row, line.lastModified, line.semanticSegments, screenState.scrollbackPosition) {
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1636,10 +1650,101 @@ private fun TerminalRows(
                     defaultBg = defaultBg,
                     selectionManager = null,
                     autoDetectUrls = autoDetectUrls,
+                    reverseTextOnly = true,
                 )
             }
         }
     }
+
+    for (row in 0 until snapshot.rows) {
+        val line = screenState.getVisibleLine(row)
+        key(row, line.lastModified, line.semanticSegments, screenState.scrollbackPosition) {
+            val rowBitmap = remember(
+                row,
+                line.lastModified,
+                line.semanticSegments,
+                screenState.scrollbackPosition,
+                rowWidthPx,
+                rowBitmapHeightPx,
+                charWidth,
+                charHeight,
+                charBaseline,
+                textPaint.textSize,
+                textPaint.typeface,
+                defaultFg,
+                defaultBg,
+                autoDetectUrls,
+            ) {
+                createTerminalRowTextBitmap(
+                    line = line,
+                    widthPx = rowWidthPx,
+                    heightPx = rowBitmapHeightPx,
+                    charWidth = charWidth,
+                    charHeight = charHeight,
+                    charBaseline = charBaseline,
+                    textPaint = textPaint,
+                    underlinePaint = underlinePaint,
+                    defaultFg = defaultFg,
+                    defaultBg = defaultBg,
+                    autoDetectUrls = autoDetectUrls,
+                )
+            }
+
+            DisposableEffect(rowBitmap) {
+                onDispose {
+                    if (!rowBitmap.isRecycled) {
+                        rowBitmap.recycle()
+                    }
+                }
+            }
+
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(rowHeight + rowBleed * 2)
+                    .offset(y = with(density) { (row * charHeight).toDp() } - rowBleed),
+            ) {
+                drawContext.canvas.nativeCanvas.drawBitmap(rowBitmap, 0f, 0f, null)
+            }
+        }
+    }
+}
+
+private fun createTerminalRowTextBitmap(
+    line: TerminalLine,
+    widthPx: Int,
+    heightPx: Int,
+    charWidth: Float,
+    charHeight: Float,
+    charBaseline: Float,
+    textPaint: TextPaint,
+    underlinePaint: Paint,
+    defaultFg: Color,
+    defaultBg: Color,
+    autoDetectUrls: Boolean,
+): Bitmap {
+    val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+    val canvas = AndroidCanvas(bitmap)
+    canvas.save()
+    canvas.translate(0f, ROW_BITMAP_VERTICAL_BLEED_PX.toFloat())
+    drawTerminalLineToCanvas(
+        canvas = canvas,
+        line = line,
+        row = 0,
+        charWidth = charWidth,
+        charHeight = charHeight,
+        charBaseline = charBaseline,
+        textPaint = TextPaint(textPaint),
+        underlinePaint = Paint(underlinePaint),
+        defaultFg = defaultFg,
+        defaultBg = defaultBg,
+        selectionManager = null,
+        autoDetectUrls = autoDetectUrls,
+        drawBackgrounds = false,
+        skipReverseText = true,
+    )
+    canvas.restore()
+    return bitmap
 }
 
 private fun DrawScope.drawLine(
@@ -1657,254 +1762,152 @@ private fun DrawScope.drawLine(
     selectionBackgroundColor: Color = Color(0xFFB3D7FF),
     selectionForegroundColor: Color = Color.Black,
     selectedOnly: Boolean = false,
+    drawBackgrounds: Boolean = true,
+    drawText: Boolean = true,
+    skipReverseText: Boolean = false,
+    reverseTextOnly: Boolean = false,
 ) {
-    val y = row * charHeight
-    var x = 0f
-    val cells = line.cells
-
-    var col = 0
-    while (col < cells.size) {
-        val cell = cells[col]
-        val cellWidth = charWidth * cell.width
-        val isSelected = selectionManager?.isCellSelected(row, col, line) == true
-        if (selectedOnly && !isSelected) {
-            x += cellWidth
-            col++
-            continue
-        }
-
-        val bgColor = if (cell.reverse) cell.fgColor else cell.bgColor
-        val finalBgColor = if (isSelected) selectionBackgroundColor else bgColor
-        if (finalBgColor == defaultBg && !isSelected) {
-            x += cellWidth
-            col++
-            continue
-        }
-
-        val runStartX = x
-        var runWidth = cellWidth
-        x += cellWidth
-        col++
-
-        while (col < cells.size) {
-            val next = cells[col]
-            val nextWidth = charWidth * next.width
-            val nextSelected = selectionManager?.isCellSelected(row, col, line) == true
-            if (selectedOnly && !nextSelected) break
-
-            val nextBgColor = if (next.reverse) next.fgColor else next.bgColor
-            val nextFinalBgColor = if (nextSelected) selectionBackgroundColor else nextBgColor
-            if (nextFinalBgColor != finalBgColor || (nextFinalBgColor == defaultBg && !nextSelected)) break
-
-            runWidth += nextWidth
-            x += nextWidth
-            col++
-        }
-
-        drawRect(
-            color = finalBgColor,
-            topLeft = Offset(runStartX, y),
-            size = Size(runWidth, charHeight),
-        )
-    }
-
-    col = 0
-    x = 0f
-    while (col < cells.size) {
-        val cell = cells[col]
-        val cellWidth = charWidth * cell.width
-
-        val isSelected = selectionManager?.isCellSelected(row, col, line) == true
-        if (selectedOnly && !isSelected) {
-            x += cellWidth
-            col++
-            continue
-        }
-
-        val isHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
-        if (!cell.hasRenderableText()) {
-            x += cellWidth
-            col++
-            continue
-        }
-
-        val style = cell.textDrawStyle(
-            isSelected = isSelected,
-            isHyperlink = isHyperlink,
-            selectionForegroundColor = selectionForegroundColor,
-        )
-
-        if (!cell.canBatchText()) {
-            drawCellText(
-                cell = cell,
-                x = x,
-                y = y,
-                charWidth = charWidth,
-                charBaseline = charBaseline,
-                textPaint = textPaint,
-                underlinePaint = underlinePaint,
-                style = style,
-            )
-            x += cellWidth
-            col++
-            continue
-        }
-
-        val runStartX = x
-        val text = StringBuilder().append(cell.char)
-        var runWidth = cellWidth
-        x += cellWidth
-        col++
-
-        while (col < cells.size) {
-            val next = cells[col]
-            val nextWidth = charWidth * next.width
-            val nextSelected = selectionManager?.isCellSelected(row, col, line) == true
-            if (selectedOnly && !nextSelected) break
-            if (!next.hasRenderableText() || !next.canBatchText()) break
-
-            val nextHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
-            val nextStyle = next.textDrawStyle(
-                isSelected = nextSelected,
-                isHyperlink = nextHyperlink,
-                selectionForegroundColor = selectionForegroundColor,
-            )
-            if (nextStyle != style) break
-
-            text.append(next.char)
-            runWidth += nextWidth
-            x += nextWidth
-            col++
-        }
-
-        textPaint.applyStyle(style)
-        drawContext.canvas.nativeCanvas.drawText(
-            text.toString(),
-            runStartX,
-            y + charBaseline,
-            textPaint,
-        )
-
-        if (style.doubleUnderline) {
-            drawDoubleUnderline(
-                x = runStartX,
-                y = y + charBaseline,
-                width = runWidth,
-                color = Color(style.color),
-                paint = underlinePaint,
-            )
-        }
-        if (style.curlyUnderline) {
-            drawCurlyUnderline(
-                x = runStartX,
-                y = y + charBaseline,
-                width = runWidth,
-                charWidth = charWidth,
-                color = Color(style.color),
-                paint = underlinePaint,
-            )
-        }
-    }
-}
-
-private data class TextDrawStyle(
-    val color: Int,
-    val bold: Boolean,
-    val italic: Boolean,
-    val underline: Boolean,
-    val doubleUnderline: Boolean,
-    val curlyUnderline: Boolean,
-    val strike: Boolean,
-)
-
-private fun TerminalLine.Cell.hasRenderableText(): Boolean = (char != ' ' && char != '\u0000') || combiningChars.isNotEmpty()
-
-private fun TerminalLine.Cell.canBatchText(): Boolean = width == 1 &&
-    combiningChars.isEmpty() &&
-    underline != 2 &&
-    underline != 3
-
-private fun TerminalLine.Cell.textDrawStyle(
-    isSelected: Boolean,
-    isHyperlink: Boolean,
-    selectionForegroundColor: Color,
-): TextDrawStyle {
-    val baseFgColor = if (reverse) bgColor else fgColor
-    val finalFgColor = if (isSelected) selectionForegroundColor else baseFgColor
-    return TextDrawStyle(
-        color = finalFgColor.toArgb(),
-        bold = bold,
-        italic = italic,
-        underline = underline == 1 || isHyperlink,
-        doubleUnderline = underline == 2,
-        curlyUnderline = underline == 3,
-        strike = strike,
+    drawTerminalLineToCanvas(
+        canvas = drawContext.canvas.nativeCanvas,
+        line = line,
+        row = row,
+        charWidth = charWidth,
+        charHeight = charHeight,
+        charBaseline = charBaseline,
+        textPaint = textPaint,
+        underlinePaint = underlinePaint,
+        defaultFg = defaultFg,
+        defaultBg = defaultBg,
+        selectionManager = selectionManager,
+        autoDetectUrls = autoDetectUrls,
+        selectionBackgroundColor = selectionBackgroundColor,
+        selectionForegroundColor = selectionForegroundColor,
+        selectedOnly = selectedOnly,
+        drawBackgrounds = drawBackgrounds,
+        drawText = drawText,
+        skipReverseText = skipReverseText,
+        reverseTextOnly = reverseTextOnly,
     )
 }
 
-private fun TextPaint.applyStyle(style: TextDrawStyle) {
-    color = style.color
-    isFakeBoldText = style.bold
-    textSkewX = if (style.italic) -0.25f else 0f
-    isUnderlineText = style.underline
-    isStrikeThruText = style.strike
-}
-
-private fun DrawScope.drawCellText(
-    cell: TerminalLine.Cell,
-    x: Float,
-    y: Float,
+private fun drawTerminalLineToCanvas(
+    canvas: AndroidCanvas,
+    line: TerminalLine,
+    row: Int,
     charWidth: Float,
+    charHeight: Float,
     charBaseline: Float,
     textPaint: TextPaint,
     underlinePaint: Paint,
-    style: TextDrawStyle,
+    defaultFg: Color,
+    defaultBg: Color,
+    selectionManager: SelectionManager?,
+    autoDetectUrls: Boolean = false,
+    selectionBackgroundColor: Color = Color(0xFFB3D7FF),
+    selectionForegroundColor: Color = Color.Black,
+    selectedOnly: Boolean = false,
+    drawBackgrounds: Boolean = true,
+    drawText: Boolean = true,
+    skipReverseText: Boolean = false,
+    reverseTextOnly: Boolean = false,
 ) {
-    textPaint.applyStyle(style)
+    val y = row * charHeight
+    var x = 0f
+    val backgroundPaint = DRAW_BACKGROUND_PAINT.get()!!
 
-    if (cell.combiningChars.isEmpty()) {
-        val textBuffer = DRAW_TEXT_BUFFER.get()!!
-        textBuffer[0] = cell.char
-        drawContext.canvas.nativeCanvas.drawText(
-            textBuffer,
-            0,
-            1,
-            x,
-            y + charBaseline,
-            textPaint,
-        )
-    } else {
-        val text = buildString {
-            append(cell.char)
-            cell.combiningChars.forEach { append(it) }
+    line.cells.forEachIndexed { col, cell ->
+        val cellWidth = charWidth * cell.width
+
+        // Check if this cell is selected
+        val isSelected = selectionManager?.isCellSelected(row, col, line) == true
+        if (selectedOnly && !isSelected) {
+            x += cellWidth
+            return@forEachIndexed
         }
-        drawContext.canvas.nativeCanvas.drawText(
-            text,
-            x,
-            y + charBaseline,
-            textPaint,
-        )
-    }
 
-    val width = charWidth * cell.width
-    if (style.doubleUnderline) {
-        drawDoubleUnderline(
-            x = x,
-            y = y + charBaseline,
-            width = width,
-            color = Color(style.color),
-            paint = underlinePaint,
-        )
-    }
-    if (style.curlyUnderline) {
-        drawCurlyUnderline(
-            x = x,
-            y = y + charBaseline,
-            width = width,
-            charWidth = charWidth,
-            color = Color(style.color),
-            paint = underlinePaint,
-        )
+        // Check if this cell is part of a hyperlink
+        val isHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
+
+        // Determine colors (handle reverse video and selection)
+        val baseFgColor = if (cell.reverse) cell.bgColor else cell.fgColor
+        val bgColor = if (cell.reverse) cell.fgColor else cell.bgColor
+
+        // Draw background (with selection highlight)
+        val finalBgColor = if (isSelected) selectionBackgroundColor else bgColor
+        if (drawBackgrounds && (finalBgColor != defaultBg || isSelected)) {
+            backgroundPaint.color = finalBgColor.toArgb()
+            canvas.drawRect(x, y, x + cellWidth, y + charHeight, backgroundPaint)
+        }
+
+        // Draw character
+        val shouldDrawText = drawText &&
+            (!skipReverseText || !cell.reverse) &&
+            (!reverseTextOnly || cell.reverse) &&
+            ((cell.char != ' ' && cell.char != '\u0000') || cell.combiningChars.isNotEmpty())
+        if (shouldDrawText) {
+            // Force high contrast for text on the selection background
+            val fgColor = if (isSelected) selectionForegroundColor else baseFgColor
+
+            // Configure text paint for this cell
+            textPaint.color = fgColor.toArgb()
+            textPaint.isFakeBoldText = cell.bold
+            textPaint.textSkewX = if (cell.italic) -0.25f else 0f
+            // Underline if cell has underline OR if it's a hyperlink
+            textPaint.isUnderlineText = cell.underline == 1 || isHyperlink
+            textPaint.isStrikeThruText = cell.strike
+
+            // Draw text
+            if (cell.combiningChars.isEmpty()) {
+                val textBuffer = DRAW_TEXT_BUFFER.get()!!
+                textBuffer[0] = cell.char
+                canvas.drawText(
+                    textBuffer,
+                    0,
+                    1,
+                    x,
+                    y + charBaseline,
+                    textPaint,
+                )
+            } else {
+                val text = buildString {
+                    append(cell.char)
+                    cell.combiningChars.forEach { append(it) }
+                }
+                canvas.drawText(
+                    text,
+                    x,
+                    y + charBaseline,
+                    textPaint,
+                )
+            }
+
+            // Draw double underline if needed
+            if (cell.underline == 2) {
+                drawDoubleUnderline(
+                    canvas = canvas,
+                    x = x,
+                    y = y + charBaseline,
+                    width = cellWidth,
+                    color = fgColor,
+                    paint = underlinePaint,
+                )
+            }
+
+            // Draw curly underline if needed
+            if (cell.underline == 3) {
+                drawCurlyUnderline(
+                    canvas = canvas,
+                    x = x,
+                    y = y + charBaseline,
+                    width = cellWidth,
+                    charWidth = charWidth,
+                    color = fgColor,
+                    paint = underlinePaint,
+                )
+            }
+        }
+
+        x += cellWidth
     }
 }
 
@@ -1916,7 +1919,8 @@ private fun DrawScope.drawCellText(
  * @param width Width to draw the underline
  * @param color Color of the underline
  */
-private fun DrawScope.drawDoubleUnderline(
+private fun drawDoubleUnderline(
+    canvas: AndroidCanvas,
     x: Float,
     y: Float,
     width: Float,
@@ -1926,7 +1930,6 @@ private fun DrawScope.drawDoubleUnderline(
     paint.color = color.toArgb()
 
     val baseY = y + 2f
-    val canvas = drawContext.canvas.nativeCanvas
 
     // Draw first line
     canvas.drawLine(x, baseY, x + width, baseY, paint)
@@ -1946,7 +1949,8 @@ private fun DrawScope.drawDoubleUnderline(
  * @param charWidth Base character width (used to calculate wavelength)
  * @param color Color of the underline
  */
-private fun DrawScope.drawCurlyUnderline(
+private fun drawCurlyUnderline(
+    canvas: AndroidCanvas,
     x: Float,
     y: Float,
     width: Float,
@@ -1982,10 +1986,7 @@ private fun DrawScope.drawCurlyUnderline(
 
     // Draw the path
     paint.color = color.toArgb()
-    drawContext.canvas.nativeCanvas.drawPath(
-        path,
-        paint,
-    )
+    canvas.drawPath(path, paint)
 }
 
 /**
