@@ -75,7 +75,8 @@ public:
     int setBoldHighbright(int enabled);
 
 private:
-    // libvterm screen callbacks (called by libvterm)
+    // libvterm screen callbacks (called by libvterm while mLock may be held).
+    // Implementations must not synchronously call back into Terminal methods.
     static int termDamage(VTermRect rect, void* user);
     static int termMoverect(VTermRect dest, VTermRect src, void* user);
     static int termMovecursor(VTermPos pos, VTermPos oldpos, int visible, void* user);
@@ -88,10 +89,12 @@ private:
     // libvterm output callback (keyboard generates this)
     static void termOutput(const char* s, size_t len, void* user);
 
-    // libvterm state fallback for OSC sequences
+    // libvterm state fallback for OSC sequences. Same no-synchronous-reentry
+    // rule as screen callbacks.
     static int termOscFallback(int command, VTermStringFragment frag, void* user);
 
-    // libvterm selection callbacks for OSC 52 clipboard
+    // libvterm selection callbacks for OSC 52 clipboard. Same no-synchronous-
+    // reentry rule as screen callbacks.
     static int termSelectionSet(VTermSelectionMask mask, VTermStringFragment frag, void* user);
     static int termSelectionQuery(VTermSelectionMask mask, void* user);
 
@@ -187,8 +190,10 @@ private:
     jclass mTerminalPropertyColorClass;
     jmethodID mTerminalPropertyColorConstructor;
 
-    // Thread safety (recursive mutex for reentrant calls via callbacks)
-    mutable std::recursive_mutex mLock;
+    // Thread safety. Native entrypoints are serialized by this non-recursive
+    // mutex. Java callbacks invoked from libvterm must not synchronously call
+    // back into Terminal methods; post/defer any work that needs native state.
+    mutable std::mutex mLock;
 };
 
 #endif // TERMSCREEN_TERMINAL_H
