@@ -19,8 +19,12 @@ package org.connectbot.terminal
 /**
  * Callbacks invoked by the native terminal layer when terminal state changes.
  *
- * IMPORTANT: Callbacks MUST NOT call back into Terminal methods, as the native
- * mutex is not reentrant. This will cause a deadlock.
+ * IMPORTANT: These callbacks may be invoked while native Terminal state is guarded by
+ * a non-reentrant mutex. Implementations MUST NOT synchronously call back into
+ * TerminalNative or TerminalEmulator methods that enter native code, such as
+ * writeInput(), resize(), dispatchKey(), dispatchCharacter(), getCellRun(), or
+ * getLineContinuation(). Post or otherwise defer that work until after the callback
+ * returns.
  */
 internal interface TerminalCallbacks {
     /**
