@@ -1,3 +1,4 @@
+import com.android.build.api.artifact.SingleArtifact
 import com.vanniktech.maven.publish.DeploymentValidation
 import org.jetbrains.dokka.gradle.formats.DokkaFormatPlugin
 import org.jetbrains.dokka.gradle.internal.InternalDokkaGradlePluginApi
@@ -11,6 +12,8 @@ plugins {
     alias(libs.plugins.publish)
     alias(libs.plugins.metalava)
     alias(libs.plugins.dokka)
+    alias(libs.plugins.kover)
+    alias(libs.plugins.sonarqube)
 }
 
 @OptIn(InternalDokkaGradlePluginApi::class)
@@ -81,6 +84,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            enableAndroidTestCoverage = true
+        }
+
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -124,6 +131,55 @@ android {
                 testTask.jvmArgs("-Djava.library.path=${hostJniDir.get().asFile.absolutePath}")
             }
         }
+    }
+}
+
+val sonarJavaBinaries = objects.fileCollection()
+val sonarJavaTestBinaries = objects.fileCollection()
+val sonarAndroidLintReportPaths = objects.fileCollection()
+
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.configureJavaCompileTask { javaCompile ->
+            sonarJavaBinaries.from(javaCompile.destinationDirectory)
+        }
+        variant.hostTests["unitTest"]?.configureJavaCompileTask { javaCompile ->
+            sonarJavaTestBinaries.from(javaCompile.destinationDirectory)
+        }
+        variant.androidTest?.configureJavaCompileTask { javaCompile ->
+            sonarJavaTestBinaries.from(javaCompile.destinationDirectory)
+        }
+        sonarAndroidLintReportPaths.from(variant.artifacts.get(SingleArtifact.LINT_XML_REPORT))
+    }
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                // Build config
+                classes("*.BuildConfig")
+            }
+        }
+    }
+}
+
+sonar {
+    properties {
+        property("sonar.projectName", "ConnectBot Terminal")
+        property("sonar.projectKey", "connectbot_termlib")
+        property("sonar.organization", "connectbot")
+        property("sonar.host.url", "https://sonarcloud.io")
+        property(
+            "sonar.coverage.jacoco.xmlReportPaths",
+            listOf(
+                "build/reports/kover/reportDebug.xml",
+                "build/reports/coverage/androidTest/debug/connected/report.xml",
+            ),
+        )
+        property("sonar.java.binaries", sonarJavaBinaries)
+        property("sonar.java.test.binaries", sonarJavaTestBinaries)
+        property("sonar.androidLint.reportPaths", sonarAndroidLintReportPaths)
     }
 }
 
