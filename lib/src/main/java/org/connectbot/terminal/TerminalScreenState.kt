@@ -362,8 +362,6 @@ internal class TerminalScreenState(
 
 private const val MAX_URL_CONTINUATION_ROWS = 6
 
-private fun Char.isUrlPrefixDecoration(): Boolean = this in "|│├└┌┬┼`>•●⎿\""
-
 /**
  * Remember a TerminalScreenState that observes the given TerminalEmulator.
  *

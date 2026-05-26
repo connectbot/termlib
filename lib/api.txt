@@ -106,6 +106,7 @@ package org.connectbot.terminal {
     method @InaccessibleFromKotlin public boolean getBoldAsBright();
     method @InaccessibleFromKotlin public org.connectbot.terminal.TerminalDimensions getDimensions();
     method public String? getLastCommandOutput();
+    method public java.util.List<org.connectbot.terminal.TerminalUrl> getUrls(optional org.connectbot.terminal.UrlScanScope scope);
     method public void resize(int newRows, int newCols);
     method public int setAnsiPalette(int[] ansiColors);
     method public int setDefaultColors(int foreground, int background);
@@ -127,6 +128,39 @@ package org.connectbot.terminal {
 
   public final class TerminalKt {
     method @KotlinOnly @androidx.compose.runtime.Composable public static void Terminal(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional androidx.compose.ui.Modifier modifier, optional android.graphics.Typeface typeface, optional androidx.compose.ui.unit.TextUnit initialFontSize, optional androidx.compose.ui.unit.TextUnit minFontSize, optional androidx.compose.ui.unit.TextUnit maxFontSize, optional androidx.compose.ui.graphics.Color backgroundColor, optional androidx.compose.ui.graphics.Color foregroundColor, optional androidx.compose.ui.graphics.Color selectionBackgroundColor, optional androidx.compose.ui.graphics.Color selectionForegroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional androidx.compose.ui.focus.FocusRequester focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional kotlin.Pair<java.lang.Integer,java.lang.Integer>? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional kotlin.jvm.functions.Function1<org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<java.lang.String,kotlin.Unit> onHyperlinkClick, optional kotlin.jvm.functions.Function1<org.connectbot.terminal.ComposeController,kotlin.Unit>? onComposeControllerAvailable, optional kotlin.jvm.functions.Function0<kotlin.Unit>? onPasteRequest, optional org.connectbot.terminal.RightAltMode rightAltMode, optional org.connectbot.terminal.DelKeyMode delKeyMode);
+  }
+
+  public final class TerminalUrl {
+    ctor public TerminalUrl(String url, org.connectbot.terminal.TerminalUrlSource source);
+    method public String component1();
+    method public org.connectbot.terminal.TerminalUrlSource component2();
+    method public org.connectbot.terminal.TerminalUrl copy(optional String url, optional org.connectbot.terminal.TerminalUrlSource source);
+    method @InaccessibleFromKotlin public org.connectbot.terminal.TerminalUrlSource getSource();
+    method @InaccessibleFromKotlin public String getUrl();
+    property public org.connectbot.terminal.TerminalUrlSource source;
+    property public String url;
+  }
+
+  public abstract sealed exhaustive class TerminalUrlSource {
+  }
+
+  public static final class TerminalUrlSource.AutoDetected extends org.connectbot.terminal.TerminalUrlSource {
+    field public static final org.connectbot.terminal.TerminalUrlSource.AutoDetected INSTANCE;
+  }
+
+  public static final class TerminalUrlSource.Osc8 extends org.connectbot.terminal.TerminalUrlSource {
+    field public static final org.connectbot.terminal.TerminalUrlSource.Osc8 INSTANCE;
+  }
+
+  public abstract sealed exhaustive class UrlScanScope {
+  }
+
+  public static final class UrlScanScope.CurrentView extends org.connectbot.terminal.UrlScanScope {
+    field public static final org.connectbot.terminal.UrlScanScope.CurrentView INSTANCE;
+  }
+
+  public static final class UrlScanScope.ScreenAndScrollback extends org.connectbot.terminal.UrlScanScope {
+    field public static final org.connectbot.terminal.UrlScanScope.ScreenAndScrollback INSTANCE;
   }
 
   public final class VTermKey {
@@ -226,4 +260,3 @@ package org.connectbot.terminal {
   }
 
 }
-
