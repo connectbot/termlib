@@ -258,6 +258,8 @@ internal class TerminalEmulatorImpl(
 
     // Pending semantic segments to apply during processPendingUpdates
     private val pendingSemanticSegments = mutableListOf<PendingSemanticSegment>()
+    private val movedSegmentRows = mutableSetOf<Int>()
+    private val semanticSegmentTexts = mutableMapOf<SemanticSegmentKey, String>()
 
     // StateFlow for reactive state propagation
     private val _snapshot = MutableStateFlow(
@@ -358,6 +360,11 @@ internal class TerminalEmulatorImpl(
                         .copy(semanticSegments = oldLines[row].semanticSegments)
                 } else {
                     TerminalLine.empty(row, newCols, currentDefaultFg, currentDefaultBg)
+                }
+            }
+            if (newRows < oldLines.size) {
+                for (row in newRows until oldLines.size) {
+                    removeStoredSegmentTexts(row)
                 }
             }
         }
@@ -481,8 +488,16 @@ internal class TerminalEmulatorImpl(
         // Save source rect — pushScrollbackLine uses it to limit segment shifting
         // to lines within the scroll region (avoiding corruption of tmux status bars etc.)
         lastMoveRectSrc = src
-        // Treat moverect as damage on the destination
-        return damage(dest.startRow, dest.endRow, dest.startCol, dest.endCol)
+        // Treat moverect as display damage on the destination. Semantic segments
+        // are shifted alongside the moved text elsewhere, so preserve them here.
+        synchronized(damageLock) {
+            for (row in dest.startRow until dest.endRow) {
+                movedSegmentRows.add(row)
+            }
+            addDamageRegion(dest.startRow, dest.endRow, dest.startCol, dest.endCol, preserveSegments = true)
+            requestProcessPendingUpdatesLocked()
+        }
+        return 0
     }
 
     override fun moveCursor(pos: CursorPosition, oldPos: CursorPosition, visible: Boolean): Int {
@@ -609,12 +624,12 @@ internal class TerminalEmulatorImpl(
                 }
                 val newLines = currentLines.toMutableList()
                 for (row in 0 until shiftEnd - 1) {
-                    newLines[row] = currentLines[row].copy(
-                        semanticSegments = currentLines[row + 1].semanticSegments,
-                    )
+                    shiftStoredSegmentTexts(fromRow = row + 1, toRow = row)
+                    newLines[row] = currentLines[row + 1].copy(row = row)
                 }
                 // Clear segments for the last line in the scroll region
                 if (shiftEnd > 0 && shiftEnd <= currentLines.size) {
+                    removeStoredSegmentTexts(shiftEnd - 1)
                     newLines[shiftEnd - 1] = currentLines[shiftEnd - 1].copy(
                         semanticSegments = emptyList(),
                     )
@@ -769,6 +784,16 @@ internal class TerminalEmulatorImpl(
             currentLines = currentLines.toMutableList().apply {
                 this[row] = line.copy(semanticSegments = updatedSegments)
             }
+            pendingSemanticSegments.add(
+                PendingSemanticSegment(
+                    row = row,
+                    startCol = startCol,
+                    endCol = endCol,
+                    semanticType = semanticType,
+                    metadata = metadata,
+                    promptId = promptId,
+                ),
+            )
 
             // Mark for update so processPendingUpdates runs
             propertyChanged = true
@@ -789,9 +814,12 @@ internal class TerminalEmulatorImpl(
         // Collect pending changes
         val damageRegions: List<DamageRegion>
         val needsUpdate: Boolean
+        val movedRows: Set<Int>
         synchronized(damageLock) {
             damageRegions = pendingDamageRegions.toList()
             pendingDamageRegions.clear()
+            movedRows = movedSegmentRows.toSet()
+            movedSegmentRows.clear()
             damagePosted = false
             needsUpdate = damageRegions.isNotEmpty() || cursorMoved || propertyChanged
             cursorMoved = false
@@ -806,7 +834,7 @@ internal class TerminalEmulatorImpl(
             val startRow = region.startRow.coerceIn(0, rows - 1)
             val endRow = region.endRow.coerceIn(startRow, rows) // endRow is exclusive
             for (row in startRow until endRow) {
-                updateLine(row)
+                updateLine(row, region, preserveMovedSegments = row in movedRows)
             }
         }
 
@@ -839,6 +867,11 @@ internal class TerminalEmulatorImpl(
         }
 
         val line = currentLines[row]
+        if (segment.semanticType == SemanticType.HYPERLINK) {
+            if (!isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) return
+            val linkedText = cellText(line.cells, segment.startCol, segment.endCol)
+            if (linkedText.all { it == '\u0000' || it.isWhitespace() }) return
+        }
 
         // Create new segment
         val newSegment = SemanticSegment(
@@ -849,6 +882,11 @@ internal class TerminalEmulatorImpl(
             promptId = segment.promptId,
         )
 
+        if (newSegment in line.semanticSegments) {
+            storeSegmentText(row, newSegment, line)
+            return
+        }
+
         // Add to existing segments (sorted by startCol)
         val updatedSegments = (line.semanticSegments + newSegment)
             .sortedBy { it.startCol }
@@ -857,12 +895,13 @@ internal class TerminalEmulatorImpl(
         currentLines = currentLines.toMutableList().apply {
             this[row] = line.copy(semanticSegments = updatedSegments)
         }
+        storeSegmentText(row, newSegment, line)
     }
 
     /**
      * Update a single line by fetching cell data from the terminal.
      */
-    private fun updateLine(row: Int) {
+    private fun updateLine(row: Int, damageRegion: DamageRegion, preserveMovedSegments: Boolean) {
         // Safety check: ensure row is within bounds
         if (row !in 0..<rows) {
             return
@@ -974,12 +1013,28 @@ internal class TerminalEmulatorImpl(
             false
         }
 
-        // Update cached line, preserving any existing semantic segments
+        // Update cached line, preserving existing semantic segments only when they
+        // were not touched by terminal text damage. This prevents stale OSC 8
+        // links from surviving line redraws while allowing display-only
+        // invalidations, such as palette changes, to keep semantic metadata.
         // Must synchronize to ensure visibility of segments added by addSemanticSegment
         synchronized(damageLock) {
             currentLines = currentLines.toMutableList().apply {
-                val existingSegments = this[row].semanticSegments
-                this[row] = TerminalLine(row, cells, softWrapped = softWrapped, semanticSegments = existingSegments)
+                val previousLine = this[row]
+                val existingSegments = previousLine.semanticSegments
+                val preservedSegments = if (damageRegion.preserveSegments || preserveMovedSegments) {
+                    existingSegments.filter { segment ->
+                        segment.endCol <= cells.size &&
+                            (!preserveMovedSegments || segmentTextStillMatches(row, segment, cells))
+                    }
+                } else {
+                    existingSegments.filter { segment ->
+                        segment.endCol <= cells.size &&
+                            !segment.overlaps(damageRegion.startCol, damageRegion.endCol)
+                    }
+                }
+                replaceStoredSegmentTexts(row, preservedSegments)
+                this[row] = TerminalLine(row, cells, softWrapped = softWrapped, semanticSegments = preservedSegments)
             }
         }
     }
@@ -1029,7 +1084,7 @@ internal class TerminalEmulatorImpl(
     private fun invalidateDisplay() {
         synchronized(damageLock) {
             pendingDamageRegions.clear()
-            pendingDamageRegions.add(DamageRegion(0, rows, 0, cols))
+            pendingDamageRegions.add(DamageRegion(0, rows, 0, cols, preserveSegments = true))
             requestProcessPendingUpdatesLocked()
         }
     }
@@ -1067,12 +1122,18 @@ internal class TerminalEmulatorImpl(
      *
      * MUST be called with damageLock held.
      */
-    private fun addDamageRegion(startRow: Int, endRow: Int, startCol: Int, endCol: Int) {
+    private fun addDamageRegion(
+        startRow: Int,
+        endRow: Int,
+        startCol: Int,
+        endCol: Int,
+        preserveSegments: Boolean = false,
+    ) {
         // If list is getting large, coalesce more aggressively
         if (pendingDamageRegions.size > 100) {
             // Just mark entire screen as damaged to avoid O(n²) coalescing
             pendingDamageRegions.clear()
-            pendingDamageRegions.add(DamageRegion(0, rows, 0, cols))
+            pendingDamageRegions.add(DamageRegion(0, rows, 0, cols, preserveSegments = preserveSegments))
             return
         }
 
@@ -1084,21 +1145,27 @@ internal class TerminalEmulatorImpl(
             // Check if regions overlap or touch on row boundaries
             val rowsOverlap = !(endRow < existing.startRow || startRow > existing.endRow)
 
-            if (rowsOverlap) {
+            if (rowsOverlap && existing.preserveSegments == preserveSegments) {
                 // Merge the regions
                 val newStartRow = minOf(startRow, existing.startRow)
                 val newEndRow = maxOf(endRow, existing.endRow)
                 val newStartCol = minOf(startCol, existing.startCol)
                 val newEndCol = maxOf(endCol, existing.endCol)
 
-                pendingDamageRegions[i] = DamageRegion(newStartRow, newEndRow, newStartCol, newEndCol)
+                pendingDamageRegions[i] = DamageRegion(
+                    newStartRow,
+                    newEndRow,
+                    newStartCol,
+                    newEndCol,
+                    preserveSegments = preserveSegments,
+                )
                 merged = true
                 break
             }
         }
 
         if (!merged) {
-            pendingDamageRegions.add(DamageRegion(startRow, endRow, startCol, endCol))
+            pendingDamageRegions.add(DamageRegion(startRow, endRow, startCol, endCol, preserveSegments = preserveSegments))
         }
     }
 
@@ -1116,6 +1183,46 @@ internal class TerminalEmulatorImpl(
             eastAsianWidth == UCharacter.EastAsianWidth.WIDE
     }
 
+    private fun storeSegmentText(row: Int, segment: SemanticSegment, line: TerminalLine) {
+        if (isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) {
+            semanticSegmentTexts[SemanticSegmentKey(row, segment)] = cellText(line.cells, segment.startCol, segment.endCol)
+        }
+    }
+
+    private fun segmentTextStillMatches(row: Int, segment: SemanticSegment, cells: List<TerminalLine.Cell>): Boolean {
+        val expected = semanticSegmentTexts[SemanticSegmentKey(row, segment)] ?: return true
+        if (!isValidCellRange(segment.startCol, segment.endCol, cells.size)) return false
+        val actual = cellText(cells, segment.startCol, segment.endCol)
+        return actual == expected
+    }
+
+    private fun isValidCellRange(startCol: Int, endCol: Int, cellCount: Int): Boolean = startCol >= 0 && endCol >= startCol && endCol <= cellCount
+
+    private fun cellText(cells: List<TerminalLine.Cell>, startCol: Int, endCol: Int): String = buildString {
+        for (col in startCol until endCol) {
+            append(cells[col].char)
+            cells[col].combiningChars.forEach { append(it) }
+        }
+    }
+
+    private fun replaceStoredSegmentTexts(row: Int, segments: List<SemanticSegment>) {
+        val keep = segments.mapTo(mutableSetOf()) { SemanticSegmentKey(row, it) }
+        semanticSegmentTexts.keys.removeAll { it.row == row && it !in keep }
+    }
+
+    private fun removeStoredSegmentTexts(row: Int) {
+        semanticSegmentTexts.keys.removeAll { it.row == row }
+    }
+
+    private fun shiftStoredSegmentTexts(fromRow: Int, toRow: Int) {
+        removeStoredSegmentTexts(toRow)
+        val moved = semanticSegmentTexts.entries
+            .filter { it.key.row == fromRow }
+            .map { (key, value) -> key.copy(row = toRow) to value }
+        removeStoredSegmentTexts(fromRow)
+        semanticSegmentTexts.putAll(moved)
+    }
+
     companion object {
         private const val TAG = "TerminalEmulatorImpl"
     }
@@ -1129,6 +1236,7 @@ private data class DamageRegion(
     val endRow: Int,
     val startCol: Int,
     val endCol: Int,
+    val preserveSegments: Boolean = false,
 )
 
 /**
@@ -1144,6 +1252,24 @@ private data class PendingSemanticSegment(
     val metadata: String?,
     val promptId: Int,
 )
+
+private data class SemanticSegmentKey(
+    val row: Int,
+    val startCol: Int,
+    val endCol: Int,
+    val semanticType: SemanticType,
+    val metadata: String?,
+    val promptId: Int,
+) {
+    constructor(row: Int, segment: SemanticSegment) : this(
+        row = row,
+        startCol = segment.startCol,
+        endCol = segment.endCol,
+        semanticType = segment.semanticType,
+        metadata = segment.metadata,
+        promptId = segment.promptId,
+    )
+}
 
 /**
  * Represents the size of the terminal in characters.

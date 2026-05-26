@@ -75,6 +75,11 @@ internal data class SemanticSegment(
     fun contains(col: Int): Boolean = col >= startCol && col < endCol
 
     /**
+     * Check if this segment overlaps the half-open column range [start, end).
+     */
+    fun overlaps(start: Int, end: Int): Boolean = startCol < end && start < endCol
+
+    /**
      * Get the length of this segment in columns.
      */
     val length: Int get() = endCol - startCol

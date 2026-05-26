@@ -354,4 +354,49 @@ class ShellIntegrationTest {
             )
         }
     }
+
+    @Test
+    fun testOsc8HyperlinkClearedWhenLineIsRedrawn() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 5,
+            initialCols = 40,
+        )
+        val impl = emulator as TerminalEmulatorImpl
+
+        impl.writeInput("${osc8Start("https://example.com")}Click${osc8End()}".toByteArray())
+        var snapshot = getSnapshot(impl)
+        assertEquals(1, snapshot.lines[0].getSegmentsOfType(SemanticType.HYPERLINK).size)
+
+        impl.writeInput("\rPlain text".toByteArray())
+        snapshot = getSnapshot(impl)
+
+        assertTrue(
+            "Redrawn line should not retain the old OSC 8 hyperlink",
+            snapshot.lines[0].getSegmentsOfType(SemanticType.HYPERLINK).isEmpty(),
+        )
+    }
+
+    @Test
+    fun testPlainUrlFragmentDoesNotRemainAfterLineRedraw() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 5,
+            initialCols = 50,
+            autoDetectUrls = true,
+        )
+        val impl = emulator as TerminalEmulatorImpl
+
+        impl.writeInput("https://example.com/very/long/path".toByteArray())
+        var snapshot = getSnapshot(impl)
+        var state = TerminalScreenState(snapshot)
+        assertEquals(
+            "https://example.com/very/long/path",
+            state.getHyperlinkUrlAt(0, 10, autoDetectUrls = true),
+        )
+
+        impl.writeInput("\rnot a url anymore                 ".toByteArray())
+        snapshot = getSnapshot(impl)
+        state = TerminalScreenState(snapshot)
+
+        assertEquals(null, state.getHyperlinkUrlAt(0, 10, autoDetectUrls = true))
+    }
 }

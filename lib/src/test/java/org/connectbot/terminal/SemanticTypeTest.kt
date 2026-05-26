@@ -17,7 +17,10 @@
 package org.connectbot.terminal
 
 import androidx.compose.ui.graphics.Color
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SemanticTypeTest {
@@ -41,7 +44,7 @@ class SemanticTypeTest {
             endCol = 11,
             semanticType = SemanticType.PROMPT,
             metadata = null,
-            promptId = 1
+            promptId = 1,
         )
 
         assertTrue(segment.contains(0))
@@ -61,9 +64,9 @@ class SemanticTypeTest {
             row = 0,
             cells = cells,
             semanticSegments = listOf(
-                SemanticSegment(0, 11, SemanticType.PROMPT, null, 1),      // "user@host$ "
-                SemanticSegment(11, 16, SemanticType.COMMAND_INPUT, null, 1) // "ls -l"
-            )
+                SemanticSegment(0, 11, SemanticType.PROMPT, null, 1), // "user@host$ "
+                SemanticSegment(11, 16, SemanticType.COMMAND_INPUT, null, 1), // "ls -l"
+            ),
         )
 
         assertEquals(SemanticType.PROMPT, line.getSemanticTypeAt(0))
@@ -86,7 +89,7 @@ class SemanticTypeTest {
         val cells = buildTestCells("plain text")
         val line = TerminalLine(
             row = 0,
-            cells = cells
+            cells = cells,
         )
 
         assertEquals(SemanticType.DEFAULT, line.getSemanticTypeAt(0))
@@ -99,7 +102,7 @@ class SemanticTypeTest {
         val cells = buildTestCells("Hello World")
         val line = TerminalLine(
             row = 0,
-            cells = cells
+            cells = cells,
         )
 
         assertEquals("Hello World", line.text)
@@ -112,7 +115,7 @@ class SemanticTypeTest {
             endCol = 1,
             semanticType = SemanticType.COMMAND_FINISHED,
             metadata = "42",
-            promptId = 5
+            promptId = 5,
         )
 
         assertEquals("42", segment.metadata)
@@ -130,8 +133,8 @@ class SemanticTypeTest {
                 SemanticSegment(0, 2, SemanticType.PROMPT, null, 1),
                 SemanticSegment(2, 7, SemanticType.COMMAND_INPUT, null, 1),
                 SemanticSegment(10, 12, SemanticType.PROMPT, null, 2),
-                SemanticSegment(12, 17, SemanticType.COMMAND_INPUT, null, 2)
-            )
+                SemanticSegment(12, 17, SemanticType.COMMAND_INPUT, null, 2),
+            ),
         )
 
         assertEquals(2, line.getSegmentsOfType(SemanticType.PROMPT).size)
@@ -151,9 +154,9 @@ class SemanticTypeTest {
                     endCol = 10,
                     semanticType = SemanticType.HYPERLINK,
                     metadata = "https://example.com",
-                    promptId = -1
-                )
-            )
+                    promptId = -1,
+                ),
+            ),
         )
 
         assertEquals(SemanticType.HYPERLINK, line.getSemanticTypeAt(0))
@@ -173,7 +176,7 @@ class SemanticTypeTest {
         val urls = line.autoDetectedUrls
         assertEquals(1, urls.size)
         assertEquals("https://example.com", urls[0].third)
-        assertEquals(6, urls[0].first)   // starts at 'h'
+        assertEquals(6, urls[0].first) // starts at 'h'
         assertEquals(25, urls[0].second) // exclusive end
     }
 
@@ -232,6 +235,25 @@ class SemanticTypeTest {
     }
 
     @Test
+    fun testAutoDetectedUrlsUseCellColumnsWithCombiningChars() {
+        val cells = listOf(
+            TerminalLine.Cell(
+                char = 'e',
+                combiningChars = listOf('\u0301'),
+                fgColor = Color.White,
+                bgColor = Color.Black,
+            ),
+        ) + buildTestCells(" https://example.com")
+        val line = TerminalLine(row = 0, cells = cells)
+        val urls = line.autoDetectedUrls
+
+        assertEquals(1, urls.size)
+        assertEquals(2, urls[0].first)
+        assertEquals(21, urls[0].second)
+        assertEquals("https://example.com", line.getHyperlinkUrlAt(2, autoDetectUrls = true))
+    }
+
+    @Test
     fun testGetHyperlinkUrlAtFallsBackToAutoDetect() {
         // No OSC 8 segments — should fall back to auto-detected URL when enabled
         val line = TerminalLine(row = 0, cells = buildTestCells("go to https://example.com ok"))
@@ -261,22 +283,20 @@ class SemanticTypeTest {
                     startCol = 6,
                     endCol = 25,
                     semanticType = SemanticType.HYPERLINK,
-                    metadata = "https://osc8-override.com"
-                )
-            )
+                    metadata = "https://osc8-override.com",
+                ),
+            ),
         )
         // OSC 8 wins over auto-detect
         assertEquals("https://osc8-override.com", line.getHyperlinkUrlAt(6))
         assertEquals("https://osc8-override.com", line.getHyperlinkUrlAt(10))
     }
 
-    private fun buildTestCells(text: String): List<TerminalLine.Cell> {
-        return text.map { char ->
-            TerminalLine.Cell(
-                char = char,
-                fgColor = Color.White,
-                bgColor = Color.Black
-            )
-        }
+    private fun buildTestCells(text: String): List<TerminalLine.Cell> = text.map { char ->
+        TerminalLine.Cell(
+            char = char,
+            fgColor = Color.White,
+            bgColor = Color.Black,
+        )
     }
 }

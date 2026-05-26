@@ -1247,8 +1247,11 @@ internal fun TerminalWithAccessibility(
                                         .coerceIn(0, screenState.snapshot.cols - 1)
                                     val tapRow = (down.position.y / baseCharHeight).toInt()
                                         .coerceIn(0, screenState.snapshot.rows - 1)
-                                    val line = screenState.getVisibleLine(tapRow)
-                                    val hyperlinkUrl = line.getHyperlinkUrlAt(tapCol, terminalEmulator.autoDetectUrls)
+                                    val hyperlinkUrl = screenState.getHyperlinkUrlAt(
+                                        tapRow,
+                                        tapCol,
+                                        terminalEmulator.autoDetectUrls,
+                                    )
 
                                     if (hyperlinkUrl != null) {
                                         // User tapped on a hyperlink
@@ -1614,6 +1617,17 @@ private fun TerminalRows(
     val density = LocalDensity.current
     val rowHeight = with(density) { charHeight.toDp() }
     val snapshot = screenState.snapshot
+    val hyperlinkMasks = remember(snapshot.sequenceNumber, screenState.scrollbackPosition, autoDetectUrls) {
+        if (!autoDetectUrls) {
+            emptyList()
+        } else {
+            List(snapshot.rows) { row ->
+                BooleanArray(snapshot.cols) { col ->
+                    screenState.getHyperlinkUrlAt(row, col, autoDetectUrls = true) != null
+                }
+            }
+        }
+    }
 
     for (row in 0 until snapshot.rows) {
         val line = screenState.getVisibleLine(row)
@@ -1636,6 +1650,7 @@ private fun TerminalRows(
                     defaultBg = defaultBg,
                     selectionManager = null,
                     autoDetectUrls = autoDetectUrls,
+                    hyperlinkMask = hyperlinkMasks.getOrNull(row),
                 )
             }
         }
@@ -1654,6 +1669,7 @@ private fun DrawScope.drawLine(
     defaultBg: Color,
     selectionManager: SelectionManager?,
     autoDetectUrls: Boolean = false,
+    hyperlinkMask: BooleanArray? = null,
     selectionBackgroundColor: Color = Color(0xFFB3D7FF),
     selectionForegroundColor: Color = Color.Black,
     selectedOnly: Boolean = false,
@@ -1672,7 +1688,7 @@ private fun DrawScope.drawLine(
         }
 
         // Check if this cell is part of a hyperlink
-        val isHyperlink = line.getHyperlinkUrlAt(col, autoDetectUrls) != null
+        val isHyperlink = hyperlinkMask?.getOrNull(col) ?: (line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
 
         // Determine colors (handle reverse video and selection)
         val baseFgColor = if (cell.reverse) cell.bgColor else cell.fgColor

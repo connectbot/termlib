@@ -54,6 +54,21 @@ internal data class TerminalLine(
     }
 
     /**
+     * Text with one character per terminal cell.
+     *
+     * This keeps string indexes aligned with cell columns for hit-testing and
+     * URL range calculations. Combining characters are intentionally omitted
+     * because they do not occupy their own terminal cells.
+     */
+    internal val columnText: String by lazy {
+        buildString {
+            cells.forEach { cell ->
+                append(cell.char)
+            }
+        }
+    }
+
+    /**
      * Get the semantic type at a specific column.
      * Returns DEFAULT if no segment covers that column.
      */
@@ -77,8 +92,13 @@ internal data class TerminalLine(
      */
     internal val autoDetectedUrls: List<Triple<Int, Int, String>> by lazy {
         if (cells.isEmpty()) return@lazy emptyList()
-        URL_REGEX.findAll(text).map { match ->
-            Triple(match.range.first, match.range.last + 1, match.value)
+        URL_REGEX.findAll(columnText).mapNotNull { match ->
+            val trimmed = match.value.trimDetectedUrl()
+            if (trimmed.isEmpty()) {
+                null
+            } else {
+                Triple(match.range.first, match.range.first + trimmed.length, trimmed)
+            }
         }.toList()
     }
 
