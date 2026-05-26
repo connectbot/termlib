@@ -11,6 +11,8 @@ private val TRAILING_DETECTED_URL_PUNCTUATION = setOf('.', ',', ';', ':', '!')
 /** True if the character commonly appears in URLs. */
 internal fun Char.isUrlSafe(): Boolean = isLetterOrDigit() || this in "/:@!$&'()*+,;=-._~%?#[]"
 
+internal fun Char.isUrlPrefixDecoration(): Boolean = this in "|│├└┌┬┼`>•●⎿\""
+
 /**
  * Regexes intentionally match URL-ish spans broadly; trim punctuation that is
  * usually prose around a URL rather than part of it.

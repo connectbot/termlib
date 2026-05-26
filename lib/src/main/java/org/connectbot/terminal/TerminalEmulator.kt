@@ -30,6 +30,45 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.nio.ByteBuffer
 
 /**
+ * URL discovered in terminal output.
+ *
+ * @property url The target URL.
+ * @property source How the URL was discovered.
+ */
+data class TerminalUrl(
+    val url: String,
+    val source: TerminalUrlSource,
+)
+
+sealed class TerminalUrlSource {
+    data object Osc8 : TerminalUrlSource()
+
+    data object AutoDetected : TerminalUrlSource()
+}
+
+/**
+ * Line range to scan for URLs.
+ *
+ * With the current terminal state model, both scopes scan primary scrollback
+ * plus the visible primary screen while the primary screen is active. While the
+ * alternate screen is active, both scopes scan only the alternate screen because
+ * the alternate screen does not have scrollback.
+ */
+sealed class UrlScanScope {
+    /**
+     * Scan what users currently see as terminal output: primary scrollback plus
+     * visible primary screen, or only the active alternate screen.
+     */
+    data object CurrentView : UrlScanScope()
+
+    /**
+     * Scan the currently active screen plus its scrollback, when that screen
+     * has scrollback.
+     */
+    data object ScreenAndScrollback : UrlScanScope()
+}
+
+/**
  * Terminal emulator interface. This has no dependency on any UI framework
  * so it may be run in a Service on Android. It handles the management of
  * the terminal emulation state.
@@ -119,8 +158,10 @@ sealed interface TerminalEmulator {
     /**
      * Whether plain-text URL auto-detection is enabled.
      *
-     * When true, [TerminalLine.getHyperlinkUrlAt] will scan line text for URLs in addition
-     * to OSC 8 hyperlink segments. When false, only OSC 8 segments are used.
+     * When true, hyperlink hit-testing continuously scans visible line text for URLs
+     * in addition to OSC 8 hyperlink segments. When false, hit-testing only uses OSC 8
+     * segments. This does not affect [getUrls], which always performs an explicit
+     * one-shot scan when called.
      */
     val autoDetectUrls: Boolean
 
@@ -140,6 +181,18 @@ sealed interface TerminalEmulator {
      * @return The command output text, or null if no completed command is found
      */
     fun getLastCommandOutput(): String?
+
+    /**
+     * Extract URLs from terminal output.
+     *
+     * This always performs explicit OSC 8 and plain-text regex URL extraction,
+     * independent of [autoDetectUrls]. Plain-text URL extraction includes URLs
+     * split across wrapped adjacent rows.
+     *
+     * Primary-screen scans include scrollback before visible screen lines.
+     * While the alternate screen is active, primary scrollback is not scanned.
+     */
+    fun getUrls(scope: UrlScanScope = UrlScanScope.CurrentView): List<TerminalUrl>
 }
 
 class TerminalEmulatorFactory {
@@ -159,9 +212,11 @@ class TerminalEmulatorFactory {
          *                        The callback receives the decoded text to copy.
          * @param onProgressChange Optional callback for OSC 9;4 progress reporting.
          *                         The callback receives the progress state and percentage (0-100).
-         * @param autoDetectUrls Whether to scan terminal line text for plain-text URLs and expose
-         *                       them via [TerminalLine.getHyperlinkUrlAt] as a fallback when no
-         *                       OSC 8 hyperlink covers the column. Defaults to false.
+         * @param autoDetectUrls Whether to continuously scan visible terminal line text for
+         *                       plain-text URLs and expose them via hit-testing as a fallback
+         *                       when no OSC 8 hyperlink covers the column. Defaults to false.
+         *                       [TerminalEmulator.getUrls] always performs its own one-shot
+         *                       regex URL scan regardless of this setting.
          * @param boldAsBright Whether bold text using low-intensity ANSI colors (0–7) promotes to
          *                     the corresponding bright palette color (8–15), matching xterm's
          *                     default boldColors behavior. Defaults to true.
@@ -286,6 +341,7 @@ internal class TerminalEmulatorImpl(
 
     // Terminal properties
     private var terminalTitle = ""
+    private var isAltScreenActive = false
 
     // Scrollback buffer
     private val scrollback = mutableListOf<TerminalLine>()
@@ -404,6 +460,14 @@ internal class TerminalEmulatorImpl(
         val currentSnapshot = _snapshot.value
         val allLines = currentSnapshot.scrollback + currentSnapshot.lines
         return getLastCommandOutput(allLines)
+    }
+
+    override fun getUrls(scope: UrlScanScope): List<TerminalUrl> {
+        val currentSnapshot = _snapshot.value
+        val altScreenActive = synchronized(damageLock) {
+            isAltScreenActive
+        }
+        return extractUrls(currentSnapshot.linesForUrlScan(scope, altScreenActive))
     }
 
     /**
@@ -533,6 +597,12 @@ internal class TerminalEmulatorImpl(
                         // Property 2 is VTERM_PROP_CURSORBLINK (from vterm.h line 255)
                         2 -> {
                             cursorBlink = value.value
+                            propertyChanged = true
+                        }
+
+                        // Property 3 is VTERM_PROP_ALTSCREEN (from vterm.h line 256)
+                        3 -> {
+                            isAltScreenActive = value.value
                             propertyChanged = true
                         }
                     }
@@ -858,19 +928,19 @@ internal class TerminalEmulatorImpl(
      * Apply a semantic segment to a line.
      * This is called during processPendingUpdates when the actual text is available.
      */
-    private fun applySemanticSegment(segment: PendingSemanticSegment) {
+    private fun applySemanticSegment(segment: PendingSemanticSegment) = synchronized(damageLock) {
         val row = segment.row
 
         // Ensure row is valid
         if (row < 0 || row >= currentLines.size) {
-            return
+            return@synchronized
         }
 
         val line = currentLines[row]
         if (segment.semanticType == SemanticType.HYPERLINK) {
-            if (!isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) return
+            if (!isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) return@synchronized
             val linkedText = cellText(line.cells, segment.startCol, segment.endCol)
-            if (linkedText.all { it == '\u0000' || it.isWhitespace() }) return
+            if (linkedText.all { it == '\u0000' || it.isWhitespace() }) return@synchronized
         }
 
         // Create new segment
@@ -884,7 +954,7 @@ internal class TerminalEmulatorImpl(
 
         if (newSegment in line.semanticSegments) {
             storeSegmentText(row, newSegment, line)
-            return
+            return@synchronized
         }
 
         // Add to existing segments (sorted by startCol)
@@ -1073,6 +1143,164 @@ internal class TerminalEmulatorImpl(
         )
     }
 
+    private fun TerminalSnapshot.linesForUrlScan(
+        scope: UrlScanScope,
+        altScreenActive: Boolean,
+    ): List<TerminalLine> {
+        if (altScreenActive) return lines
+        return when (scope) {
+            UrlScanScope.CurrentView -> scrollback + lines
+            UrlScanScope.ScreenAndScrollback -> scrollback + lines
+        }
+    }
+
+    private fun extractUrls(lines: List<TerminalLine>): List<TerminalUrl> {
+        val seenUrls = linkedSetOf<String>()
+        val urls = mutableListOf<TerminalUrl>()
+
+        lines.forEachIndexed { row, line ->
+            for (url in extractUrls(lines, row, line)) {
+                if (seenUrls.add(url.url)) {
+                    urls.add(url)
+                }
+            }
+        }
+
+        return urls
+    }
+
+    private fun extractUrls(lines: List<TerminalLine>, row: Int, line: TerminalLine): List<TerminalUrl> {
+        val osc8Segments = line.getSegmentsOfType(SemanticType.HYPERLINK)
+        val osc8Urls = osc8Segments
+            .mapNotNull { segment ->
+                val url = segment.metadata
+                if (url.isNullOrEmpty() || segment.startCol < 0 || segment.endCol <= segment.startCol) {
+                    null
+                } else {
+                    segment.startCol to TerminalUrl(
+                        url = url,
+                        source = TerminalUrlSource.Osc8,
+                    )
+                }
+            }
+
+        val autoDetectedUrls = line.autoDetectedUrls
+            .mapNotNull { (startCol, endCol, url) ->
+                val spans = buildWrappedUrlSpans(lines, row, startCol)
+                val detectedUrl = readWrappedUrl(lines, spans) ?: url
+                val firstSpan = spans[row] ?: (startCol until endCol)
+                if (spansOverlapOsc8(lines, spans.ifEmpty { mapOf(row to firstSpan) })) {
+                    null
+                } else {
+                    startCol to TerminalUrl(
+                        url = detectedUrl,
+                        source = TerminalUrlSource.AutoDetected,
+                    )
+                }
+            }
+
+        return (osc8Urls + autoDetectedUrls).sortedWith(
+            compareBy<Pair<Int, TerminalUrl>> { it.first }
+                .thenBy { it.second.source.priority },
+        ).map { it.second }
+    }
+
+    private val TerminalUrlSource.priority: Int
+        get() = when (this) {
+            TerminalUrlSource.Osc8 -> 0
+            TerminalUrlSource.AutoDetected -> 1
+        }
+
+    private fun buildWrappedUrlSpans(lines: List<TerminalLine>, anchorRow: Int, anchorCol: Int): Map<Int, IntRange> {
+        val spans = linkedMapOf<Int, IntRange>()
+        var row = anchorRow
+        var startCol = anchorCol
+
+        while (row < lines.size && (row - anchorRow) < MAX_URL_SCAN_CONTINUATION_ROWS) {
+            val text = lines[row].columnText
+            if (startCol !in text.indices || !text[startCol].isUrlSafe()) break
+
+            var endCol = startCol
+            while (endCol < text.length && text[endCol].isUrlSafe()) {
+                endCol++
+            }
+
+            val nextStart = continuationStart(lines, row, endCol)
+            if (nextStart != null) {
+                spans[row] = startCol until endCol
+                row++
+                startCol = nextStart
+            } else {
+                val trimmed = text.substring(startCol, endCol).trimDetectedUrl()
+                if (trimmed.isNotEmpty()) {
+                    spans[row] = startCol until (startCol + trimmed.length)
+                }
+                break
+            }
+        }
+
+        return spans
+    }
+
+    private fun continuationStart(lines: List<TerminalLine>, previousRow: Int, previousEndCol: Int): Int? {
+        if (previousRow + 1 >= lines.size) return null
+
+        val previousLine = lines[previousRow]
+        val previousText = previousLine.columnText
+        val previousTrimmedEnd = previousText.indexOfLast { it != '\u0000' && !it.isWhitespace() } + 1
+        if (previousTrimmedEnd <= 0 || previousEndCol < previousTrimmedEnd) return null
+
+        val rowFilled = previousEndCol >= previousLine.cells.size || previousLine.softWrapped
+        val nextText = lines[previousRow + 1].columnText
+        val start = firstUrlSafeAfterPrefix(nextText) ?: return null
+
+        var end = start
+        while (end < nextText.length && nextText[end].isUrlSafe()) {
+            end++
+        }
+        val run = nextText.substring(start, end)
+        if (run.trimDetectedUrl().isEmpty()) return null
+
+        val prevEndsWithDelimiter = previousEndCol > 0 && previousText[previousEndCol - 1] in "/?&=#"
+        val nextStartsWithQueryOrFragment = run.isNotEmpty() && run[0] in "?&#"
+        val previousRun = previousText.substring(0, previousEndCol)
+        val previousWouldTrim = previousRun.trimDetectedUrl().length < previousRun.length
+        val rowFilledContinuation = rowFilled &&
+            (!previousWouldTrim || prevEndsWithDelimiter || nextStartsWithQueryOrFragment)
+        val continues = rowFilledContinuation || prevEndsWithDelimiter || nextStartsWithQueryOrFragment
+
+        return if (continues) start else null
+    }
+
+    private fun firstUrlSafeAfterPrefix(text: String): Int? {
+        for (index in text.indices) {
+            val ch = text[index]
+            if (ch == '\u0000' || ch.isWhitespace()) continue
+            if (ch.isUrlPrefixDecoration()) continue
+            return if (ch.isUrlSafe()) index else null
+        }
+        return null
+    }
+
+    private fun readWrappedUrl(lines: List<TerminalLine>, spans: Map<Int, IntRange>): String? {
+        if (spans.isEmpty()) return null
+        val joined = buildString {
+            for ((spanRow, span) in spans.toSortedMap()) {
+                val text = lines[spanRow].columnText
+                val end = (span.last + 1).coerceAtMost(text.length)
+                if (span.first < end) append(text.substring(span.first, end))
+            }
+        }
+        return TerminalLine.URL_REGEX.findAll(joined).firstOrNull()?.value?.trimDetectedUrl()?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun spansOverlapOsc8(lines: List<TerminalLine>, spans: Map<Int, IntRange>): Boolean = spans.any { (row, span) ->
+        val endCol = span.last + 1
+        lines.getOrNull(row)?.getSegmentsOfType(SemanticType.HYPERLINK)?.any {
+            it.startCol < endCol && span.first < it.endCol
+        } == true
+    }
+
     // ================================================================================
     // Helper methods
     // ================================================================================
@@ -1184,16 +1412,19 @@ internal class TerminalEmulatorImpl(
     }
 
     private fun storeSegmentText(row: Int, segment: SemanticSegment, line: TerminalLine) {
-        if (isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) {
+        synchronized(damageLock) {
+            if (!isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) return@synchronized
             semanticSegmentTexts[SemanticSegmentKey(row, segment)] = cellText(line.cells, segment.startCol, segment.endCol)
         }
     }
 
     private fun segmentTextStillMatches(row: Int, segment: SemanticSegment, cells: List<TerminalLine.Cell>): Boolean {
-        val expected = semanticSegmentTexts[SemanticSegmentKey(row, segment)] ?: return true
-        if (!isValidCellRange(segment.startCol, segment.endCol, cells.size)) return false
-        val actual = cellText(cells, segment.startCol, segment.endCol)
-        return actual == expected
+        return synchronized(damageLock) {
+            val expected = semanticSegmentTexts[SemanticSegmentKey(row, segment)] ?: return@synchronized true
+            if (!isValidCellRange(segment.startCol, segment.endCol, cells.size)) return@synchronized false
+            val actual = cellText(cells, segment.startCol, segment.endCol)
+            actual == expected
+        }
     }
 
     private fun isValidCellRange(startCol: Int, endCol: Int, cellCount: Int): Boolean = startCol >= 0 && endCol >= startCol && endCol <= cellCount
@@ -1206,25 +1437,32 @@ internal class TerminalEmulatorImpl(
     }
 
     private fun replaceStoredSegmentTexts(row: Int, segments: List<SemanticSegment>) {
-        val keep = segments.mapTo(mutableSetOf()) { SemanticSegmentKey(row, it) }
-        semanticSegmentTexts.keys.removeAll { it.row == row && it !in keep }
+        synchronized(damageLock) {
+            val keep = segments.mapTo(mutableSetOf()) { SemanticSegmentKey(row, it) }
+            semanticSegmentTexts.keys.removeAll { it.row == row && it !in keep }
+        }
     }
 
     private fun removeStoredSegmentTexts(row: Int) {
-        semanticSegmentTexts.keys.removeAll { it.row == row }
+        synchronized(damageLock) {
+            semanticSegmentTexts.keys.removeAll { it.row == row }
+        }
     }
 
     private fun shiftStoredSegmentTexts(fromRow: Int, toRow: Int) {
-        removeStoredSegmentTexts(toRow)
-        val moved = semanticSegmentTexts.entries
-            .filter { it.key.row == fromRow }
-            .map { (key, value) -> key.copy(row = toRow) to value }
-        removeStoredSegmentTexts(fromRow)
-        semanticSegmentTexts.putAll(moved)
+        synchronized(damageLock) {
+            removeStoredSegmentTexts(toRow)
+            val moved = semanticSegmentTexts.entries
+                .filter { it.key.row == fromRow }
+                .map { (key, value) -> key.copy(row = toRow) to value }
+            removeStoredSegmentTexts(fromRow)
+            semanticSegmentTexts.putAll(moved)
+        }
     }
 
     companion object {
         private const val TAG = "TerminalEmulatorImpl"
+        private const val MAX_URL_SCAN_CONTINUATION_ROWS = 6
     }
 }
 
