@@ -42,6 +42,17 @@ import androidx.compose.runtime.setValue
 internal class TerminalScreenState(
     initialSnapshot: TerminalSnapshot,
 ) {
+    private data class DetectedUrl(
+        val row: Int,
+        val range: IntRange,
+        val url: String,
+    )
+
+    private var cachedSequenceNumber = -1L
+    private var cachedScrollbackPosition = -1
+    private var cachedAutoDetect = false
+    private var cachedUrlGrid = Array(0) { arrayOfNulls<String>(0) }
+
     /**
      * The current immutable terminal snapshot.
      * Updated via updateSnapshot() to preserve scroll position across snapshot changes.
@@ -110,6 +121,193 @@ internal class TerminalScreenState(
     }
 
     /**
+     * Get the hyperlink URL at a visible row/col.
+     *
+     * OSC 8 semantic hyperlinks always win. When [autoDetectUrls] is enabled,
+     * plain-text URL detection also handles URLs split across adjacent visual
+     * rows by terminal wrapping or tool-added continuation prefixes.
+     */
+    fun getHyperlinkUrlAt(row: Int, col: Int, autoDetectUrls: Boolean = false): String? {
+        if (row !in 0 until snapshot.rows || col !in 0 until snapshot.cols) return null
+
+        val line = getVisibleLine(row)
+        val osc8 = line.semanticSegments.firstOrNull {
+            it.semanticType == SemanticType.HYPERLINK && it.contains(col)
+        }?.metadata
+        if (osc8 != null) return osc8
+
+        if (!autoDetectUrls) return null
+
+        if (snapshot.sequenceNumber != cachedSequenceNumber ||
+            scrollbackPosition != cachedScrollbackPosition ||
+            autoDetectUrls != cachedAutoDetect
+        ) {
+            rebuildUrlCache(autoDetect = true)
+        }
+
+        return if (row in cachedUrlGrid.indices && col in cachedUrlGrid[row].indices) {
+            cachedUrlGrid[row][col]
+        } else {
+            null
+        }
+    }
+
+    private fun rebuildUrlCache(autoDetect: Boolean) {
+        cachedSequenceNumber = snapshot.sequenceNumber
+        cachedScrollbackPosition = scrollbackPosition
+        cachedAutoDetect = autoDetect
+
+        val numRows = snapshot.rows
+        val cols = snapshot.cols
+        if (cachedUrlGrid.size != numRows || (numRows > 0 && cachedUrlGrid[0].size != cols)) {
+            cachedUrlGrid = Array(numRows) { arrayOfNulls<String>(cols) }
+        } else {
+            for (r in 0 until numRows) {
+                cachedUrlGrid[r].fill(null)
+            }
+        }
+
+        val list = mutableListOf<DetectedUrl>()
+        if (!autoDetect) {
+            return
+        }
+
+        val visited = Array(numRows) { BooleanArray(cols) }
+
+        for (row in 0 until numRows) {
+            val line = getVisibleLine(row)
+
+            for ((anchorCol, _, _) in line.autoDetectedUrls) {
+                if (anchorCol !in 0 until cols) continue
+                if (visited[row][anchorCol]) continue
+
+                val spans = buildWrappedUrlSpans(row, anchorCol)
+                if (spans.isNotEmpty()) {
+                    val joined = StringBuilder()
+                    for ((spanRow, span) in spans.toSortedMap()) {
+                        joined.append(readUrlSpan(spanRow, span))
+                        for (c in span) {
+                            if (spanRow in 0 until numRows && c in 0 until cols) {
+                                visited[spanRow][c] = true
+                            }
+                        }
+                    }
+
+                    val trimmedUrl = TerminalLine.URL_REGEX.findAll(joined).firstOrNull()?.value?.trimDetectedUrl()
+                    if (!trimmedUrl.isNullOrEmpty()) {
+                        mapUrlToSpans(spans, trimmedUrl, list)
+                    }
+                }
+            }
+        }
+
+        for (detected in list) {
+            if (detected.row in 0 until numRows) {
+                for (col in detected.range) {
+                    if (col in 0 until cols) {
+                        cachedUrlGrid[detected.row][col] = detected.url
+                    }
+                }
+            }
+        }
+    }
+
+    private fun mapUrlToSpans(spans: Map<Int, IntRange>, trimmedUrl: String, list: MutableList<DetectedUrl>) {
+        var remainingLength = trimmedUrl.length
+        for ((spanRow, span) in spans.toSortedMap()) {
+            if (remainingLength <= 0) break
+            val spanLength = span.last - span.first + 1
+            val takeLength = minOf(remainingLength, spanLength)
+            if (takeLength > 0) {
+                val range = span.first until (span.first + takeLength)
+                list.add(DetectedUrl(spanRow, range, trimmedUrl))
+            }
+            remainingLength -= takeLength
+        }
+    }
+
+    private fun buildWrappedUrlSpans(anchorRow: Int, anchorCol: Int): Map<Int, IntRange> {
+        val spans = linkedMapOf<Int, IntRange>()
+        var row = anchorRow
+        var startCol = anchorCol
+
+        while (row < snapshot.rows && (row - anchorRow) < MAX_URL_CONTINUATION_ROWS) {
+            val text = getVisibleLine(row).columnText
+            if (startCol !in text.indices || !text[startCol].isUrlSafe()) break
+
+            var endCol = startCol
+            while (endCol < text.length && text[endCol].isUrlSafe()) {
+                endCol++
+            }
+
+            val nextStart = continuationStart(row, endCol)
+            if (nextStart != null) {
+                spans[row] = startCol until endCol
+                row++
+                startCol = nextStart
+            } else {
+                val runStr = text.substring(startCol, endCol)
+                val trimmed = runStr.trimDetectedUrl()
+                if (trimmed.isNotEmpty()) {
+                    spans[row] = startCol until (startCol + trimmed.length)
+                }
+                break
+            }
+        }
+
+        return spans
+    }
+
+    private fun continuationStart(previousRow: Int, previousEndCol: Int): Int? {
+        if (previousRow + 1 >= snapshot.rows) return null
+
+        val previousLine = getVisibleLine(previousRow)
+        val previousText = previousLine.columnText
+
+        val previousTrimmedEnd = previousText.indexOfLast { it != '\u0000' && !it.isWhitespace() } + 1
+        if (previousTrimmedEnd <= 0 || previousEndCol < previousTrimmedEnd) return null
+
+        val rowFilled = previousEndCol >= snapshot.cols || previousLine.softWrapped
+        val nextRow = previousRow + 1
+        val nextText = getVisibleLine(nextRow).columnText
+        val start = firstUrlSafeAfterPrefix(nextText) ?: return null
+
+        var end = start
+        while (end < nextText.length && nextText[end].isUrlSafe()) {
+            end++
+        }
+        val run = nextText.substring(start, end)
+        val trimmedRun = run.trimDetectedUrl()
+        if (trimmedRun.isEmpty()) return null
+
+        val prevEndsWithDelimiter = previousEndCol > 0 && previousText[previousEndCol - 1] in "/?&=#"
+        val nextStartsWithQueryOrFragment = run.isNotEmpty() && run[0] in "?&#"
+        val previousRun = previousText.substring(0, previousEndCol)
+        val previousWouldTrim = previousRun.trimDetectedUrl().length < previousRun.length
+        val rowFilledContinuation = rowFilled &&
+            (!previousWouldTrim || prevEndsWithDelimiter || nextStartsWithQueryOrFragment)
+        val continues = rowFilledContinuation || prevEndsWithDelimiter || nextStartsWithQueryOrFragment
+
+        return if (continues) start else null
+    }
+
+    private fun firstUrlSafeAfterPrefix(text: String): Int? {
+        for (index in text.indices) {
+            val ch = text[index]
+            if (ch == '\u0000' || ch.isWhitespace()) continue
+            if (ch.isUrlPrefixDecoration()) continue
+            return if (ch.isUrlSafe()) index else null
+        }
+        return null
+    }
+
+    private fun readUrlSpan(row: Int, span: IntRange): String {
+        val text = getVisibleLine(row).columnText
+        val end = (span.last + 1).coerceAtMost(text.length)
+        return if (span.first < end) text.substring(span.first, end) else ""
+    }
+
+    /**
      * Scroll to the bottom (current screen).
      */
     fun scrollToBottom() {
@@ -161,6 +359,10 @@ internal class TerminalScreenState(
         }
     }
 }
+
+private const val MAX_URL_CONTINUATION_ROWS = 6
+
+private fun Char.isUrlPrefixDecoration(): Boolean = this in "|│├└┌┬┼`>•●⎿\""
 
 /**
  * Remember a TerminalScreenState that observes the given TerminalEmulator.
