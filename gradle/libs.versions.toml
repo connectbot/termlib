@@ -1,7 +1,7 @@
 [versions]
 androidGradlePlugin = "9.2.1"
 kotlin = "2.3.21"
-spotless = "8.5.1"
+spotless = "8.6.0"
 publish = "0.36.0"
 release = "3.1.0"
 metalava = "0.5.0"
