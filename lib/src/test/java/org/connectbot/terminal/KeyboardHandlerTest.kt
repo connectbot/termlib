@@ -175,6 +175,57 @@ class KeyboardHandlerTest {
         assertEquals(3, inputProcessedCallCount)
     }
 
+    @Test
+    fun testOnInterceptKeyReturnsTruePreventsDispatch() {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val handler = KeyboardHandler(emulator)
+        var interceptCalledCount = 0
+        handler.onInterceptKey = {
+            interceptCalledCount++
+            true
+        }
+        handler.onInputProcessed = { inputProcessedCallCount++ }
+
+        val handled = handler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        assertTrue("Should return true when onInterceptKey returns true", handled)
+        assertEquals(1, interceptCalledCount)
+        assertEquals("onInputProcessed should not be called", 0, inputProcessedCallCount)
+        assertTrue("Terminal output should not be dispatched", outputs.isEmpty())
+    }
+
+    @Test
+    fun testOnInterceptKeyReturnsFalseAllowsDispatch() {
+        val outputs = mutableListOf<ByteArray>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val handler = KeyboardHandler(emulator)
+        var interceptCalledCount = 0
+        handler.onInterceptKey = {
+            interceptCalledCount++
+            false
+        }
+        handler.onInputProcessed = { inputProcessedCallCount++ }
+
+        val handled = handler.onKeyEvent(createKeyEvent(Key.A, KeyEventType.KeyDown))
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        assertTrue("Should handle printable key normally when intercepted returns false", handled)
+        assertEquals(1, interceptCalledCount)
+        assertEquals("onInputProcessed should be called", 1, inputProcessedCallCount)
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        assertTrue("Terminal output should include 'a'", received.contains('a'.code.toByte()))
+    }
+
     // === DelKeyMode tests ===
 
     @Test

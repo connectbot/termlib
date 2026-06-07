@@ -56,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -67,7 +68,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -117,6 +117,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
+import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 
 private val DRAW_TEXT_BUFFER = ThreadLocal.withInitial { CharArray(1) }
 private val CURLY_UNDERLINE_PATH = ThreadLocal.withInitial { Path() }
@@ -299,8 +300,13 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
  * @param forcedSize Force terminal to specific dimensions (rows, cols). When set, font size is calculated to fit.
  * @param onSelectionControllerAvailable Optional callback providing access to the SelectionController for controlling selection mode
  * @param onHyperlinkClick Callback when user taps on an OSC8 hyperlink. Receives the URL as parameter.
+ * @param onComposeControllerAvailable Optional callback providing access to the ComposeController for handling IME compose state
+ * @param onPasteRequest Optional callback for handling a request to paste content, normally triggered by a context menu action
+ * @param rightAltMode How the right-alt key should behave (CharacterModifier vs Meta)
  * @param selectionBackgroundColor Background color for selected text (default: 0xFFB3D7FF)
  * @param selectionForegroundColor Foreground color for selected text (default: Black)
+ * @param delKeyMode How the backspace/delete keys should map to terminal characters
+ * @param onInterceptKey Optional callback to intercept raw Compose KeyEvents before the terminal emulator handles them. Return true to consume the event.
  */
 @Composable
 fun Terminal(
@@ -327,6 +333,7 @@ fun Terminal(
     onPasteRequest: (() -> Unit)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
+    onInterceptKey: ((ComposeKeyEvent) -> Boolean)? = null,
 ) {
     if (LocalInspectionMode.current) {
         TerminalPreview(modifier, backgroundColor, foregroundColor)
@@ -354,6 +361,7 @@ fun Terminal(
         onComposeControllerAvailable = onComposeControllerAvailable,
         onScrollControllerAvailable = null,
         onPasteRequest = onPasteRequest,
+        onInterceptKey = onInterceptKey,
         rightAltMode = rightAltMode,
         selectionBackgroundColor = selectionBackgroundColor,
         selectionForegroundColor = selectionForegroundColor,
@@ -390,6 +398,7 @@ internal fun TerminalWithAccessibility(
     onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
     onScrollControllerAvailable: ((ScrollController) -> Unit)? = null,
     onPasteRequest: (() -> Unit)? = null,
+    onInterceptKey: ((ComposeKeyEvent) -> Boolean)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
     selectionBackgroundColor: Color = Color(0xFFB3D7FF),
     selectionForegroundColor: Color = Color.Black,
@@ -409,6 +418,7 @@ internal fun TerminalWithAccessibility(
     // Remember updated callbacks to avoid stale lambdas inside pointerInput
     val currentOnTerminalTap by rememberUpdatedState(onTerminalTap)
     val currentOnHyperlinkClick by rememberUpdatedState(onHyperlinkClick)
+    val currentOnInterceptKey by rememberUpdatedState(onInterceptKey)
 
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
@@ -426,6 +436,9 @@ internal fun TerminalWithAccessibility(
     // Keyboard handler (will be updated with selectionController after it's created)
     val keyboardHandler = remember(terminalEmulator) {
         KeyboardHandler(terminalEmulator, modifierManager)
+    }
+    SideEffect {
+        keyboardHandler.onInterceptKey = currentOnInterceptKey
     }
 
     // Font size and zoom state
