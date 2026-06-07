@@ -54,6 +54,7 @@ internal class KeyboardHandler(
     var modifierManager: ModifierManager? = null,
     var selectionController: SelectionController? = null,
     var onInputProcessed: (() -> Unit)? = null,
+    var onInterceptKey: ((ComposeKeyEvent) -> Boolean)? = null,
     /**
      * Controls how the right-alt key (AltGr) is interpreted. Defaults to
      * [RightAltMode.CharacterModifier] so that international keyboard layouts work correctly.
@@ -103,6 +104,10 @@ internal class KeyboardHandler(
      */
     @Suppress("DEPRECATION")
     fun onKeyEvent(event: ComposeKeyEvent): Boolean {
+        if (onInterceptKey?.invoke(event) == true) {
+            return true
+        }
+
         val nativeEvent = event.nativeKeyEvent
         if (nativeEvent.action == AndroidKeyEvent.ACTION_MULTIPLE &&
             nativeEvent.keyCode == AndroidKeyEvent.KEYCODE_UNKNOWN
