@@ -398,37 +398,31 @@ internal class TerminalEmulatorImpl(
         cols = newCols
         terminalNative.resize(newRows, newCols)
 
-        // Capture current default colors (thread-safe)
+        // Capture current default colors.
         val currentDefaultFg: Color
         val currentDefaultBg: Color
         synchronized(damageLock) {
             currentDefaultFg = currentDefaultForeground
             currentDefaultBg = currentDefaultBackground
-        }
 
-        // Resize currentLines to match new dimensions, preserving semantic segments
-        synchronized(damageLock) {
-            val oldLines = currentLines
             currentLines = List(newRows) { row ->
-                if (row < oldLines.size) {
-                    // Preserve semantic segments from the old line
-                    TerminalLine.empty(row, newCols, currentDefaultFg, currentDefaultBg)
-                        .copy(semanticSegments = oldLines[row].semanticSegments)
-                } else {
-                    TerminalLine.empty(row, newCols, currentDefaultFg, currentDefaultBg)
-                }
-            }
-            if (newRows < oldLines.size) {
-                for (row in newRows until oldLines.size) {
-                    removeStoredSegmentTexts(row)
-                }
+                TerminalLine.empty(row, newCols, currentDefaultFg, currentDefaultBg)
             }
         }
 
-        // Rebuild all lines after resize
-        invalidateDisplay()
+        // After native resize, rebuild every visible row from the native terminal buffer.
+        val fullDamageRegion = DamageRegion(0, newRows, 0, newCols)
+        for (row in 0 until newRows) {
+            updateLine(
+                row = row,
+                damageRegion = fullDamageRegion,
+                preserveMovedSegments = false,
+            )
+        }
 
-        // Resize callback - post to handler to avoid blocking native thread
+        val newSnapshot = buildSnapshot()
+        _snapshot.value = newSnapshot
+
         handler.post {
             onResize?.invoke(TerminalDimensions(rows = rows, columns = cols))
         }
