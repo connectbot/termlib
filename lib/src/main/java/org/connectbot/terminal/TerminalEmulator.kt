@@ -398,30 +398,26 @@ internal class TerminalEmulatorImpl(
         cols = newCols
         terminalNative.resize(newRows, newCols)
 
-        // Capture current default colors.
-        val currentDefaultFg: Color
-        val currentDefaultBg: Color
         synchronized(damageLock) {
-            currentDefaultFg = currentDefaultForeground
-            currentDefaultBg = currentDefaultBackground
+            val currentDefaultFg = currentDefaultForeground
+            val currentDefaultBg = currentDefaultBackground
 
             currentLines = List(newRows) { row ->
                 TerminalLine.empty(row, newCols, currentDefaultFg, currentDefaultBg)
             }
-        }
 
-        // After native resize, rebuild every visible row from the native terminal buffer.
-        val fullDamageRegion = DamageRegion(0, newRows, 0, newCols)
-        for (row in 0 until newRows) {
-            updateLine(
-                row = row,
-                damageRegion = fullDamageRegion,
-                preserveMovedSegments = false,
+            pendingDamageRegions.clear()
+            pendingDamageRegions.add(
+                DamageRegion(
+                    startRow = 0,
+                    endRow = newRows,
+                    startCol = 0,
+                    endCol = newCols,
+                    preserveSegments = false,
+                ),
             )
+            requestProcessPendingUpdatesLocked()
         }
-
-        val newSnapshot = buildSnapshot()
-        _snapshot.value = newSnapshot
 
         handler.post {
             onResize?.invoke(TerminalDimensions(rows = rows, columns = cols))
