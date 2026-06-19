@@ -100,7 +100,7 @@ sealed class SelectionMode {
     data object LINE : SelectionMode()
 }
 
-internal data class SelectionRange(
+data class SelectionRange(
     val startRow: Int,
     val startCol: Int,
     val endRow: Int,
@@ -143,7 +143,6 @@ internal class SelectionManager {
         private set
 
     var selectionRange by mutableStateOf<SelectionRange?>(null)
-        private set
 
     var isSelecting by mutableStateOf(false)
         private set
@@ -237,6 +236,12 @@ internal class SelectionManager {
 
     fun endSelection() {
         isSelecting = false
+    }
+
+    fun applySelectionRange(range: SelectionRange) {
+        mode = SelectionMode.CHARACTER
+        isSelecting = false
+        selectionRange = range
     }
 
     fun clearSelection() {
@@ -376,13 +381,16 @@ internal class SelectionManager {
         return buildString {
             for (row in minRow..maxRow) {
                 // Get line from the appropriate source based on scrollback position
-                val line = if (scrollbackPosition > 0) {
-                    // Viewing scrollback: get from scrollback (stored newest-first, so reverse index)
-                    val scrollbackIndex = snapshot.scrollback.size - scrollbackPosition + row
-                    snapshot.scrollback.getOrNull(scrollbackIndex)
+                val lineIndex = if (scrollbackPosition > 0) {
+                    snapshot.scrollback.size - scrollbackPosition + row
                 } else {
-                    // Viewing current screen: get from visible lines
-                    snapshot.lines.getOrNull(row)
+                    snapshot.scrollback.size + row
+                }
+
+                val line = if (lineIndex < snapshot.scrollback.size) {
+                    snapshot.scrollback.getOrNull(lineIndex)
+                } else {
+                    snapshot.lines.getOrNull(lineIndex - snapshot.scrollback.size)
                 }
 
                 if (line == null) continue
@@ -397,7 +405,13 @@ internal class SelectionManager {
                             }
                         }.trimEnd()
                         append(lineText)
-                        if (row < maxRow && !line.softWrapped) append('\n')
+                        if (row < maxRow) {
+                            if (line.softWrapped) {
+                                append(' ')
+                            } else {
+                                append('\n')
+                            }
+                        }
                     }
 
                     SelectionMode.CHARACTER, SelectionMode.WORD -> {
@@ -419,7 +433,13 @@ internal class SelectionManager {
                             }
                         }.trimEnd()
                         append(lineText)
-                        if (row < maxRow && !line.softWrapped) append('\n')
+                        if (row < maxRow) {
+                            if (line.softWrapped) {
+                                append(' ')
+                            } else {
+                                append('\n')
+                            }
+                        }
                     }
 
                     SelectionMode.NONE -> {}
