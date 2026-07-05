@@ -35,6 +35,19 @@ import java.nio.ByteBuffer
  */
 internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private var nativePtr: Long = 0
+    private val lifetimeLock = Any()
+    private var inNativeCall = false
+
+    private inline fun <T> withNative(block: () -> T): T = synchronized(lifetimeLock) {
+        checkNotClosed()
+        check(!inNativeCall) { "Synchronous native reentry from a terminal callback is prohibited" }
+        inNativeCall = true
+        try {
+            block()
+        } finally {
+            inNativeCall = false
+        }
+    }
 
     init {
         nativePtr = nativeInit(callbacks)
@@ -52,8 +65,8 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @return Number of bytes consumed
      */
     fun writeInput(buffer: ByteBuffer, length: Int): Int {
-        checkNotClosed()
-        return nativeWriteInputBuffer(nativePtr, buffer, length)
+        require(buffer.isDirect && length >= 0 && length <= buffer.capacity()) { "Invalid direct buffer range" }
+        return withNative { nativeWriteInputBuffer(nativePtr, buffer, length) }
     }
 
     /**
@@ -66,8 +79,8 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @return Number of bytes consumed
      */
     fun writeInput(data: ByteArray, offset: Int = 0, length: Int = data.size - offset): Int {
-        checkNotClosed()
-        return nativeWriteInputArray(nativePtr, data, offset, length)
+        require(offset >= 0 && offset <= data.size && length >= 0 && length <= data.size - offset) { "Invalid input slice" }
+        return withNative { nativeWriteInputArray(nativePtr, data, offset, length) }
     }
 
     /**
@@ -78,8 +91,10 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @return 0 on success
      */
     fun resize(rows: Int, cols: Int): Int {
-        checkNotClosed()
-        return nativeResize(nativePtr, rows, cols)
+        require(rows > 0 && cols > 0 && cols <= Int.MAX_VALUE / CellData.STRIDE && rows <= Int.MAX_VALUE / cols) {
+            "Invalid terminal dimensions"
+        }
+        return withNative { nativeResize(nativePtr, rows, cols) }
     }
 
     /**
@@ -90,10 +105,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @param key VTermKey value
      * @return true if handled
      */
-    fun dispatchKey(modifiers: Int, key: Int): Boolean {
-        checkNotClosed()
-        return nativeDispatchKey(nativePtr, modifiers, key)
-    }
+    fun dispatchKey(modifiers: Int, key: Int): Boolean = withNative { nativeDispatchKey(nativePtr, modifiers, key) }
 
     /**
      * Dispatch a character input to the terminal.
@@ -104,22 +116,15 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @return true if handled
      */
     fun dispatchCharacter(modifiers: Int, character: Int): Boolean {
-        checkNotClosed()
-        return nativeDispatchCharacter(nativePtr, modifiers, character)
+        require(CellData.isScalar(character)) { "Invalid Unicode code point" }
+        return withNative { nativeDispatchCharacter(nativePtr, modifiers, character) }
     }
 
-    /**
-     * Get a run of cells with identical formatting starting at the given position.
-     * This is the primary method for retrieving terminal content for rendering.
-     *
-     * @param row Row index (0-based)
-     * @param col Column index (0-based)
-     * @param run CellRun object to fill (reusable, call reset() first)
-     * @return Number of cells in the run
-     */
-    fun getCellRun(row: Int, col: Int, run: CellRun): Int {
-        checkNotClosed()
-        return nativeGetCellRun(nativePtr, row, col, run)
+    /** Fill bounded row/column requests in Kotlin-owned direct scratch. */
+    fun getCells(buffer: ByteBuffer, requests: Int): Int {
+        require(buffer.isDirect && !buffer.isReadOnly && buffer.capacity() >= CellData.BUFFER_BYTES)
+        require(buffer.order() == java.nio.ByteOrder.nativeOrder() && requests in 0..CellData.MAX_REQUESTS)
+        return withNative { nativeGetCells(nativePtr, buffer, requests) }
     }
 
     /**
@@ -133,10 +138,9 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @return Number of colors set, or -1 on error
      */
     fun setPaletteColors(colors: IntArray, count: Int = colors.size.coerceAtMost(16)): Int {
-        checkNotClosed()
-        require(count <= 16) { "Can only set up to 16 ANSI palette colors" }
+        require(count in 0..16) { "Can only set up to 16 ANSI palette colors" }
         require(colors.size >= count) { "Color array too small for requested count" }
-        return nativeSetPaletteColors(nativePtr, colors, count)
+        return withNative { nativeSetPaletteColors(nativePtr, colors, count) }
     }
 
     /**
@@ -149,24 +153,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @param background ARGB background color
      * @return 0 on success, -1 on error
      */
-    fun setDefaultColors(foreground: Int, background: Int): Int {
-        checkNotClosed()
-        return nativeSetDefaultColors(nativePtr, foreground, background)
-    }
-
-    /**
-     * Get the continuation (soft wrap) status for a visible screen line.
-     *
-     * A line is a "continuation" if it continues from the previous line due to
-     * text wrapping, rather than starting after a hard newline.
-     *
-     * @param row Row index (0-based)
-     * @return true if this line is a continuation of the previous line
-     */
-    fun getLineContinuation(row: Int): Boolean {
-        checkNotClosed()
-        return nativeGetLineContinuation(nativePtr, row)
-    }
+    fun setDefaultColors(foreground: Int, background: Int): Int = withNative { nativeSetDefaultColors(nativePtr, foreground, background) }
 
     /**
      * Enable or disable bold-as-bright color promotion.
@@ -177,19 +164,19 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @param enabled true to enable bold-as-bright, false to disable
      * @return 0 on success, -1 on error
      */
-    fun setBoldHighbright(enabled: Boolean): Int {
-        checkNotClosed()
-        return nativeSetBoldHighbright(nativePtr, enabled)
-    }
+    fun setBoldHighbright(enabled: Boolean): Int = withNative { nativeSetBoldHighbright(nativePtr, enabled) }
 
     /**
      * Close the terminal and release native resources.
      * After calling this, the Terminal instance cannot be used.
      */
     override fun close() {
-        if (nativePtr != 0L) {
-            nativeDestroy(nativePtr)
-            nativePtr = 0
+        synchronized(lifetimeLock) {
+            check(!inNativeCall) { "Cannot close a terminal from its native callback" }
+            if (nativePtr != 0L) {
+                nativeDestroy(nativePtr)
+                nativePtr = 0
+            }
         }
     }
 
@@ -213,10 +200,9 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
-    private external fun nativeGetCellRun(ptr: Long, row: Int, col: Int, run: CellRun): Int
+    private external fun nativeGetCells(ptr: Long, buffer: ByteBuffer, requests: Int): Int
     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int
-    private external fun nativeGetLineContinuation(ptr: Long, row: Int): Boolean
     private external fun nativeSetBoldHighbright(ptr: Long, enabled: Boolean): Int
 
     companion object {

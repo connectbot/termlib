@@ -334,36 +334,34 @@ internal class SelectionManager {
         val safeCol = col.coerceIn(0, cells.lastIndex)
 
         // If the touch is in trailing whitespace with no word to the right, snap to the last word.
-        if (!isWordChar(cells[safeCol].char)) {
-            val lastWordEnd = cells.indices.lastOrNull { isWordChar(cells[it].char) }
+        if (!isWordChar(cells.charAt(safeCol))) {
+            val lastWordEnd = cells.indices.lastOrNull { isWordChar(cells.charAt(it)) }
             if (lastWordEnd != null && lastWordEnd < safeCol) {
                 var start = lastWordEnd
-                while (start > 0 && isWordChar(cells[start - 1].char)) start--
+                while (start > 0 && isWordChar(cells.charAt(start - 1))) start--
                 return Pair(start, lastWordEnd)
             }
         }
 
-        val startChar = cells[safeCol].char
+        val startChar = cells.charAt(safeCol)
         val targetingWord = isWordChar(startChar)
 
         var start = safeCol
-        while (start > 0 && isWordChar(cells[start - 1].char) == targetingWord) {
+        while (start > 0 && isWordChar(cells.charAt(start - 1)) == targetingWord) {
             start--
         }
 
         var end = safeCol
-        while (end < cells.size - 1 && isWordChar(cells[end + 1].char) == targetingWord) {
+        while (end < cells.size - 1 && isWordChar(cells.charAt(end + 1)) == targetingWord) {
             end++
         }
 
         return Pair(start, end)
     }
 
-    private fun isBlankCell(cell: TerminalLine.Cell): Boolean = (cell.char == ' ' || cell.char == '\u0000') && cell.combiningChars.isEmpty()
-
     private fun lastContentCol(line: TerminalLine): Int {
         var last = line.cells.lastIndex
-        while (last > 0 && isBlankCell(line.cells[last])) last--
+        while (last > 0 && (line.cells.width(last) == 0 || line.cells.blank(last))) last--
         return last
     }
 
@@ -390,12 +388,7 @@ internal class SelectionManager {
                 when (mode) {
                     SelectionMode.LINE -> {
                         // Build line text and trim trailing whitespace.
-                        val lineText = buildString {
-                            line.cells.forEach { cell ->
-                                append(cell.char)
-                                cell.combiningChars.forEach { append(it) }
-                            }
-                        }.trimEnd()
+                        val lineText = line.text.trimEnd()
                         append(lineText)
                         if (row < maxRow && !line.softWrapped) append('\n')
                     }
@@ -411,13 +404,7 @@ internal class SelectionManager {
                         }
 
                         // Build line text and trim trailing whitespace
-                        val lineText = buildString {
-                            for (col in startCol..minOf(endCol, line.cells.lastIndex)) {
-                                val cell = line.cells[col]
-                                append(cell.char)
-                                cell.combiningChars.forEach { append(it) }
-                            }
-                        }.trimEnd()
+                        val lineText = line.cells.text(startCol.coerceIn(0, line.cells.size), (endCol + 1).coerceIn(startCol.coerceIn(0, line.cells.size), line.cells.size)).trimEnd()
                         append(lineText)
                         if (row < maxRow && !line.softWrapped) append('\n')
                     }

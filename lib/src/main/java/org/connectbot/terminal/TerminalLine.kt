@@ -28,7 +28,7 @@ import androidx.compose.ui.graphics.Color
 @Immutable
 internal data class TerminalLine(
     val row: Int,
-    val cells: List<Cell>,
+    val cells: PackedCells,
     val lastModified: Long = System.nanoTime(),
     val semanticSegments: List<SemanticSegment> = emptyList(),
     /**
@@ -41,16 +41,19 @@ internal data class TerminalLine(
      */
     val softWrapped: Boolean = false,
 ) {
+    constructor(
+        row: Int,
+        cells: List<Cell>,
+        lastModified: Long = System.nanoTime(),
+        semanticSegments: List<SemanticSegment> = emptyList(),
+        softWrapped: Boolean = false,
+    ) : this(row, PackedCells.from(cells), lastModified, semanticSegments, softWrapped)
+
     /**
      * Get the text content of this line as a string.
      */
     val text: String by lazy {
-        buildString {
-            cells.forEach { cell ->
-                append(cell.char)
-                cell.combiningChars.forEach { append(it) }
-            }
-        }
+        cells.text()
     }
 
     /**
@@ -61,11 +64,7 @@ internal data class TerminalLine(
      * because they do not occupy their own terminal cells.
      */
     internal val columnText: String by lazy {
-        buildString {
-            cells.forEach { cell ->
-                append(cell.char)
-            }
-        }
+        cells.columnText()
     }
 
     /**
@@ -145,7 +144,7 @@ internal data class TerminalLine(
         val blink: Boolean = false,
         val reverse: Boolean = false,
         val strike: Boolean = false,
-        // 1 for normal, 2 for fullwidth (CJK)
+        // 0 for a wide-cell continuation column, 1 normal, 2 fullwidth.
         val width: Int = 1,
     )
 
@@ -189,13 +188,7 @@ internal data class TerminalLine(
          */
         fun empty(row: Int, cols: Int, defaultFg: Color = Color.White, defaultBg: Color = Color.Black): TerminalLine = TerminalLine(
             row = row,
-            cells = List(cols) {
-                Cell(
-                    char = '\u0000',
-                    fgColor = defaultFg,
-                    bgColor = defaultBg,
-                )
-            },
+            cells = PackedCells.empty(cols, defaultFg, defaultBg),
             softWrapped = false,
         )
     }

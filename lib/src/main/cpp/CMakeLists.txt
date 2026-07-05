@@ -28,7 +28,6 @@ set_target_properties(vterm PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # JNI wrapper library
 add_library(jni_cb_term SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/Terminal.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/mutf8.cpp
 )
 
 target_include_directories(jni_cb_term PRIVATE

@@ -119,7 +119,6 @@ import kotlinx.coroutines.launch
 import kotlin.math.ceil
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 
-private val DRAW_TEXT_BUFFER = ThreadLocal.withInitial { CharArray(1) }
 private val CURLY_UNDERLINE_PATH = ThreadLocal.withInitial { Path() }
 
 /**
@@ -1630,21 +1629,20 @@ private fun TerminalRows(
     val density = LocalDensity.current
     val rowHeight = with(density) { charHeight.toDp() }
     val snapshot = screenState.snapshot
-    val hyperlinkMasks = remember(snapshot.sequenceNumber, screenState.scrollbackPosition, autoDetectUrls) {
+    // Cross-row URL detection depends on visible contents, not cursor/sequence updates.
+    val hyperlinkMasks = remember(snapshot.lines, snapshot.scrollback, screenState.scrollbackPosition, autoDetectUrls) {
         if (!autoDetectUrls) {
             emptyList()
         } else {
             List(snapshot.rows) { row ->
-                BooleanArray(snapshot.cols) { col ->
-                    screenState.getHyperlinkUrlAt(row, col, autoDetectUrls = true) != null
-                }
+                BooleanArray(snapshot.cols) { col -> screenState.getHyperlinkUrlAt(row, col, autoDetectUrls = true) != null }
             }
         }
     }
 
     for (row in 0 until snapshot.rows) {
         val line = screenState.getVisibleLine(row)
-        key(row, line.lastModified, line.semanticSegments, screenState.scrollbackPosition) {
+        key(row) {
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1690,22 +1688,29 @@ private fun DrawScope.drawLine(
     val y = row * charHeight
     var x = 0f
 
-    line.cells.forEachIndexed { col, cell ->
-        val cellWidth = charWidth * cell.width
+    val cells = line.cells
+    for (col in 0 until cells.size) {
+        val width = cells.width(col)
+        if (width == 0) continue
+        val flags = cells.flags(col)
+        val underline = (flags ushr 1) and 3
+        val cellWidth = charWidth * width
 
         // Check if this cell is selected
-        val isSelected = selectionManager?.isCellSelected(row, col, line) == true
+        val isSelected = selectionManager?.let {
+            it.isCellSelected(row, col, line) || (width == 2 && it.isCellSelected(row, col + 1, line))
+        } == true
         if (selectedOnly && !isSelected) {
             x += cellWidth
-            return@forEachIndexed
+            continue
         }
 
         // Check if this cell is part of a hyperlink
         val isHyperlink = hyperlinkMask?.getOrNull(col) ?: (line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
 
         // Determine colors (handle reverse video and selection)
-        val baseFgColor = if (cell.reverse) cell.bgColor else cell.fgColor
-        val bgColor = if (cell.reverse) cell.fgColor else cell.bgColor
+        val baseFgColor = if (flags and 32 != 0) cells.background(col) else cells.foreground(col)
+        val bgColor = if (flags and 32 != 0) cells.foreground(col) else cells.background(col)
 
         // Draw background (with selection highlight)
         val finalBgColor = if (isSelected) selectionBackgroundColor else bgColor
@@ -1718,45 +1723,22 @@ private fun DrawScope.drawLine(
         }
 
         // Draw character
-        if ((cell.char != ' ' && cell.char != '\u0000') || cell.combiningChars.isNotEmpty()) {
+        if (!cells.blank(col)) {
             // Force high contrast for text on the selection background
             val fgColor = if (isSelected) selectionForegroundColor else baseFgColor
 
             // Configure text paint for this cell
             textPaint.color = fgColor.toArgb()
-            textPaint.isFakeBoldText = cell.bold
-            textPaint.textSkewX = if (cell.italic) -0.25f else 0f
+            textPaint.isFakeBoldText = flags and 1 != 0
+            textPaint.textSkewX = if (flags and 8 != 0) -0.25f else 0f
             // Underline if cell has underline OR if it's a hyperlink
-            textPaint.isUnderlineText = cell.underline == 1 || isHyperlink
-            textPaint.isStrikeThruText = cell.strike
+            textPaint.isUnderlineText = underline == 1 || isHyperlink
+            textPaint.isStrikeThruText = flags and 128 != 0
 
-            // Draw text
-            if (cell.combiningChars.isEmpty()) {
-                val textBuffer = DRAW_TEXT_BUFFER.get()!!
-                textBuffer[0] = cell.char
-                drawContext.canvas.nativeCanvas.drawText(
-                    textBuffer,
-                    0,
-                    1,
-                    x,
-                    y + charBaseline,
-                    textPaint,
-                )
-            } else {
-                val text = buildString {
-                    append(cell.char)
-                    cell.combiningChars.forEach { append(it) }
-                }
-                drawContext.canvas.nativeCanvas.drawText(
-                    text,
-                    x,
-                    y + charBaseline,
-                    textPaint,
-                )
-            }
+            cells.draw(drawContext.canvas.nativeCanvas, col, x, y + charBaseline, textPaint)
 
             // Draw double underline if needed
-            if (cell.underline == 2) {
+            if (underline == 2) {
                 drawDoubleUnderline(
                     x = x,
                     y = y + charBaseline,
@@ -1767,7 +1749,7 @@ private fun DrawScope.drawLine(
             }
 
             // Draw curly underline if needed
-            if (cell.underline == 3) {
+            if (underline == 3) {
                 drawCurlyUnderline(
                     x = x,
                     y = y + charBaseline,
