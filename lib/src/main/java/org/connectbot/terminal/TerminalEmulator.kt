@@ -24,6 +24,7 @@ import android.util.Log
 import android.view.Choreographer
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -363,6 +364,23 @@ internal class TerminalEmulatorImpl(
     private val terminalNative by lazy {
         TerminalNative(this).apply {
             resize(initialRows, initialCols)
+
+            val ansiPaletteResult = setPaletteColors(
+                ColorCache.ansiPaletteArgb(),
+                16,
+            )
+            if (ansiPaletteResult != 16) {
+                Log.e(TAG, "Failed to set initial terminal ANSI palette")
+            }
+
+            val defaultColorResult = setDefaultColors(
+                currentDefaultForeground.toArgb(),
+                currentDefaultBackground.toArgb(),
+            )
+            if (defaultColorResult != 0) {
+                Log.e(TAG, "Failed to set initial terminal default colors")
+            }
+
             if (setBoldHighbright(boldAsBright) != 0) {
                 Log.e(TAG, "Failed to set boldAsBright=$boldAsBright")
             }
