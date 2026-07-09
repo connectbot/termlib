@@ -24,6 +24,7 @@ import android.util.Log
 import android.view.Choreographer
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -363,6 +364,23 @@ internal class TerminalEmulatorImpl(
     private val terminalNative by lazy {
         TerminalNative(this).apply {
             resize(initialRows, initialCols)
+
+            val ansiPaletteResult = setPaletteColors(
+                ColorCache.ansiPaletteArgb(),
+                16,
+            )
+            if (ansiPaletteResult != 16) {
+                Log.e(TAG, "Failed to set initial terminal ANSI palette")
+            }
+
+            val defaultColorResult = setDefaultColors(
+                currentDefaultForeground.toArgb(),
+                currentDefaultBackground.toArgb(),
+            )
+            if (defaultColorResult != 0) {
+                Log.e(TAG, "Failed to set initial terminal default colors")
+            }
+
             if (setBoldHighbright(boldAsBright) != 0) {
                 Log.e(TAG, "Failed to set boldAsBright=$boldAsBright")
             }
@@ -398,37 +416,27 @@ internal class TerminalEmulatorImpl(
         cols = newCols
         terminalNative.resize(newRows, newCols)
 
-        // Capture current default colors (thread-safe)
-        val currentDefaultFg: Color
-        val currentDefaultBg: Color
         synchronized(damageLock) {
-            currentDefaultFg = currentDefaultForeground
-            currentDefaultBg = currentDefaultBackground
-        }
+            val currentDefaultFg = currentDefaultForeground
+            val currentDefaultBg = currentDefaultBackground
 
-        // Resize currentLines to match new dimensions, preserving semantic segments
-        synchronized(damageLock) {
-            val oldLines = currentLines
             currentLines = List(newRows) { row ->
-                if (row < oldLines.size) {
-                    // Preserve semantic segments from the old line
-                    TerminalLine.empty(row, newCols, currentDefaultFg, currentDefaultBg)
-                        .copy(semanticSegments = oldLines[row].semanticSegments)
-                } else {
-                    TerminalLine.empty(row, newCols, currentDefaultFg, currentDefaultBg)
-                }
+                TerminalLine.empty(row, newCols, currentDefaultFg, currentDefaultBg)
             }
-            if (newRows < oldLines.size) {
-                for (row in newRows until oldLines.size) {
-                    removeStoredSegmentTexts(row)
-                }
-            }
+
+            pendingDamageRegions.clear()
+            pendingDamageRegions.add(
+                DamageRegion(
+                    startRow = 0,
+                    endRow = newRows,
+                    startCol = 0,
+                    endCol = newCols,
+                    preserveSegments = false,
+                ),
+            )
+            requestProcessPendingUpdatesLocked()
         }
 
-        // Rebuild all lines after resize
-        invalidateDisplay()
-
-        // Resize callback - post to handler to avoid blocking native thread
         handler.post {
             onResize?.invoke(TerminalDimensions(rows = rows, columns = cols))
         }

@@ -330,6 +330,7 @@ fun Terminal(
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
     onHyperlinkClick: (String) -> Unit = {},
     onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
+    onSearchControllerAvailable: ((SearchController) -> Unit)? = null,
     onPasteRequest: (() -> Unit)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
@@ -359,6 +360,7 @@ fun Terminal(
         onSelectionControllerAvailable = onSelectionControllerAvailable,
         onHyperlinkClick = onHyperlinkClick,
         onComposeControllerAvailable = onComposeControllerAvailable,
+        onSearchControllerAvailable = onSearchControllerAvailable,
         onScrollControllerAvailable = null,
         onPasteRequest = onPasteRequest,
         onInterceptKey = onInterceptKey,
@@ -395,8 +397,10 @@ internal fun TerminalWithAccessibility(
     forceAccessibilityEnabled: Boolean? = null,
     onSelectionControllerAvailable: ((SelectionController) -> Unit)? = null,
     onHyperlinkClick: (String) -> Unit = {},
+    onClipboardCopy: ((String) -> Unit)? = null,
     onComposeControllerAvailable: ((ComposeController) -> Unit)? = null,
     onScrollControllerAvailable: ((ScrollController) -> Unit)? = null,
+    onSearchControllerAvailable: ((SearchController) -> Unit)? = null,
     onPasteRequest: (() -> Unit)? = null,
     onInterceptKey: ((ComposeKeyEvent) -> Boolean)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
@@ -590,6 +594,11 @@ internal fun TerminalWithAccessibility(
         SelectionManager()
     }
 
+    // Search manager
+    val searchManager = remember(terminalEmulator) {
+        SearchManager()
+    }
+
     // Selection controller - expose API for external control
     val selectionController = remember(terminalEmulator, selectionManager, clipboardManager, screenState) {
         object : SelectionController {
@@ -656,6 +665,62 @@ internal fun TerminalWithAccessibility(
 
             override fun clearSelection() {
                 selectionManager.clearSelection()
+            }
+        }
+    }
+
+    // Search controller - expose API for external terminal search
+    val searchController = remember(terminalEmulator, searchManager, selectionManager, screenState, scrollOffset, scope, baseCharHeight) {
+        object : SearchController {
+            override val query: String
+                get() = searchManager.query
+
+            override val matchCount: Int
+                get() = searchManager.matchCount
+
+            override val activeMatchIndex: Int
+                get() = searchManager.activeMatchIndex
+
+            override fun find(query: String): Int {
+                val matches = screenState.findMatches(query)
+                searchManager.setMatches(query, matches)
+
+                val activeMatch = searchManager.activeMatch()
+                if (activeMatch != null) {
+                    applyMatch(activeMatch)
+                } else {
+                    selectionManager.clearSelection()
+                }
+
+                return searchManager.matchCount
+            }
+
+            override fun next(): Boolean {
+                val match = searchManager.next() ?: return false
+                applyMatch(match)
+                return true
+            }
+
+            override fun previous(): Boolean {
+                val match = searchManager.previous() ?: return false
+                applyMatch(match)
+                return true
+            }
+
+            override fun clear() {
+                searchManager.clear()
+                selectionManager.clearSelection()
+            }
+
+            private fun applyMatch(match: SearchMatch) {
+                screenState.scrollToRow(match.range.startRow)
+
+                val visibleRange = match.range.toVisibleRange(screenState)
+                selectionManager.applySelectionRange(visibleRange)
+
+                scope.launch {
+                    scrollOffset.snapTo(screenState.scrollbackPosition * baseCharHeight)
+                }
             }
         }
     }
@@ -759,6 +824,11 @@ internal fun TerminalWithAccessibility(
     // Provide scroll controller to caller
     LaunchedEffect(scrollController) {
         onScrollControllerAvailable?.invoke(scrollController)
+    }
+
+    // Provide search controller to caller
+    LaunchedEffect(searchController) {
+        onSearchControllerAvailable?.invoke(searchController)
     }
 
     // Sync compose mode active state to ImeInputView so onCreateInputConnection returns the
@@ -1610,6 +1680,58 @@ internal fun TerminalWithAccessibility(
             )
         }
     }
+}
+
+private fun TerminalScreenState.findMatches(query: String): List<SearchMatch> {
+    if (query.isBlank()) {
+        return emptyList()
+    }
+
+    val matches = mutableListOf<SearchMatch>()
+
+    for (lineIndex in 0 until totalLines) {
+        val line = getLine(lineIndex)
+        val text = line.text
+        var startIndex = 0
+
+        while (startIndex < text.length) {
+            val matchStart = text.indexOf(
+                string = query,
+                startIndex = startIndex,
+                ignoreCase = true,
+            )
+
+            if (matchStart < 0) {
+                break
+            }
+
+            val matchEnd = matchStart + query.length - 1
+
+            matches += SearchMatch(
+                range = SelectionRange(
+                    startRow = lineIndex,
+                    startCol = matchStart,
+                    endRow = lineIndex,
+                    endCol = matchEnd,
+                ),
+                text = text,
+            )
+
+            startIndex = matchStart + query.length
+        }
+    }
+
+    return matches
+}
+
+private fun SelectionRange.toVisibleRange(screenState: TerminalScreenState): SelectionRange {
+    val visibleStartRow = startRow - (screenState.snapshot.scrollback.size - screenState.scrollbackPosition)
+    val visibleEndRow = endRow - (screenState.snapshot.scrollback.size - screenState.scrollbackPosition)
+
+    return copy(
+        startRow = visibleStartRow,
+        endRow = visibleEndRow,
+    )
 }
 
 /**

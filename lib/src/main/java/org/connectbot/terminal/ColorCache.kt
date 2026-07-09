@@ -17,6 +17,7 @@
 package org.connectbot.terminal
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 
 /**
  * Efficient color cache to prevent allocating Color objects on every frame.
@@ -74,6 +75,11 @@ internal object ColorCache {
         return newColor
     }
 
+    fun ansiPaletteArgb(): IntArray =
+        IntArray(16) { index ->
+            paletteCache[index].toArgb()
+        }
+
     private fun findPaletteIndex(rgb: Int): Int {
         // Extract components once
         val r = (rgb shr 16) and 0xFF
@@ -110,55 +116,24 @@ internal object ColorCache {
     }
 
     private fun standardAnsiColor(i: Int): Color = when (i) {
-        0 -> Color(0, 0, 0)
+        0 -> Color(24, 37, 58)       // Black — Dearman surface
+        1 -> Color(255, 82, 72)      // Red — aggressively not garnet
+        2 -> Color(142, 239, 247)    // Green slot — Dearman cyan
+        3 -> Color(245, 102, 0)     // Yellow — Clemson orange
+        4 -> Color(45, 125, 255)     // Blue — Dearman deep blue
+        5 -> Color(82, 45, 128)     // Magenta — Clemson purple
+        6 -> Color(66, 165, 255)     // Cyan — Dearman blue
+        7 -> Color(142, 239, 247)    // White — Dearman cyan
+        8 -> Color(113, 134, 159)    // Bright black
+        9 -> Color(255, 145, 138)    // Bright red — even less garnet
+        10 -> Color(173, 247, 251)   // Bright green slot — bright Dearman cyan
+        11 -> Color(255, 140, 46)   // Bright yellow — bright Clemson orange
+        12 -> Color(88, 180, 255)    // Bright blue
+        13 -> Color(151, 105, 201)  // Bright magenta — readable Clemson purple
+        14 -> Color(173, 247, 251)   // Bright cyan
+        15 -> Color(247, 251, 255)   // Bright white
 
-        // Black
-        1 -> Color(205, 0, 0)
-
-        // Red
-        2 -> Color(0, 205, 0)
-
-        // Green
-        3 -> Color(205, 205, 0)
-
-        // Yellow
-        4 -> Color(0, 0, 238)
-
-        // Blue
-        5 -> Color(205, 0, 205)
-
-        // Magenta
-        6 -> Color(0, 205, 205)
-
-        // Cyan
-        7 -> Color(229, 229, 229)
-
-        // White
-        8 -> Color(127, 127, 127)
-
-        // Bright Black
-        9 -> Color(255, 0, 0)
-
-        // Bright Red
-        10 -> Color(0, 255, 0)
-
-        // Bright Green
-        11 -> Color(255, 255, 0)
-
-        // Bright Yellow
-        12 -> Color(92, 92, 255)
-
-        // Bright Blue
-        13 -> Color(255, 0, 255)
-
-        // Bright Magenta
-        14 -> Color(0, 255, 255)
-
-        // Bright Cyan
-        15 -> Color(255, 255, 255)
-
-        // Bright White
-        else -> Color.White
+        else -> Color(247, 251, 255)
     }
 
     private fun rgb6Color(offset: Int): Color {

@@ -330,6 +330,11 @@ internal class TerminalScreenState(
         scrollbackPosition = (scrollbackPosition + delta).coerceIn(0, snapshot.scrollback.size)
     }
 
+    fun scrollToRow(row: Int) {
+        val targetPosition = (snapshot.scrollback.size - row).coerceIn(0, snapshot.scrollback.size)
+        scrollbackPosition = targetPosition
+    }
+
     /**
      * Check if currently scrolled to the bottom.
      */
