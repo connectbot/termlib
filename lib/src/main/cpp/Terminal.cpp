@@ -427,6 +427,38 @@ bool Terminal::dispatchCharacter(int modifiers, int codepoint) {
     return true;
 }
 
+bool Terminal::dispatchMouseMove(int row, int col, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt) {
+        return false;
+    }
+
+    VTermModifier mod = VTERM_MOD_NONE;
+    if (modifiers & 1) mod = (VTermModifier)(mod | VTERM_MOD_SHIFT);
+    if (modifiers & 2) mod = (VTermModifier)(mod | VTERM_MOD_ALT);
+    if (modifiers & 4) mod = (VTermModifier)(mod | VTERM_MOD_CTRL);
+
+    vterm_mouse_move(mVt, row, col, mod);
+    return true;
+}
+
+bool Terminal::dispatchMouseButton(int button, bool pressed, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt) {
+        return false;
+    }
+
+    VTermModifier mod = VTERM_MOD_NONE;
+    if (modifiers & 1) mod = (VTermModifier)(mod | VTERM_MOD_SHIFT);
+    if (modifiers & 2) mod = (VTermModifier)(mod | VTERM_MOD_ALT);
+    if (modifiers & 4) mod = (VTermModifier)(mod | VTERM_MOD_CTRL);
+
+    vterm_mouse_button(mVt, button, pressed, mod);
+    return true;
+}
+
 // Cell run retrieval
 int Terminal::getCellRun(JNIEnv* env, int row, int col, jobject runObject) {
     std::scoped_lock lock(mLock);
@@ -1222,6 +1254,21 @@ Java_org_connectbot_terminal_TerminalNative_nativeDispatchCharacter(JNIEnv* /* e
                                                                     jlong ptr, jint modifiers, jint character) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->dispatchCharacter(modifiers, character);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeDispatchMouseMove(JNIEnv* /* env */, jobject /* thiz */,
+                                                                    jlong ptr, jint row, jint col, jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->dispatchMouseMove(row, col, modifiers);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeDispatchMouseButton(JNIEnv* /* env */, jobject /* thiz */,
+                                                                      jlong ptr, jint button, jboolean pressed,
+                                                                      jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->dispatchMouseButton(button, pressed, modifiers);
 }
 
 JNIEXPORT jint JNICALL
