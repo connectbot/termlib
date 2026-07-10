@@ -109,6 +109,34 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     }
 
     /**
+     * Report pointer motion to the terminal at a 0-based cell position. libvterm
+     * emits a mouse motion report through onKeyboardInput() only when the host has
+     * enabled a tracking mode that reports motion; otherwise it just records the
+     * position for a subsequent button event.
+     *
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun dispatchMouseMove(row: Int, col: Int, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeDispatchMouseMove(nativePtr, row, col, modifiers)
+    }
+
+    /**
+     * Report a mouse button change at the current pointer position. Buttons 1-3 are
+     * left/middle/right; 4/5 are wheel up/down (sent as a press). libvterm generates
+     * the correctly encoded report via onKeyboardInput(), or nothing when no mouse
+     * tracking mode is active.
+     *
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun dispatchMouseButton(button: Int, pressed: Boolean, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeDispatchMouseButton(nativePtr, button, pressed, modifiers)
+    }
+
+    /**
      * Get a run of cells with identical formatting starting at the given position.
      * This is the primary method for retrieving terminal content for rendering.
      *
@@ -213,6 +241,8 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
+    private external fun nativeDispatchMouseMove(ptr: Long, row: Int, col: Int, modifiers: Int): Boolean
+    private external fun nativeDispatchMouseButton(ptr: Long, button: Int, pressed: Boolean, modifiers: Int): Boolean
     private external fun nativeGetCellRun(ptr: Long, row: Int, col: Int, run: CellRun): Int
     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int

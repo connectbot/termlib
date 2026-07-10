@@ -61,6 +61,11 @@ public:
     bool dispatchKey(int modifiers, int key);
     bool dispatchCharacter(int modifiers, int codepoint);
 
+    // Mouse input - generates mouse reports when the host has enabled mouse
+    // tracking. Coordinates are 0-based cell indices.
+    bool dispatchMouseMove(int row, int col, int modifiers);
+    bool dispatchMouseButton(int button, bool pressed, int modifiers);
+
     // Cell data retrieval for rendering
     int getCellRun(JNIEnv* env, int row, int col, jobject runObject);
 

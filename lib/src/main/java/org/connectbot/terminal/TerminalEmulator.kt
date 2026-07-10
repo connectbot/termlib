@@ -69,6 +69,14 @@ sealed class UrlScanScope {
 }
 
 /**
+ * Mouse tracking mode requested by the host program, mirroring libvterm's
+ * VTERM_PROP_MOUSE. [None] means the host is not tracking the mouse and pointer
+ * gestures should be left to the local UI; the other values indicate the host
+ * wants mouse reports (click only, click plus drag, or all motion).
+ */
+enum class MouseTracking { None, Click, Drag, Move }
+
+/**
  * Terminal emulator interface. This has no dependency on any UI framework
  * so it may be run in a Service on Android. It handles the management of
  * the terminal emulation state.
@@ -107,6 +115,30 @@ sealed interface TerminalEmulator {
      * Dispatch a character to the terminal.
      */
     fun dispatchCharacter(modifiers: Int, codepoint: Int)
+
+    /**
+     * Report pointer motion at a 0-based cell position. Only meaningful while
+     * [mouseTracking] is not [MouseTracking.None]; libvterm records the position
+     * and emits a motion report if the active mode reports motion.
+     *
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     */
+    fun dispatchMouseMove(row: Int, col: Int, modifiers: Int = 0)
+
+    /**
+     * Report a mouse button change at the current pointer position. Buttons 1-3
+     * are left/middle/right; 4/5 are wheel up/down. Only meaningful while
+     * [mouseTracking] is not [MouseTracking.None].
+     *
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     */
+    fun dispatchMouseButton(button: Int, pressed: Boolean, modifiers: Int = 0)
+
+    /**
+     * The mouse tracking mode the host program has requested, as a reactive
+     * stream. [MouseTracking.None] when the host is not tracking the mouse.
+     */
+    val mouseTracking: StateFlow<MouseTracking>
 
     /**
      * Clears the terminal emulator screen.
@@ -322,6 +354,10 @@ internal class TerminalEmulatorImpl(
     )
     internal val snapshot: StateFlow<TerminalSnapshot> = _snapshot.asStateFlow()
 
+    // Mouse tracking mode requested by the host (VTERM_PROP_MOUSE)
+    private val _mouseTracking = MutableStateFlow(MouseTracking.None)
+    override val mouseTracking: StateFlow<MouseTracking> = _mouseTracking.asStateFlow()
+
     // Sequence number for ordering snapshots
     private var sequenceNumber = 0L
 
@@ -446,6 +482,14 @@ internal class TerminalEmulatorImpl(
      */
     override fun dispatchCharacter(modifiers: Int, codepoint: Int) {
         terminalNative.dispatchCharacter(modifiers, codepoint)
+    }
+
+    override fun dispatchMouseMove(row: Int, col: Int, modifiers: Int) {
+        terminalNative.dispatchMouseMove(row, col, modifiers)
+    }
+
+    override fun dispatchMouseButton(button: Int, pressed: Boolean, modifiers: Int) {
+        terminalNative.dispatchMouseButton(button, pressed, modifiers)
     }
 
     /**
@@ -624,6 +668,19 @@ internal class TerminalEmulatorImpl(
                             else -> CursorShape.BLOCK
                         }
                         propertyChanged = true
+                    }
+
+                    // Property 8 is VTERM_PROP_MOUSE (vterm.h VTermProp enum). Values:
+                    // 0 none, 1 click, 2 drag, 3 move (VTERM_PROP_MOUSE_*). This is a
+                    // reactive signal for the UI, not a visual property, so it updates
+                    // its own StateFlow rather than the damage/redraw path.
+                    if (prop == 8) {
+                        _mouseTracking.value = when (value.value) {
+                            1 -> MouseTracking.Click
+                            2 -> MouseTracking.Drag
+                            3 -> MouseTracking.Move
+                            else -> MouseTracking.None
+                        }
                     }
                 }
 
