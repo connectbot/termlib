@@ -68,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -1294,6 +1295,7 @@ internal fun TerminalWithAccessibility(
                     .clearAndSetSemantics {
                         // Hide from accessibility tree - AccessibilityOverlay provides semantic structure
                     }
+                    .clipToBounds()
                     .graphicsLayer {
                         translationX = zoomOffset.x * zoomScale
                         translationY = zoomOffset.y * zoomScale
@@ -1312,32 +1314,13 @@ internal fun TerminalWithAccessibility(
                     defaultFg = foregroundColor,
                     defaultBg = backgroundColor,
                     autoDetectUrls = terminalEmulator.autoDetectUrls,
+                    selectionManager = selectionManager,
+                    selectionBackgroundColor = selectionBackgroundColor,
+                    selectionForegroundColor = selectionForegroundColor,
                 )
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val snapshot = screenState.snapshot
-
-                    if (selectionManager.mode != SelectionMode.NONE) {
-                        for (row in 0 until snapshot.rows) {
-                            val line = screenState.getVisibleLine(row)
-                            drawLine(
-                                line = line,
-                                row = row,
-                                charWidth = baseCharWidth,
-                                charHeight = baseCharHeight,
-                                charBaseline = baseCharBaseline,
-                                textPaint = textPaint,
-                                underlinePaint = underlinePaint,
-                                defaultFg = foregroundColor,
-                                defaultBg = backgroundColor,
-                                selectionManager = selectionManager,
-                                autoDetectUrls = terminalEmulator.autoDetectUrls,
-                                selectionBackgroundColor = selectionBackgroundColor,
-                                selectionForegroundColor = selectionForegroundColor,
-                                selectedOnly = true,
-                            )
-                        }
-                    }
 
                     // Draw cursor (only when viewing current screen, not scrollback)
                     if (snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
@@ -1625,9 +1608,10 @@ private fun TerminalRows(
     defaultFg: Color,
     defaultBg: Color,
     autoDetectUrls: Boolean,
+    selectionManager: SelectionManager,
+    selectionBackgroundColor: Color,
+    selectionForegroundColor: Color,
 ) {
-    val density = LocalDensity.current
-    val rowHeight = with(density) { charHeight.toDp() }
     val snapshot = screenState.snapshot
     // Cross-row URL detection depends on visible contents, not cursor/sequence updates.
     val hyperlinkMasks = remember(snapshot.lines, snapshot.scrollback, screenState.scrollbackPosition, autoDetectUrls) {
@@ -1640,35 +1624,32 @@ private fun TerminalRows(
         }
     }
 
-    for (row in 0 until snapshot.rows) {
-        val line = screenState.getVisibleLine(row)
-        key(row) {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(rowHeight)
-                    .offset(y = with(density) { (row * charHeight).toDp() }),
-            ) {
-                drawLine(
-                    line = line,
-                    row = 0,
-                    charWidth = charWidth,
-                    charHeight = charHeight,
-                    charBaseline = charBaseline,
-                    textPaint = textPaint,
-                    underlinePaint = underlinePaint,
-                    defaultFg = defaultFg,
-                    defaultBg = defaultBg,
-                    selectionManager = null,
-                    autoDetectUrls = autoDetectUrls,
-                    hyperlinkMask = hyperlinkMasks.getOrNull(row),
-                )
+    // Every display list covers the viewport, including ink outside its row.
+    // Compose re-records changed rows; all backgrounds are below all glyphs.
+    for (backgrounds in listOf(true, false)) {
+        for (row in 0 until snapshot.rows) {
+            val line = screenState.getVisibleLine(row)
+            key(backgrounds, row) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    drawLine(
+                        line = line, row = row, charWidth = charWidth,
+                        charHeight = charHeight, charBaseline = charBaseline,
+                        textPaint = textPaint, underlinePaint = underlinePaint,
+                        defaultFg = defaultFg, defaultBg = defaultBg,
+                        selectionManager = selectionManager,
+                        autoDetectUrls = autoDetectUrls,
+                        hyperlinkMask = hyperlinkMasks.getOrNull(row),
+                        selectionBackgroundColor = selectionBackgroundColor,
+                        selectionForegroundColor = selectionForegroundColor,
+                        backgroundsOnly = backgrounds,
+                    )
+                }
             }
         }
     }
 }
 
-private fun DrawScope.drawLine(
+internal fun DrawScope.drawLine(
     line: TerminalLine,
     row: Int,
     charWidth: Float,
@@ -1683,85 +1664,101 @@ private fun DrawScope.drawLine(
     hyperlinkMask: BooleanArray? = null,
     selectionBackgroundColor: Color = Color(0xFFB3D7FF),
     selectionForegroundColor: Color = Color.Black,
-    selectedOnly: Boolean = false,
+    backgroundsOnly: Boolean? = null,
 ) {
+    // A standalone line (tests/magnifier) also paints backgrounds first.
+    if (backgroundsOnly == null) {
+        for (backgrounds in listOf(true, false)) {
+            drawLine(
+                line, row, charWidth, charHeight, charBaseline, textPaint, underlinePaint,
+                defaultFg, defaultBg, selectionManager, autoDetectUrls, hyperlinkMask,
+                selectionBackgroundColor, selectionForegroundColor, backgrounds,
+            )
+        }
+        return
+    }
     val y = row * charHeight
-    var x = 0f
-
     val cells = line.cells
+    if (backgroundsOnly) {
+        // Coalesce adjacent backgrounds so a plain row needs a single rectangle.
+        var runColor = Color.Unspecified
+        var runStart = 0f
+        var runEnd = 0f
+        for (col in 0 until cells.size) {
+            val width = cells.width(col)
+            if (width == 0) continue
+            val selected = selectionManager?.let {
+                it.isCellSelected(row, col, line) || (width == 2 && it.isCellSelected(row, col + 1, line))
+            } == true
+            val color = if (selected) {
+                selectionBackgroundColor
+            } else if (cells.flags(col) and 32 != 0) {
+                cells.foreground(col)
+            } else {
+                cells.background(col)
+            }
+            val x = col * charWidth
+            if (color != runColor) {
+                if (runEnd > runStart) drawRect(runColor, Offset(runStart, y), Size(runEnd - runStart, charHeight))
+                runColor = color
+                runStart = x
+            }
+            runEnd = (col + width) * charWidth
+        }
+        if (runEnd > runStart) drawRect(runColor, Offset(runStart, y), Size(runEnd - runStart, charHeight))
+        return
+    }
+    val canvas = drawContext.canvas.nativeCanvas
+    textPaint.isUnderlineText = false
+    textPaint.isStrikeThruText = false
+    var paintedColor = Color.Unspecified
+    var paintedStyle = -1
     for (col in 0 until cells.size) {
         val width = cells.width(col)
         if (width == 0) continue
+        val x = col * charWidth
         val flags = cells.flags(col)
         val underline = (flags ushr 1) and 3
         val cellWidth = charWidth * width
-
-        // Check if this cell is selected
         val isSelected = selectionManager?.let {
             it.isCellSelected(row, col, line) || (width == 2 && it.isCellSelected(row, col + 1, line))
         } == true
-        if (selectedOnly && !isSelected) {
-            x += cellWidth
-            continue
+        val reversed = flags and 32 != 0
+        val fg = if (isSelected) {
+            selectionForegroundColor
+        } else if (reversed) {
+            cells.background(col)
+        } else {
+            cells.foreground(col)
         }
-
-        // Check if this cell is part of a hyperlink
-        val isHyperlink = hyperlinkMask?.getOrNull(col) ?: (line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
-
-        // Determine colors (handle reverse video and selection)
-        val baseFgColor = if (flags and 32 != 0) cells.background(col) else cells.foreground(col)
-        val bgColor = if (flags and 32 != 0) cells.foreground(col) else cells.background(col)
-
-        // Draw background (with selection highlight)
-        val finalBgColor = if (isSelected) selectionBackgroundColor else bgColor
-        if (finalBgColor != defaultBg || isSelected) {
-            drawRect(
-                color = finalBgColor,
-                topLeft = Offset(x, y),
-                size = Size(cellWidth, charHeight),
-            )
-        }
-
-        // Draw character
+        val hyperlink = hyperlinkMask?.getOrNull(col) ?: (line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
         if (!cells.blank(col)) {
-            // Force high contrast for text on the selection background
-            val fgColor = if (isSelected) selectionForegroundColor else baseFgColor
-
-            // Configure text paint for this cell
-            textPaint.color = fgColor.toArgb()
-            textPaint.isFakeBoldText = flags and 1 != 0
-            textPaint.textSkewX = if (flags and 8 != 0) -0.25f else 0f
-            // Underline if cell has underline OR if it's a hyperlink
-            textPaint.isUnderlineText = underline == 1 || isHyperlink
-            textPaint.isStrikeThruText = flags and 128 != 0
-
-            cells.draw(drawContext.canvas.nativeCanvas, col, x, y + charBaseline, textPaint)
-
-            // Draw double underline if needed
-            if (underline == 2) {
-                drawDoubleUnderline(
-                    x = x,
-                    y = y + charBaseline,
-                    width = cellWidth,
-                    color = fgColor,
-                    paint = underlinePaint,
-                )
+            if (fg != paintedColor) {
+                textPaint.color = fg.toArgb()
+                paintedColor = fg
             }
-
-            // Draw curly underline if needed
-            if (underline == 3) {
-                drawCurlyUnderline(
-                    x = x,
-                    y = y + charBaseline,
-                    width = cellWidth,
-                    charWidth = charWidth,
-                    color = fgColor,
-                    paint = underlinePaint,
-                )
+            val style = flags and 9
+            if (style != paintedStyle) {
+                textPaint.isFakeBoldText = flags and 1 != 0
+                textPaint.textSkewX = if (flags and 8 != 0) -0.25f else 0f
+                paintedStyle = style
             }
+            cells.draw(canvas, col, x, y + charBaseline, textPaint, cellWidth)
         }
-
-        x += cellWidth
+        if (underline != 0 || hyperlink || flags and 128 != 0) underlinePaint.color = fg.toArgb()
+        if (underline == 1 || hyperlink) {
+            canvas.drawLine(x, y + charBaseline + 2f, x + cellWidth, y + charBaseline + 2f, underlinePaint)
+        }
+        if (flags and 128 != 0) {
+            val strikeY = y + charBaseline + textPaint.fontMetrics.ascent * 0.35f
+            canvas.drawLine(x, strikeY, x + cellWidth, strikeY, underlinePaint)
+        }
+        if (underline == 2) {
+            drawDoubleUnderline(x, y + charBaseline, cellWidth, fg, underlinePaint)
+        }
+        if (underline == 3) {
+            drawCurlyUnderline(x, y + charBaseline, cellWidth, charWidth, fg, underlinePaint)
+        }
     }
 }
 
@@ -2100,24 +2097,26 @@ private fun MagnifyingGlass(
                     val centerRow = (position.y / baseCharHeight).toInt().coerceIn(0, screenState.snapshot.rows - 1)
 
                     // Draw a few rows around the touch point
-                    for (rowOffset in -MAGNIFIER_ROW_RANGE..MAGNIFIER_ROW_RANGE) {
-                        val row = (centerRow + rowOffset).coerceIn(0, screenState.snapshot.rows - 1)
-                        val line = screenState.getVisibleLine(row)
-                        drawLine(
-                            line = line,
-                            row = row,
-                            charWidth = baseCharWidth,
-                            charHeight = baseCharHeight,
-                            charBaseline = baseCharBaseline,
-                            textPaint = textPaint,
-                            underlinePaint = underlinePaint,
-                            defaultFg = foregroundColor,
-                            defaultBg = backgroundColor,
-                            selectionManager = selectionManager,
-                            autoDetectUrls = autoDetectUrls,
-                            selectionBackgroundColor = selectionBackgroundColor,
-                            selectionForegroundColor = selectionForegroundColor,
-                        )
+                    for (backgrounds in listOf(true, false)) {
+                        for (row in maxOf(0, centerRow - MAGNIFIER_ROW_RANGE)..minOf(screenState.snapshot.rows - 1, centerRow + MAGNIFIER_ROW_RANGE)) {
+                            val line = screenState.getVisibleLine(row)
+                            drawLine(
+                                line = line,
+                                row = row,
+                                charWidth = baseCharWidth,
+                                charHeight = baseCharHeight,
+                                charBaseline = baseCharBaseline,
+                                textPaint = textPaint,
+                                underlinePaint = underlinePaint,
+                                defaultFg = foregroundColor,
+                                defaultBg = backgroundColor,
+                                selectionManager = selectionManager,
+                                autoDetectUrls = autoDetectUrls,
+                                selectionBackgroundColor = selectionBackgroundColor,
+                                selectionForegroundColor = selectionForegroundColor,
+                                backgroundsOnly = backgrounds,
+                            )
+                        }
                     }
                 }
             }

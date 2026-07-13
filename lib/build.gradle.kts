@@ -137,6 +137,7 @@ android {
         getByName("test").kotlin.srcDir("src/sharedTest/java")
         getByName("androidTest").kotlin.srcDir("src/sharedTest/java")
         getByName("androidTest").assets.srcDir(layout.buildDirectory.dir("benchmark-assets").get().asFile)
+        getByName("androidTest").assets.srcDir("src/test/resources/glyph-fixtures")
     }
 }
 
@@ -218,6 +219,8 @@ dependencies {
     testImplementation(composeBom)
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.mockk)
+    androidTestImplementation(composeBom)
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.junit)
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")

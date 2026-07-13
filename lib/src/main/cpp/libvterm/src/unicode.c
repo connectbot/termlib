@@ -1,4 +1,5 @@
 #include "vterm_internal.h"
+#include <string.h>
 
 // ### The following from http://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c
 // With modifications:
@@ -299,8 +300,78 @@ static const struct interval fullwidth[] = {
 #include "fullwidth.inc"
 };
 
+#include "emoji.inc"
+
+static int default_emoji(uint32_t cp)
+{
+  return bisearch(cp, emoji_presentation,
+      sizeof(emoji_presentation) / sizeof(emoji_presentation[0]) - 1);
+}
+
+/* Return the matching trie node, or zero when this is not an emoji prefix. */
+static unsigned emoji_prefix(const uint32_t *chars, int count)
+{
+  if(count == 0) return 0;
+  int low = 0, high = sizeof(emoji_roots) / sizeof(emoji_roots[0]);
+  while(low < high) {
+    int middle = (low + high) / 2;
+    if(emoji_nodes[emoji_roots[middle]].cp < chars[0]) low = middle + 1;
+    else high = middle;
+  }
+  if(low == sizeof(emoji_roots) / sizeof(emoji_roots[0]) ||
+      emoji_nodes[emoji_roots[low]].cp != chars[0]) return 0;
+  unsigned node = emoji_roots[low];
+  for(int i = 1; i < count; i++) {
+    unsigned edge = emoji_nodes[node].child;
+    while(edge && emoji_nodes[edge].cp < chars[i])
+      edge = emoji_nodes[edge].next;
+    if(!edge || emoji_nodes[edge].cp != chars[i])
+      return 0;
+    node = edge;
+  }
+  return node;
+}
+
+INTERNAL int vterm_unicode_can_extend(const uint32_t *chars, int count, uint32_t cp)
+{
+  if(count >= VTERM_MAX_CHARS_PER_CELL || cp < 0x80) return 0;
+  if(vterm_unicode_is_combining(cp)) return 1;
+  /* Non-mark emoji extensions are a joined pictograph, a skin-tone modifier,
+   * or the second regional indicator. Ordinary adjacent letters cannot join. */
+  if(chars[count - 1] != 0x200D &&
+      !(cp >= 0x1F3FB && cp <= 0x1F3FF) &&
+      !(count == 1 && chars[0] >= 0x1F1E6 && chars[0] <= 0x1F1FF &&
+        cp >= 0x1F1E6 && cp <= 0x1F1FF))
+    return 0;
+  uint32_t candidate[VTERM_MAX_CHARS_PER_CELL];
+  memcpy(candidate, chars, count * sizeof(uint32_t));
+  candidate[count] = cp;
+  return emoji_prefix(candidate, count + 1) != 0;
+}
+
+INTERNAL int vterm_unicode_cluster_width(const uint32_t *chars, int count)
+{
+  if(chars[0] >= 0x20 && chars[0] < 0x7F &&
+      (count == 1 || (chars[0] != '#' && chars[0] != '*' &&
+                      !(chars[0] >= '0' && chars[0] <= '9'))))
+    return 1;
+  int width = vterm_unicode_width(chars[0]);
+  if(count == 1) return width > 0 ? width : 1;
+  /* Selectors alter presentation only for a standardized variation sequence. */
+  if(count >= 2 && (chars[1] == 0xFE0E || chars[1] == 0xFE0F) &&
+      emoji_prefix(chars, 2)) {
+    if(chars[1] == 0xFE0E) return mk_wcwidth(chars[0]);
+    width = 2;
+  }
+  unsigned node = emoji_prefix(chars, count);
+  if(node && emoji_nodes[node].complete && chars[count - 1] != 0xFE0E)
+    width = 2;
+  return width > 0 ? width : 1;
+}
+
 INTERNAL int vterm_unicode_width(uint32_t codepoint)
 {
+  if(default_emoji(codepoint)) return 2;
   if(bisearch(codepoint, fullwidth, sizeof(fullwidth) / sizeof(fullwidth[0]) - 1))
     return 2;
 

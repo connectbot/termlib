@@ -178,6 +178,20 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   if(!cell)
     return 0;
 
+  /* Remove any wide glyph partially overwritten by this write. Damage the
+   * complete old footprint, including a leading cell just outside the write. */
+  int damage_start = pos.col;
+  int damage_end = pos.col + info->width;
+  if(cell->chars[0] == (uint32_t)-1 && pos.col > 0) {
+    clearcell(screen, getcell(screen, pos.row, pos.col - 1));
+    damage_start--;
+  }
+  ScreenCell *after = getcell(screen, pos.row, damage_end);
+  if(after && after->chars[0] == (uint32_t)-1) {
+    clearcell(screen, after);
+    damage_end++;
+  }
+
   int i;
   for(i = 0; i < VTERM_MAX_CHARS_PER_CELL && info->chars[i]; i++) {
     cell->chars[i] = info->chars[i];
@@ -186,14 +200,17 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   if(i < VTERM_MAX_CHARS_PER_CELL)
     cell->chars[i] = 0;
 
-  for(int col = 1; col < info->width; col++)
-    getcell(screen, pos.row, pos.col + col)->chars[0] = (uint32_t)-1;
+  for(int col = 1; col < info->width; col++) {
+    ScreenCell *continuation = getcell(screen, pos.row, pos.col + col);
+    continuation->chars[0] = (uint32_t)-1;
+    continuation->pen = screen->pen;
+  }
 
   VTermRect rect = {
     .start_row = pos.row,
     .end_row   = pos.row+1,
-    .start_col = pos.col,
-    .end_col   = pos.col+info->width,
+    .start_col = damage_start,
+    .end_col   = damage_end,
   };
 
   cell->pen.protected_cell = info->protected_cell;
@@ -274,7 +291,21 @@ static int erase_internal(VTermRect rect, int selective, void *user)
   for(int row = rect.start_row; row < screen->state->rows && row < rect.end_row; row++) {
     const VTermLineInfo *info = vterm_state_get_lineinfo(screen->state, row);
 
-    for(int col = rect.start_col; col < rect.end_col; col++) {
+    int start = rect.start_col, end = rect.end_col;
+    ScreenCell *first = getcell(screen, row, start);
+    if(first && first->chars[0] == (uint32_t)-1 && start > 0 &&
+        (!selective || !first->pen.protected_cell))
+      start--;
+    ScreenCell *after = getcell(screen, row, end);
+    if(after && after->chars[0] == (uint32_t)-1 &&
+        (!selective || !after->pen.protected_cell))
+      end++;
+    if(start != rect.start_col || end != rect.end_col) {
+      VTermRect damaged = {row, row + 1, start, end};
+      damagerect(screen, damaged);
+    }
+
+    for(int col = start; col < end; col++) {
       ScreenCell *cell = getcell(screen, row, col);
 
       if(selective && cell->pen.protected_cell)

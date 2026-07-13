@@ -17,10 +17,36 @@
 package org.connectbot.terminal.testapp
 
 import android.graphics.Typeface
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,7 +71,7 @@ const val escape = "\u001B"
 data class TerminalSession(
     val name: String,
     val emulator: TerminalEmulator,
-    val resourceId: Int
+    val resourceId: Int,
 )
 
 /**
@@ -63,7 +89,7 @@ private fun createTerminalEmulator(): TerminalEmulator {
             // Echo keyboard input back to terminal for testing
             // In a real app, this would write to PTY which would echo back
             manager.writeInput(data)
-        }
+        },
     )
     return manager
 }
@@ -86,7 +112,7 @@ fun ShellScreen() {
     val hasHardwareKeyboard = remember(configuration) {
         val keyboardType = configuration.keyboard
         keyboardType == android.content.res.Configuration.KEYBOARD_QWERTY ||
-                keyboardType == android.content.res.Configuration.KEYBOARD_12KEY
+            keyboardType == android.content.res.Configuration.KEYBOARD_12KEY
     }
 
     // Auto-hide IME by default when hardware keyboard is present, but user can override
@@ -103,7 +129,7 @@ fun ShellScreen() {
         val name: String,
         val foreground: Color,
         val background: Color,
-        val ansiColors: IntArray
+        val ansiColors: IntArray,
     )
 
     val colorSchemes = remember {
@@ -116,8 +142,8 @@ fun ShellScreen() {
                     0xFF000000.toInt(), 0xFFCD0000.toInt(), 0xFF00CD00.toInt(), 0xFFCDCD00.toInt(),
                     0xFF0000EE.toInt(), 0xFFCD00CD.toInt(), 0xFF00CDCD.toInt(), 0xFFE5E5E5.toInt(),
                     0xFF7F7F7F.toInt(), 0xFFFF0000.toInt(), 0xFF00FF00.toInt(), 0xFFFFFF00.toInt(),
-                    0xFF5C5CFF.toInt(), 0xFFFF00FF.toInt(), 0xFF00FFFF.toInt(), 0xFFFFFFFF.toInt()
-                )
+                    0xFF5C5CFF.toInt(), 0xFFFF00FF.toInt(), 0xFF00FFFF.toInt(), 0xFFFFFFFF.toInt(),
+                ),
             ),
             ColorScheme(
                 name = "Solarized Light",
@@ -127,9 +153,9 @@ fun ShellScreen() {
                     0xFF073642.toInt(), 0xFFDC322F.toInt(), 0xFF859900.toInt(), 0xFFB58900.toInt(),
                     0xFF268BD2.toInt(), 0xFFD33682.toInt(), 0xFF2AA198.toInt(), 0xFFEEE8D5.toInt(),
                     0xFF002B36.toInt(), 0xFFCB4B16.toInt(), 0xFF586E75.toInt(), 0xFF657B83.toInt(),
-                    0xFF839496.toInt(), 0xFF6C71C4.toInt(), 0xFF93A1A1.toInt(), 0xFFFDF6E3.toInt()
-                )
-            )
+                    0xFF839496.toInt(), 0xFF6C71C4.toInt(), 0xFF93A1A1.toInt(), 0xFFFDF6E3.toInt(),
+                ),
+            ),
         )
     }
     var selectedColorScheme by remember { mutableStateOf(0) }
@@ -138,10 +164,17 @@ fun ShellScreen() {
     val availableFonts = remember {
         mapOf(
             "Monospace" to Typeface.MONOSPACE,
-            "0xProto" to Typeface.createFromAsset(context.assets, "fonts/0xProtoNerdFontMono-Regular.ttf")
+            "0xProto" to if (android.os.Build.VERSION.SDK_INT >= 29) {
+                val font = android.graphics.fonts.Font.Builder(context.assets, "fonts/0xProtoNerdFontMono-Regular.ttf").build()
+                Typeface.CustomFallbackBuilder(android.graphics.fonts.FontFamily.Builder(font).build())
+                    .setSystemFallback("monospace")
+                    .build()
+            } else {
+                Typeface.createFromAsset(context.assets, "fonts/0xProtoNerdFontMono-Regular.ttf")
+            },
         )
     }
-    var selectedFont by remember { mutableStateOf("0xProto Regular") }
+    var selectedFont by remember { mutableStateOf("0xProto") }
     var showFontMenu by remember { mutableStateOf(false) }
 
     // Create separate TerminalEmulator for each session (simulating multiple connections)
@@ -151,7 +184,7 @@ fun ShellScreen() {
             TerminalSession("256 Colors", createTerminalEmulator(), R.raw.test_output),
             TerminalSession("Attributes", createTerminalEmulator(), R.raw.test_attributes),
             TerminalSession("Unicode", createTerminalEmulator(), R.raw.test_unicode),
-            TerminalSession("Scrolling", createTerminalEmulator(), R.raw.test_scroll)
+            TerminalSession("Scrolling", createTerminalEmulator(), R.raw.test_scroll),
         )
     }
 
@@ -185,7 +218,6 @@ fun ShellScreen() {
 
                 val normalizedWelcome = welcomeText.replace("\n", "\r\n")
                 sessions[0].emulator.writeInput(normalizedWelcome.toByteArray())
-
             } catch (e: Exception) {
                 errorMessage = "Failed to initialize: ${e.message}\n${e.stackTraceToString()}"
             }
@@ -229,7 +261,7 @@ fun ShellScreen() {
                 customRows = rows
                 customCols = cols
                 showSizeDialog = false
-            }
+            },
         )
     }
 
@@ -239,7 +271,7 @@ fun ShellScreen() {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             sessions.forEachIndexed { index, session ->
                 Button(
@@ -251,12 +283,13 @@ fun ShellScreen() {
                         }
                     },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (currentSessionIndex == index)
+                        containerColor = if (currentSessionIndex == index) {
                             MaterialTheme.colorScheme.primary
-                        else
+                        } else {
                             MaterialTheme.colorScheme.secondary
+                        },
                     ),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
                 ) {
                     Text(
                         text = when (index) {
@@ -267,7 +300,7 @@ fun ShellScreen() {
                             4 -> "Scr"
                             else -> session.name.take(3)
                         },
-                        maxLines = 1
+                        maxLines = 1,
                     )
                 }
             }
@@ -278,24 +311,24 @@ fun ShellScreen() {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.End,
         ) {
             Box {
                 Button(
-                    onClick = { showSettingsMenu = true }
+                    onClick = { showSettingsMenu = true },
                 ) {
                     Text("⚙ Settings")
                 }
                 DropdownMenu(
                     expanded = showSettingsMenu,
-                    onDismissRequest = { showSettingsMenu = false }
+                    onDismissRequest = { showSettingsMenu = false },
                 ) {
                     // Color scheme selector
                     Text(
                         text = "Color Scheme",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     colorSchemes.forEachIndexed { index, scheme ->
                         DropdownMenuItem(
@@ -312,10 +345,10 @@ fun ShellScreen() {
                                     session.emulator.applyColorScheme(
                                         ansiColors = scheme.ansiColors,
                                         defaultForeground = scheme.foreground.toArgb(),
-                                        defaultBackground = scheme.background.toArgb()
+                                        defaultBackground = scheme.background.toArgb(),
                                     )
                                 }
-                            }
+                            },
                         )
                     }
 
@@ -326,7 +359,7 @@ fun ShellScreen() {
                         text = "Font: $selectedFont",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     availableFonts.keys.forEach { fontName ->
                         DropdownMenuItem(
@@ -338,7 +371,7 @@ fun ShellScreen() {
                             },
                             onClick = {
                                 selectedFont = fontName
-                            }
+                            },
                         )
                     }
 
@@ -350,24 +383,24 @@ fun ShellScreen() {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("Fixed Size")
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = if (useForcedSize) "${customRows}×${customCols}" else "Auto",
+                                        text = if (useForcedSize) "$customRows×$customCols" else "Auto",
                                         style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.padding(end = 8.dp)
+                                        modifier = Modifier.padding(end = 8.dp),
                                     )
                                     Switch(
                                         checked = useForcedSize,
                                         onCheckedChange = { useForcedSize = it },
-                                        modifier = Modifier.height(24.dp)
+                                        modifier = Modifier.height(24.dp),
                                     )
                                 }
                             }
                         },
-                        onClick = { showSizeDialog = true }
+                        onClick = { showSizeDialog = true },
                     )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -378,24 +411,24 @@ fun ShellScreen() {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         imageVector = CustomIcons.Keyboard,
                                         contentDescription = null,
-                                        modifier = Modifier.size(20.dp).padding(end = 8.dp)
+                                        modifier = Modifier.size(20.dp).padding(end = 8.dp),
                                     )
                                     Text("Keyboard Input")
                                 }
                                 Switch(
                                     checked = keyboardEnabled,
                                     onCheckedChange = { keyboardEnabled = it },
-                                    modifier = Modifier.height(24.dp)
+                                    modifier = Modifier.height(24.dp),
                                 )
                             }
                         },
-                        onClick = { keyboardEnabled = !keyboardEnabled }
+                        onClick = { keyboardEnabled = !keyboardEnabled },
                     )
 
                     // IME toggle (only when keyboard enabled)
@@ -404,36 +437,38 @@ fun ShellScreen() {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         imageVector = CustomIcons.PhoneAndroid,
                                         contentDescription = null,
                                         modifier = Modifier.size(20.dp).padding(end = 8.dp),
-                                        tint = if (keyboardEnabled)
+                                        tint = if (keyboardEnabled) {
                                             LocalContentColor.current
-                                        else
+                                        } else {
                                             LocalContentColor.current.copy(alpha = 0.38f)
+                                        },
                                     )
                                     Text(
                                         "Show Soft Keyboard",
-                                        color = if (keyboardEnabled)
+                                        color = if (keyboardEnabled) {
                                             LocalContentColor.current
-                                        else
+                                        } else {
                                             LocalContentColor.current.copy(alpha = 0.38f)
+                                        },
                                     )
                                 }
                                 Switch(
                                     checked = showSoftKeyboard,
                                     onCheckedChange = { showSoftKeyboard = it },
                                     enabled = keyboardEnabled,
-                                    modifier = Modifier.height(24.dp)
+                                    modifier = Modifier.height(24.dp),
                                 )
                             }
                         },
                         onClick = { if (keyboardEnabled) showSoftKeyboard = !showSoftKeyboard },
-                        enabled = keyboardEnabled
+                        enabled = keyboardEnabled,
                     )
                 }
             }
@@ -447,17 +482,17 @@ fun ShellScreen() {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(16.dp)
+                        .padding(16.dp),
                 ) {
                     Text(
                         text = "Error",
                         style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.error,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = errorMessage ?: "",
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             } else {
@@ -470,7 +505,7 @@ fun ShellScreen() {
                     foregroundColor = colorSchemes[selectedColorScheme].foreground,
                     keyboardEnabled = keyboardEnabled,
                     showSoftKeyboard = showSoftKeyboard,
-                    forcedSize = if (useForcedSize) Pair(customRows, customCols) else null
+                    forcedSize = if (useForcedSize) Pair(customRows, customCols) else null,
                 )
             }
         }
@@ -485,7 +520,7 @@ fun SizeConfigDialog(
     currentRows: Int,
     currentCols: Int,
     onDismiss: () -> Unit,
-    onConfirm: (rows: Int, cols: Int) -> Unit
+    onConfirm: (rows: Int, cols: Int) -> Unit,
 ) {
     var rows by remember { mutableStateOf(currentRows.toString()) }
     var cols by remember { mutableStateOf(currentCols.toString()) }
@@ -496,32 +531,41 @@ fun SizeConfigDialog(
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 // Preset buttons
                 Text(
                     text = "Presets:",
-                    style = MaterialTheme.typography.labelMedium
+                    style = MaterialTheme.typography.labelMedium,
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Button(
-                        onClick = { rows = "24"; cols = "80" },
-                        modifier = Modifier.weight(1f)
+                        onClick = {
+                            rows = "24"
+                            cols = "80"
+                        },
+                        modifier = Modifier.weight(1f),
                     ) {
                         Text("24×80", maxLines = 1)
                     }
                     Button(
-                        onClick = { rows = "25"; cols = "80" },
-                        modifier = Modifier.weight(1f)
+                        onClick = {
+                            rows = "25"
+                            cols = "80"
+                        },
+                        modifier = Modifier.weight(1f),
                     ) {
                         Text("25×80", maxLines = 1)
                     }
                     Button(
-                        onClick = { rows = "40"; cols = "132" },
-                        modifier = Modifier.weight(1f)
+                        onClick = {
+                            rows = "40"
+                            cols = "132"
+                        },
+                        modifier = Modifier.weight(1f),
                     ) {
                         Text("40×132", maxLines = 1)
                     }
@@ -531,11 +575,11 @@ fun SizeConfigDialog(
                 Text(
                     text = "Custom:",
                     style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 8.dp),
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     OutlinedTextField(
                         value = rows,
@@ -546,7 +590,7 @@ fun SizeConfigDialog(
                         },
                         label = { Text("Rows") },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        singleLine = true,
                     )
                     OutlinedTextField(
                         value = cols,
@@ -557,7 +601,7 @@ fun SizeConfigDialog(
                         },
                         label = { Text("Cols") },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        singleLine = true,
                     )
                 }
 
@@ -566,7 +610,7 @@ fun SizeConfigDialog(
                     text = "Common sizes:\n• 24×80 - Classic terminal\n• 25×80 - VT100 standard\n• 40×132 - Wide format",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 8.dp),
                 )
             }
         },
@@ -576,7 +620,7 @@ fun SizeConfigDialog(
                     val r = rows.toIntOrNull()?.coerceIn(1, 200) ?: currentRows
                     val c = cols.toIntOrNull()?.coerceIn(1, 500) ?: currentCols
                     onConfirm(r, c)
-                }
+                },
             ) {
                 Text("Apply")
             }
@@ -585,6 +629,6 @@ fun SizeConfigDialog(
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
-        }
+        },
     )
 }

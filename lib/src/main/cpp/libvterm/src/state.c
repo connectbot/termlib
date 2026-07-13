@@ -82,7 +82,8 @@ static VTermState *vterm_state_new(VTerm *vt)
 
   state->bold_is_highbright = 0;
 
-  state->combine_chars_size = 16;
+  state->combine_chars_size = VTERM_MAX_CHARS_PER_CELL + 1;
+  state->combine_valid = 0;
   state->combine_chars = vterm_allocator_malloc(state->vt, state->combine_chars_size * sizeof(state->combine_chars[0]));
 
   state->tabstops = vterm_allocator_malloc(state->vt, (state->cols + 7) / 8);
@@ -171,18 +172,7 @@ static void linefeed(VTermState *state)
     state->pos.row++;
 }
 
-static void grow_combine_buffer(VTermState *state)
-{
-  size_t    new_size = state->combine_chars_size * 2;
-  uint32_t *new_chars = vterm_allocator_malloc(state->vt, new_size * sizeof(new_chars[0]));
 
-  memcpy(new_chars, state->combine_chars, state->combine_chars_size * sizeof(new_chars[0]));
-
-  vterm_allocator_free(state->vt, state->combine_chars);
-
-  state->combine_chars = new_chars;
-  state->combine_chars_size = new_size;
-}
 
 static void set_col_tabstop(VTermState *state, int col)
 {
@@ -287,6 +277,12 @@ static int on_text(const char bytes[], size_t len, void *user)
     state->vt->mode.utf8   ? &state->encoding_utf8 :
                              &state->encoding[state->gr_set];
 
+  /* UTF-8 is one byte stream, even when a call begins with ASCII in GL.
+   * Otherwise a partial character stays in GL's decoder while its continuation
+   * bytes resume in encoding_utf8 with no pending state. */
+  if(encoding->enc == state->encoding_utf8.enc)
+    encoding = &state->encoding_utf8;
+
   (*encoding->enc->decode)(encoding->enc, encoding->data,
       codepoints, &npoints, state->gsingle_set ? 1 : maxpoints,
       bytes, &eaten, len);
@@ -300,136 +296,80 @@ static int on_text(const char bytes[], size_t len, void *user)
   if(state->gsingle_set && npoints)
     state->gsingle_set = 0;
 
-  int i = 0;
+  for(int i = 0; i < npoints; i++) {
+    uint32_t cp = codepoints[i];
+    int count = 0;
+    if(state->combine_valid)
+      while(state->combine_chars[count]) count++;
+    int extending = state->combine_valid &&
+        vterm_unicode_can_extend(state->combine_chars, count, cp);
+    if(!extending) count = 0;
+    state->combine_chars[count++] = cp;
+    state->combine_chars[count] = 0;
+    int width = vterm_unicode_cluster_width(state->combine_chars, count);
+    int oldwidth = extending ? state->combine_width : 0;
 
-  /* This is a combining char. that needs to be merged with the previous
-   * glyph output */
-  if(vterm_unicode_is_combining(codepoints[i])) {
-    /* See if the cursor has moved since */
-    if(state->pos.row == state->combine_pos.row && state->pos.col == state->combine_pos.col + state->combine_width) {
-#ifdef DEBUG_GLYPH_COMBINE
-      int printpos;
-      printf("DEBUG: COMBINING SPLIT GLYPH of chars {");
-      for(printpos = 0; state->combine_chars[printpos]; printpos++)
-        printf("U+%04x ", state->combine_chars[printpos]);
-      printf("} + {");
-#endif
-
-      /* Find where we need to append these combining chars */
-      int saved_i = 0;
-      while(state->combine_chars[saved_i])
-        saved_i++;
-
-      /* Add extra ones */
-      while(i < npoints && vterm_unicode_is_combining(codepoints[i])) {
-        if(saved_i >= state->combine_chars_size)
-          grow_combine_buffer(state);
-        state->combine_chars[saved_i++] = codepoints[i++];
-      }
-      if(saved_i >= state->combine_chars_size)
-        grow_combine_buffer(state);
-      state->combine_chars[saved_i] = 0;
-
-#ifdef DEBUG_GLYPH_COMBINE
-      for(; state->combine_chars[printpos]; printpos++)
-        printf("U+%04x ", state->combine_chars[printpos]);
-      printf("}\n");
-#endif
-
-      /* Now render it */
-      putglyph(state, state->combine_chars, state->combine_width, state->combine_pos);
-    }
-    else {
-      DEBUG_LOG("libvterm: TODO: Skip over split char+combining\n");
-    }
-  }
-
-  for(; i < npoints; i++) {
-    // Try to find combining characters following this
-    int glyph_starts = i;
-    int glyph_ends;
-    for(glyph_ends = i + 1;
-        (glyph_ends < npoints) && (glyph_ends < glyph_starts + VTERM_MAX_CHARS_PER_CELL);
-        glyph_ends++)
-      if(!vterm_unicode_is_combining(codepoints[glyph_ends]))
-        break;
-
-    int width = 0;
-
-    uint32_t chars[VTERM_MAX_CHARS_PER_CELL + 1];
-
-    for( ; i < glyph_ends; i++) {
-      chars[i - glyph_starts] = codepoints[i];
-      int this_width = vterm_unicode_width(codepoints[i]);
-#ifdef DEBUG
-      if(this_width < 0) {
-        fprintf(stderr, "Text with negative-width codepoint U+%04x\n", codepoints[i]);
-        abort();
-      }
-#endif
-      width += this_width;
-    }
-
-    while(i < npoints && vterm_unicode_is_combining(codepoints[i]))
-      i++;
-
-    chars[glyph_ends - glyph_starts] = 0;
-    i--;
-
-#ifdef DEBUG_GLYPH_COMBINE
-    int printpos;
-    printf("DEBUG: COMBINED GLYPH of %d chars {", glyph_ends - glyph_starts);
-    for(printpos = 0; printpos < glyph_ends - glyph_starts; printpos++)
-      printf("U+%04x ", chars[printpos]);
-    printf("}, onscreen width %d\n", width);
-#endif
-
-    if(state->at_phantom || state->pos.col + width > THISROWWIDTH(state)) {
-      linefeed(state);
-      state->pos.col = 0;
+    if(extending) {
+      state->pos = state->combine_pos;
       state->at_phantom = 0;
-      state->lineinfo[state->pos.row].continuation = 1;
     }
 
-    if(state->mode.insert) {
-      /* TODO: This will be a little inefficient for large bodies of text, as
-       * it'll have to 'ICH' effectively before every glyph. We should scan
-       * ahead and ICH as many times as required
-       */
-      VTermRect rect = {
-        .start_row = state->pos.row,
-        .end_row   = state->pos.row + 1,
-        .start_col = state->pos.col,
-        .end_col   = THISROWWIDTH(state),
-      };
-      scroll(state, rect, 0, -1);
-    }
-
-    putglyph(state, chars, width, state->pos);
-
-    if(i == npoints - 1) {
-      /* End of the buffer. Save the chars in case we have to combine with
-       * more on the next call */
-      int save_i;
-      for(save_i = 0; chars[save_i]; save_i++) {
-        if(save_i >= state->combine_chars_size)
-          grow_combine_buffer(state);
-        state->combine_chars[save_i] = chars[save_i];
+    int rowwidth = THISROWWIDTH(state);
+    if(state->at_phantom || state->pos.col + width > rowwidth) {
+      if(state->mode.autowrap && (state->at_phantom || rowwidth > 1)) {
+        if(extending) {
+          VTermRect rect = { state->pos.row, state->pos.row + 1,
+                             state->pos.col, state->pos.col + oldwidth };
+          erase(state, rect, 0);
+          oldwidth = 0;
+        }
+        linefeed(state);
+        state->pos.col = 0;
+        state->lineinfo[state->pos.row].continuation = 1;
       }
-      if(save_i >= state->combine_chars_size)
-        grow_combine_buffer(state);
-      state->combine_chars[save_i] = 0;
-      state->combine_width = width;
-      state->combine_pos = state->pos;
+      state->at_phantom = 0;
+      rowwidth = THISROWWIDTH(state);
+      if(width > rowwidth - state->pos.col)
+        width = rowwidth - state->pos.col;
     }
 
-    if(state->pos.col + width >= THISROWWIDTH(state)) {
+    if(state->mode.insert && width > oldwidth) {
+      VTermRect rect = { state->pos.row, state->pos.row + 1,
+                         state->pos.col + oldwidth, rowwidth };
+      scroll(state, rect, 0, oldwidth - width);
+    }
+    if(extending && width < oldwidth) {
+      VTermRect rect = { state->pos.row, state->pos.row + 1,
+                         state->pos.col + width, state->pos.col + oldwidth };
+      erase(state, rect, 0);
+    }
+
+    /* Coalesce same-width extensions already available in this input buffer.
+     * Width transitions still execute separately, preserving streaming wrap
+     * semantics even when selectors arrive in the same write as their base. */
+    while(i + 1 < npoints &&
+        vterm_unicode_can_extend(state->combine_chars, count, codepoints[i + 1])) {
+      state->combine_chars[count] = codepoints[i + 1];
+      state->combine_chars[count + 1] = 0;
+      int nextwidth = vterm_unicode_cluster_width(state->combine_chars, count + 1);
+      if(nextwidth != width) {
+        state->combine_chars[count] = 0;
+        break;
+      }
+      count++;
+      i++;
+    }
+    putglyph(state, state->combine_chars, width, state->pos);
+    state->combine_width = width;
+    state->combine_pos = state->pos;
+    state->combine_valid = 1;
+
+    if(state->pos.col + width >= rowwidth) {
       if(state->mode.autowrap)
         state->at_phantom = 1;
     }
-    else {
+    else
       state->pos.col += width;
-    }
   }
 
   updatecursor(state, &oldpos, 0);
@@ -449,6 +389,7 @@ static int on_text(const char bytes[], size_t len, void *user)
 static int on_control(unsigned char control, void *user)
 {
   VTermState *state = user;
+  state->combine_valid = 0;
 
   VTermPos oldpos = state->pos;
 
@@ -591,6 +532,7 @@ static void savecursor(VTermState *state, int save)
 static int on_escape(const char *bytes, size_t len, void *user)
 {
   VTermState *state = user;
+  state->combine_valid = 0;
 
   /* Easier to decode this from the first byte, even though the final
    * byte terminates it
@@ -926,6 +868,7 @@ static void request_version_string(VTermState *state)
 static int on_csi(const char *leader, const long args[], int argcount, const char *intermed, char command, void *user)
 {
   VTermState *state = user;
+  state->combine_valid = 0;
   int leader_byte = 0;
   int intermed_byte = 0;
   int cancel_phantom = 1;
@@ -1777,6 +1720,7 @@ static void osc_selection(VTermState *state, VTermStringFragment frag)
 static int on_osc(int command, VTermStringFragment frag, void *user)
 {
   VTermState *state = user;
+  state->combine_valid = 0;
 
   switch(command) {
     case 0:
@@ -1897,6 +1841,7 @@ static void request_status_string(VTermState *state, VTermStringFragment frag)
 static int on_dcs(const char *command, size_t commandlen, VTermStringFragment frag, void *user)
 {
   VTermState *state = user;
+  state->combine_valid = 0;
 
   if(commandlen == 2 && strneq(command, "$q", 2)) {
     request_status_string(state, frag);
@@ -1913,6 +1858,7 @@ static int on_dcs(const char *command, size_t commandlen, VTermStringFragment fr
 static int on_apc(VTermStringFragment frag, void *user)
 {
   VTermState *state = user;
+  state->combine_valid = 0;
 
   if(state->fallbacks && state->fallbacks->apc)
     if((*state->fallbacks->apc)(frag, state->fbdata))
@@ -1925,6 +1871,7 @@ static int on_apc(VTermStringFragment frag, void *user)
 static int on_pm(VTermStringFragment frag, void *user)
 {
   VTermState *state = user;
+  state->combine_valid = 0;
 
   if(state->fallbacks && state->fallbacks->pm)
     if((*state->fallbacks->pm)(frag, state->fbdata))
@@ -1937,6 +1884,7 @@ static int on_pm(VTermStringFragment frag, void *user)
 static int on_sos(VTermStringFragment frag, void *user)
 {
   VTermState *state = user;
+  state->combine_valid = 0;
 
   if(state->fallbacks && state->fallbacks->sos)
     if((*state->fallbacks->sos)(frag, state->fbdata))
@@ -1949,6 +1897,7 @@ static int on_sos(VTermStringFragment frag, void *user)
 static int on_resize(int rows, int cols, void *user)
 {
   VTermState *state = user;
+  state->combine_valid = 0;
   VTermPos oldpos = state->pos;
 
   if(cols != state->cols) {
@@ -2071,6 +2020,7 @@ VTermState *vterm_obtain_state(VTerm *vt)
 
 void vterm_state_reset(VTermState *state, int hard)
 {
+  state->combine_valid = 0;
   state->scrollregion_top = 0;
   state->scrollregion_bottom = -1;
   state->scrollregion_left = 0;

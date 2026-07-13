@@ -21,7 +21,7 @@ extern "C" {
 /* Any cell can contain at most one basic printing character and 5 combining
  * characters. This number could be changed but will be ABI-incompatible if
  * you do */
-#define VTERM_MAX_CHARS_PER_CELL 6
+#define VTERM_MAX_CHARS_PER_CELL 16
 
 typedef struct VTerm VTerm;
 typedef struct VTermState VTermState;

@@ -68,6 +68,8 @@ src/fullwidth.inc:
 
 src/encoding.lo: $(INCFILES)
 
+src/unicode.lo: src/fullwidth.inc src/emoji.inc
+
 bin/%: bin/%.c $(LIBRARY)
 	@echo CC $<
 	@$(LIBTOOL) --mode=link --tag=CC $(CC) $(CFLAGS) -o $@ $< -lvterm $(LDFLAGS)

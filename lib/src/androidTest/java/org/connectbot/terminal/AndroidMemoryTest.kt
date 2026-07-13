@@ -41,7 +41,7 @@ class AndroidMemoryTest {
                     val canvas = Canvas(bitmap)
                     val cells = snapshot.lines[0].cells
                     for (col in 0 until cells.size) {
-                        if (cells.width(col) > 0) cells.draw(canvas, col, col * 10f, 20f, paint)
+                        if (cells.width(col) > 0) cells.draw(canvas, col, col * 10f, 20f, paint, cells.width(col) * 10f)
                     }
                     bitmap.recycle()
                     assertSame(scratch, terminal.cellBuffer())

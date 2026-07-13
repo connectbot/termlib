@@ -36,9 +36,13 @@
 #define JNI_CHECK_EXCEPTION_RETURN(env, retval) \
     do { if ((env)->ExceptionCheck()) { return (retval); } } while (0)
 
-// CellData.kt wire layout: six code points, width, two RGB colors, packed flags.
+// CellData.kt wire layout: sixteen code points, width, two RGB colors, packed flags.
 // Flags use the explicit shifts below, never the native bitfield representation.
-static constexpr int CELL_STRIDE = 10;
+static constexpr int CELL_WIDTH = VTERM_MAX_CHARS_PER_CELL;
+static constexpr int CELL_FG = CELL_WIDTH + 1;
+static constexpr int CELL_BG = CELL_FG + 1;
+static constexpr int CELL_FLAGS = CELL_BG + 1;
+static constexpr int CELL_STRIDE = CELL_FLAGS + 1;
 static constexpr int CELL_BYTES = CELL_STRIDE * sizeof(jint);
 static constexpr int BUFFER_BYTES = 64 * 1024;
 static constexpr int HEADER_BYTES = 4096;
@@ -55,7 +59,7 @@ static uint8_t* writableBuffer(JNIEnv* env, jobject buffer, jlong minimum) {
     if (!bytes || capacity < minimum || env->CallBooleanMethod(buffer, method)) return nullptr;
     return env->ExceptionCheck() ? nullptr : bytes;
 }
-static_assert(VTERM_MAX_CHARS_PER_CELL == 6);
+static_assert(VTERM_MAX_CHARS_PER_CELL == 16);
 
 static void argumentError(JNIEnv* env, const char* message) {
     if (env->ExceptionCheck()) return;
@@ -410,13 +414,13 @@ void Terminal::packCell(const VTermScreenCell& cell, jint* out) {
     std::fill_n(out, CELL_STRIDE, 0);
     for (int i = 0; i < VTERM_MAX_CHARS_PER_CELL && cell.chars[i]; ++i)
         out[i] = static_cast<jint>(cell.chars[i]);
-    out[6] = cell.width;
+    out[CELL_WIDTH] = cell.width;
     uint8_t r, g, b;
     resolveColor(cell.fg, r, g, b);
-    out[7] = (r << 16) | (g << 8) | b;
+    out[CELL_FG] = (r << 16) | (g << 8) | b;
     resolveColor(cell.bg, r, g, b);
-    out[8] = (r << 16) | (g << 8) | b;
-    out[9] = cell.attrs.bold | (cell.attrs.underline << 1) | (cell.attrs.italic << 3)
+    out[CELL_BG] = (r << 16) | (g << 8) | b;
+    out[CELL_FLAGS] = cell.attrs.bold | (cell.attrs.underline << 1) | (cell.attrs.italic << 3)
         | (cell.attrs.blink << 4) | (cell.attrs.reverse << 5) | (cell.attrs.conceal << 6)
         | (cell.attrs.strike << 7) | (cell.attrs.font << 8) | (cell.attrs.dwl << 12)
         | (cell.attrs.dhl << 13) | (cell.attrs.small << 15) | (cell.attrs.baseline << 16);
@@ -425,10 +429,10 @@ void Terminal::packCell(const VTermScreenCell& cell, jint* out) {
 static void unpackCell(const jint* in, VTermScreenCell& cell) {
     cell = {};
     for (int i = 0; i < VTERM_MAX_CHARS_PER_CELL; ++i) cell.chars[i] = in[i];
-    cell.width = in[6];
-    vterm_color_rgb(&cell.fg, (in[7] >> 16) & 255, (in[7] >> 8) & 255, in[7] & 255);
-    vterm_color_rgb(&cell.bg, (in[8] >> 16) & 255, (in[8] >> 8) & 255, in[8] & 255);
-    const unsigned flags = static_cast<unsigned>(in[9]);
+    cell.width = in[CELL_WIDTH];
+    vterm_color_rgb(&cell.fg, (in[CELL_FG] >> 16) & 255, (in[CELL_FG] >> 8) & 255, in[CELL_FG] & 255);
+    vterm_color_rgb(&cell.bg, (in[CELL_BG] >> 16) & 255, (in[CELL_BG] >> 8) & 255, in[CELL_BG] & 255);
+    const unsigned flags = static_cast<unsigned>(in[CELL_FLAGS]);
     cell.attrs.bold = flags & 1;
     cell.attrs.underline = (flags >> 1) & 3;
     cell.attrs.italic = (flags >> 3) & 1;
@@ -704,7 +708,7 @@ void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, 
                 continuation = cells[start + i].width == 2;
                 if (continuation && start + i + 1 == cols) {
                     std::fill_n(record, CELL_STRIDE, 0);
-                    record[6] = 1;
+                    record[CELL_WIDTH] = 1;
                     continuation = false;
                 }
             }
@@ -739,7 +743,7 @@ int Terminal::invokePopScrollbackLine(int cols, VTermScreenCell* cells) {
             }
             jint record[CELL_STRIDE];
             std::memcpy(record, bytes + i * CELL_BYTES, CELL_BYTES);
-            if (record[6] < 1 || record[6] > 2 || record[6] > cols - start - i) {
+            if (record[CELL_WIDTH] < 1 || record[CELL_WIDTH] > 2 || record[CELL_WIDTH] > cols - start - i) {
                 argumentError(env, "Invalid cell width");
                 return 0;
             }

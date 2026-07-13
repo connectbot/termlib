@@ -32,8 +32,38 @@ internal class PackedCells private constructor(
 
     fun columnText(): String = String(CharArray(size) { charAt(it) })
 
-    fun draw(canvas: android.graphics.Canvas, col: Int, x: Float, baseline: Float, paint: android.graphics.Paint) {
-        canvas.drawText(text, offsets[col], offsets[col + 1] - offsets[col], x, baseline, paint)
+    // One lazily allocated measurement array per retained row, replaced on font changes.
+    private var measuredTypeface: android.graphics.Typeface? = null
+    private var measuredSize = Float.NaN
+    private var advances: FloatArray? = null
+
+    fun draw(canvas: android.graphics.Canvas, col: Int, x: Float, baseline: Float, paint: android.graphics.Paint, cellWidth: Float) {
+        if (measuredTypeface !== paint.typeface || measuredSize != paint.textSize || advances == null) {
+            measuredTypeface = paint.typeface
+            measuredSize = paint.textSize
+            advances = FloatArray(size) { Float.NaN }
+        }
+        val measurements = advances!!
+        var advance = measurements[col]
+        if (advance.isNaN()) {
+            val skew = paint.textSkewX
+            paint.textSkewX = 0f
+            advance = paint.measureText(text, offsets[col], offsets[col + 1] - offsets[col])
+            paint.textSkewX = skew
+            measurements[col] = advance
+        }
+        if (advance <= cellWidth || cellWidth <= 0f) {
+            canvas.drawText(text, offsets[col], offsets[col + 1] - offsets[col], x, baseline, paint)
+            return
+        }
+        val saved = canvas.save()
+        try {
+            canvas.translate(x, baseline)
+            if (advance > cellWidth && cellWidth > 0f) canvas.scale(cellWidth / advance, 1f)
+            canvas.drawText(text, offsets[col], offsets[col + 1] - offsets[col], 0f, 0f, paint)
+        } finally {
+            canvas.restoreToCount(saved)
+        }
     }
 
     // Compatibility for test fixtures and cold callers; rendering and snapshot construction
@@ -65,11 +95,11 @@ internal class PackedCells private constructor(
         for (i in 0 until count) {
             val col = start + i
             val base = offset + i * CellData.BYTES
-            if (width(col) != buffer.getInt(base + 24) || flags(col) != buffer.getInt(base + 36)) return false
+            if (width(col) != buffer.getInt(base + CellData.WIDTH) || flags(col) != buffer.getInt(base + CellData.FLAGS)) return false
             // Continuation cells carry no independently rendered content or attributes.
             if (width(col) == 0) continue
-            if (colors[col * 2] != buffer.getInt(base + 28) or (0xFF shl 24) ||
-                colors[col * 2 + 1] != buffer.getInt(base + 32) or (0xFF shl 24)
+            if (colors[col * 2] != buffer.getInt(base + CellData.FOREGROUND) or (0xFF shl 24) ||
+                colors[col * 2 + 1] != buffer.getInt(base + CellData.BACKGROUND) or (0xFF shl 24)
             ) {
                 return false
             }
@@ -101,10 +131,10 @@ internal class PackedCells private constructor(
             buffer.putInt(offset + slot++ * 4, if (CellData.isScalar(cp)) cp else 0xFFFD)
             index += Character.charCount(cp)
         }
-        buffer.putInt(offset + 24, width(col))
-        buffer.putInt(offset + 28, colors[col * 2])
-        buffer.putInt(offset + 32, colors[col * 2 + 1])
-        buffer.putInt(offset + 36, flags(col))
+        buffer.putInt(offset + CellData.WIDTH, width(col))
+        buffer.putInt(offset + CellData.FOREGROUND, colors[col * 2])
+        buffer.putInt(offset + CellData.BACKGROUND, colors[col * 2 + 1])
+        buffer.putInt(offset + CellData.FLAGS, flags(col))
     }
 
     class Builder(private val columns: Int) {
@@ -135,7 +165,7 @@ internal class PackedCells private constructor(
             require(count >= 0 && count <= columns - column)
             for (i in 0 until count) {
                 val base = offset + i * CellData.BYTES
-                val width = buffer.getInt(base + 24)
+                val width = buffer.getInt(base + CellData.WIDTH)
                 require(width in 0..2 && width <= columns - column)
                 offsets[column] = used
                 if (width != 0) {
@@ -157,9 +187,9 @@ internal class PackedCells private constructor(
                         }
                     }
                 }
-                colors[column * 2] = buffer.getInt(base + 28) or (0xFF shl 24)
-                colors[column * 2 + 1] = buffer.getInt(base + 32) or (0xFF shl 24)
-                attributes[column++] = (width shl 24) or buffer.getInt(base + 36)
+                colors[column * 2] = buffer.getInt(base + CellData.FOREGROUND) or (0xFF shl 24)
+                colors[column * 2 + 1] = buffer.getInt(base + CellData.BACKGROUND) or (0xFF shl 24)
+                attributes[column++] = (width shl 24) or buffer.getInt(base + CellData.FLAGS)
                 offsets[column] = used
             }
         }

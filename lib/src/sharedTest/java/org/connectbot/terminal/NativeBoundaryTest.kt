@@ -49,7 +49,7 @@ class NativeBoundaryTest {
         val callbacks = Callbacks()
         TerminalNative(callbacks).use { terminal ->
             terminal.resize(2, 3300)
-            val text = "a".repeat(CellData.BUFFER_BYTES / CellData.BYTES - 1) + "🎉\u0301Z"
+            val text = "a".repeat(CellData.BUFFER_BYTES / CellData.BYTES - 1) + "👩🏽‍❤️‍💋‍👨🏻\u0301Z"
             terminal.writeInput((text + "\r\nsecond\r\n").toByteArray())
             val saved = callbacks.scrollback.first() as PackedCells
             assertTrue(saved.text().startsWith(text))
@@ -66,8 +66,8 @@ class NativeBoundaryTest {
     @Test
     fun packedRowsPreserveEveryAttributeWithoutRetainingScratch() {
         val buffer = CellData.buffer()
-        buffer.putInt(0, 0x1F389).putInt(4, 0x301).putInt(24, 2)
-        buffer.putInt(28, 0x123456).putInt(32, 0x654321).putInt(36, 0x3FFFF)
+        buffer.putInt(0, 0x1F389).putInt(4, 0x301).putInt(CellData.WIDTH, 2)
+        buffer.putInt(CellData.FOREGROUND, 0x123456).putInt(CellData.BACKGROUND, 0x654321).putInt(CellData.FLAGS, 0x3FFFF)
         val cells = CellData.read(buffer, 2)
         buffer.putInt(0, 'X'.code)
         assertEquals("🎉\u0301", cells.text())
@@ -75,7 +75,7 @@ class NativeBoundaryTest {
         assertEquals("", cells.text(1, 1))
         cells.writeRecord(buffer, 0, 0)
         assertEquals(0x1F389, buffer.getInt(0))
-        assertEquals(0x3FFFF, buffer.getInt(36))
+        assertEquals(0x3FFFF, buffer.getInt(CellData.FLAGS))
     }
 
     private open class Callbacks : TerminalCallbacks {
