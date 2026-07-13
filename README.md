@@ -4,6 +4,19 @@ This is the ConnectBot Terminal, a Jetpack Compose component that displays a
 terminal emulator. It uses libvterm via JNI to provide accurate terminal
 emulation.
 
+## Documentation
+
+The latest public API documentation is available at
+[termlib.connectbot.org](https://termlib.connectbot.org/).
+
+Generate the documentation locally with:
+
+```shell
+./gradlew :lib:dokkaGeneratePublicationHtml --no-configuration-cache
+```
+
+The generated site is written to `lib/build/dokka/html`.
+
 ## Features
 
 ### Current 

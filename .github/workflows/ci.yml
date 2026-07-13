@@ -14,8 +14,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   build:
@@ -130,8 +128,15 @@ jobs:
   docs:
     name: Publish docs to GitHub Pages
     needs: build
-    if: ${{ (github.event_name == 'push') && ((github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/')) }}
+    if: ${{ (github.event_name == 'push') && (github.repository == 'connectbot/termlib') && (github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -165,43 +170,15 @@ jobs:
           packages: 'cmdline-tools;latest tools platform-tools'
 
       - name: Build documents
-        run: ./gradlew :lib:dokkaGeneratePublicationHtml :lib:dokkaGenerateMarkdown --no-configuration-cache
-
-      - name: Determine subdirectory name
-        id: subdir
-        run: |
-          echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-
-      - name: Download existing GitHub Pages content
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: gh-pages
-          path: gh-pages
-        continue-on-error: true
+        run: ./gradlew :lib:dokkaGeneratePublicationHtml --no-configuration-cache
 
       - name: Setup Pages
-        id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-
-      - name: Prepare docs for deployment
-        run: |
-          mkdir -p gh-pages-deploy
-          if [ -d "gh-pages" ]; then
-            cp -r gh-pages/* gh-pages-deploy/ 2>/dev/null || true
-          fi
-          SUBDIR="${{ steps.subdir.outputs.name }}"
-          rm -rf "gh-pages-deploy/${SUBDIR}"
-          mkdir -p "gh-pages-deploy/${SUBDIR}"
-          cp -r ./lib/build/dokka/markdown/* "gh-pages-deploy/${SUBDIR}/"
-          cp -r ./lib/build/dokka/html/* "gh-pages-deploy/${SUBDIR}/"
-          .github/scripts/generate-version-sitemap.sh gh-pages-deploy "${SUBDIR}" "${{ steps.pages.outputs.base_url }}"
-          .github/scripts/generate-sitemap-index.sh gh-pages-deploy "${{ steps.pages.outputs.base_url }}"
-          .github/scripts/generate-index.sh gh-pages-deploy "${{ steps.pages.outputs.base_url }}"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: gh-pages-deploy
+          path: lib/build/dokka/html
 
       - name: Deploy to GitHub Pages
         id: deployment

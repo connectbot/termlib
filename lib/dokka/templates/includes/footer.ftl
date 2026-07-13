@@ -9,13 +9,6 @@
                         Dokka
                     </a>
                     <div>${footerMessage}</div>
-                    <div>
-                        <a class="footer--link" id="markdown-link" href="index.md">View as Markdown</a>
-                        <script>
-                            document.getElementById("markdown-link").href =
-                                location.pathname.split("/").pop().replace(/\.html$/, ".md") || "index.md";
-                        </script>
-                    </div>
                 </div>
             </div>
         </div>
