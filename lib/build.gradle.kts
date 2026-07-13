@@ -1,5 +1,6 @@
 import com.android.build.api.artifact.SingleArtifact
 import com.vanniktech.maven.publish.DeploymentValidation
+import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
 import org.jetbrains.dokka.gradle.formats.DokkaFormatPlugin
 import org.jetbrains.dokka.gradle.internal.InternalDokkaGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -230,10 +231,12 @@ dokka {
     moduleName.set("ConnectBot Terminal")
 
     dokkaSourceSets.configureEach {
+        includes.from("README.md")
+        documentedVisibilities.set(setOf(VisibilityModifier.Public))
+
         sourceLink {
-            includes.from("README.md")
-            localDirectory.set(file("./"))
-            remoteUrl.set(uri("$gitHubUrl/blob/main"))
+            localDirectory.set(file("src/main/java"))
+            remoteUrl.set(uri("$gitHubUrl/blob/main/lib/src/main/java"))
             remoteLineSuffix.set("#L")
         }
     }
