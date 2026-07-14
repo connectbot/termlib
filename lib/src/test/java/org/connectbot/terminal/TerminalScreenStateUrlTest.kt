@@ -249,6 +249,54 @@ class TerminalScreenStateUrlTest {
         assertEquals("connectbot.org/help", state.getHyperlinkUrlAt(0, 10, autoDetectUrls = true))
     }
 
+    /**
+     * The bare-domain branch had no trailing boundary, so it
+     * matched a *prefix* of an ordinary word (`nginx.conf` → `nginx.co`,
+     * `Thread.run(` → `java.lang.Thread.ru`), and its TLD list contained
+     * labels that are far commoner as file extensions than as domains
+     * (`Makefile.in`, `main.cc`). Those cells were underlined and a single
+     * tap launched a browser.
+     */
+    @Test
+    fun filenamesAndDottedIdentifiersAreNotDetectedAsUrls() {
+        val notUrls = listOf(
+            "vi /etc/nginx/nginx.conf", // .co inside .conf
+            "vi /etc/php/8.2/php.ini", // .in inside .ini
+            "cp app.config web.config /srv", // .co inside .config
+            "ls Makefile.in config.h.in", // .in as a real file extension
+            "grep -rn foo src/main.cc", // .cc as a real file extension
+            "ping db.internal", // .in inside .internal
+            "  at java.lang.Thread.run(Thread.java:840)", // .ru inside .run
+            "import scipy.io.wavfile", // .io mid-identifier
+            "sh.haven.app.agent.McpTools", // .app mid-identifier
+        )
+        for (text in notUrls) {
+            val state = screenState(80, text)
+            for (col in text.indices) {
+                assertNull(
+                    "\"$text\" col $col should not be a link",
+                    state.getHyperlinkUrlAt(0, col, autoDetectUrls = true),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun realBareDomainsStillDetectedAfterFilenameGuard() {
+        assertEquals(
+            "google.com",
+            screenState(80, "PING google.com (142.250.187.238) 56 bytes").getHyperlinkUrlAt(0, 6, autoDetectUrls = true),
+        )
+        assertEquals(
+            "example.co.uk",
+            screenState(80, "visit example.co.uk.").getHyperlinkUrlAt(0, 7, autoDetectUrls = true),
+        )
+        assertEquals(
+            "example.com:8080/x",
+            screenState(80, "at example.com:8080/x ok").getHyperlinkUrlAt(0, 4, autoDetectUrls = true),
+        )
+    }
+
     @Test
     fun ipPortUrlIsDetectedInUI() {
         val state = screenState(80, "Connecting to 192.168.1.1:8080/path/to/resource...")
