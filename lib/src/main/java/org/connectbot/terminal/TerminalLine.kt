@@ -167,9 +167,17 @@ internal data class TerminalLine(
         internal val URL_REGEX = Regex(
             // Scheme URLs: http(s)://... or ftp://...
             """(?:https?://|ftp://)[^\s<>"{}|\\^`\[\]]+""" +
-                // Bare domains with common TLDs, optional :port and /path
+                // Bare domains with common TLDs, optional :port and /path.
+                // `in`, `cc` and `app` are deliberately absent: as file extensions
+                // and package suffixes (`Makefile.in`, `main.cc`, `sh.haven.app`)
+                // they turn up in terminal output far more often than as domains.
                 """|(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+""" +
-                """(?:com|org|net|edu|gov|io|dev|app|co|uk|de|fr|jp|ru|br|in|au|us|info|biz|me|tv|cc)""" +
+                """(?:com|org|net|edu|gov|io|dev|co|uk|de|fr|jp|ru|br|au|us|info|biz|me|tv)""" +
+                // The TLD has to end the token: no trailing letter/digit/hyphen (else
+                // `nginx.conf` matches `nginx.co`) and no further dotted segment (else
+                // `scipy.io.wavfile` matches `scipy.io`). A trailing `.` with nothing
+                // word-like after it is fine — trimDetectedUrl drops it.
+                """(?![a-zA-Z0-9-]|\.[a-zA-Z0-9])""" +
                 """(?::\d{1,5})?""" +
                 """(?:/[^\s<>"{}|\\^`\[\]]*)?""" +
                 // IP:port (e.g. 192.168.1.1:8080) — require port to avoid matching version numbers
