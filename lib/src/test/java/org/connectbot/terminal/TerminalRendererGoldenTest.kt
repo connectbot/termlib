@@ -92,9 +92,9 @@ class TerminalRendererGoldenTest {
         append("\u001B[48;2;36;54;90m\u001B[38;2;255;210;90mRGB fg/bg sample\u001B[0m\r\n")
         append("\u001B]8;;https://example.com\u0007OSC8 hyperlink\u001B]8;;\u0007 plain\r\n")
         append("Box: \u250c\u2500\u252c\u2500\u2510 \u2502 \u2514\u2500\u2534\u2500\u2518\r\n")
-        append("Emoji: ⚠ ⚠︎ ⚠️ TEST 🎉 👍🏽\r\n")
-        append("Joined: 🏳️‍🌈 👨‍👩‍👧‍👦 👩🏽‍❤️‍💋‍👨🏻\r\n")
-        append("Flags: 🇺🇸 🇯🇵 Keycaps: 1️⃣ 2️⃣\r\n")
+        append("Emoji: ⚠⚠︎⚠️🎉👍🏽\r\n")
+        append("Joined:🏳️‍🌈👨‍👩‍👧‍👦👩🏽‍❤️‍💋‍👨🏻\r\n")
+        append("Flags: 🇺🇸🇯🇵 Keycaps: 1️⃣ 2️⃣\r\n")
         append("\u001B[3;44mfff WWW\u001B[41m   \u001B[0m italic overhang\u001B[H")
     }
 
