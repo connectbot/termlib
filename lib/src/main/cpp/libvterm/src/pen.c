@@ -169,6 +169,7 @@ INTERNAL void vterm_state_newpen(VTermState *state)
 
 INTERNAL void vterm_state_resetpen(VTermState *state)
 {
+  vterm_color_rgb(&state->pen.underline_color, 0, 0, 0);
   state->pen.bold = 0;      setpenattr_bool(state, VTERM_ATTR_BOLD, 0);
   state->pen.underline = 0; setpenattr_int (state, VTERM_ATTR_UNDERLINE, 0);
   state->pen.italic = 0;    setpenattr_bool(state, VTERM_ATTR_ITALIC, 0);
@@ -425,6 +426,17 @@ INTERNAL void vterm_state_setpen(VTermState *state, const long args[], int argco
         return;
       argi += 1 + lookup_colour(state, CSI_ARG(args[argi+1]), args+argi+2, argcount-argi-2, &state->pen.bg);
       setpenattr_col(state, VTERM_ATTR_BACKGROUND, state->pen.bg);
+      break;
+
+    case 58: // Underline colour (also used by Kitty Unicode placements)
+      if(argcount - argi < 2)
+        return;
+      argi += 1 + lookup_colour(state, CSI_ARG(args[argi+1]), args+argi+2,
+          argcount-argi-2, &state->pen.underline_color);
+      break;
+
+    case 59:
+      vterm_color_rgb(&state->pen.underline_color, 0, 0, 0);
       break;
 
     case 49: // Default background

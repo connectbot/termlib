@@ -155,6 +155,8 @@ size_t vterm_input_write(VTerm *vt, const char *bytes, size_t len)
       continue;
     }
     if(c == 0x18 || c == 0x1a) { // CAN, SUB
+      if(vt->parser.callbacks && vt->parser.callbacks->cancel)
+        vt->parser.callbacks->cancel(vt->parser.cbdata);
       vt->parser.in_esc = false;
       ENTER_NORMAL_STATE();
       if(vt->parser.emit_nul)
@@ -200,6 +202,8 @@ size_t vterm_input_write(VTerm *vt, const char *bytes, size_t len)
         vt->parser.in_esc = false;
       }
       else {
+        if(IS_STRING_STATE() && vt->parser.callbacks && vt->parser.callbacks->cancel)
+          vt->parser.callbacks->cancel(vt->parser.cbdata);
         string_start = NULL;
         vt->parser.state = NORMAL;
       }

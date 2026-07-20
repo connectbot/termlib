@@ -38,6 +38,7 @@ typedef struct {
 
 struct VTermPen
 {
+  VTermColor underline_color;
   VTermColor fg;
   VTermColor bg;
   unsigned int bold:1;

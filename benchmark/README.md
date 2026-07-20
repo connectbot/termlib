@@ -30,3 +30,11 @@ The capture is not packaged into the library. The ART replay is skipped when the
 assets are absent. ART allocations are process-wide runtime counters; host
 allocations are per-thread counters, so compare revisions within each runtime.
 Run benchmarks without another build or benchmark competing for CPU.
+
+To measure Kitty RGBA stream ingestion, retained encoded bytes, and first-frame
+decode cost, run:
+
+```sh
+TERMLIB_BENCHMARK=1 ./gradlew :lib:testDebugUnitTest \
+  --tests '*InlineImageBenchmarkTest' --no-configuration-cache --rerun-tasks
+```

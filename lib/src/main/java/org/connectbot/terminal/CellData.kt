@@ -12,6 +12,7 @@ import java.nio.ByteOrder
 
 /** Explicit native-endian wire format: 16 code points, width, RGB colors, packed flags. */
 internal object CellData {
+    const val DEFAULT_BACKGROUND = 1 shl 18
     const val CODE_POINTS = 16
     const val WIDTH = CODE_POINTS * 4
     const val FOREGROUND = WIDTH + 4

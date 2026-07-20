@@ -40,6 +40,7 @@ internal data class TerminalLine(
      * multiple lines should be copied as a single line without embedded newlines.
      */
     val softWrapped: Boolean = false,
+    val images: List<ImageSlice> = emptyList(),
 ) {
     constructor(
         row: Int,

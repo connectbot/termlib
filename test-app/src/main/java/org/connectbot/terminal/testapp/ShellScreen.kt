@@ -123,6 +123,7 @@ fun ShellScreen() {
     var customCols by remember { mutableStateOf(80) }
     var showSizeDialog by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
+    var inlineImagesEnabled by remember { mutableStateOf(true) }
 
     // Color schemes
     data class ColorScheme(
@@ -377,6 +378,19 @@ fun ShellScreen() {
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
+                    DropdownMenuItem(
+                        text = { Text("Inline images") },
+                        trailingIcon = {
+                            Switch(checked = inlineImagesEnabled, onCheckedChange = { enabled ->
+                                inlineImagesEnabled = enabled
+                                sessions.forEach { it.emulator.setInlineImagesEnabled(enabled) }
+                            })
+                        },
+                        onClick = {
+                            inlineImagesEnabled = !inlineImagesEnabled
+                            sessions.forEach { it.emulator.setInlineImagesEnabled(inlineImagesEnabled) }
+                        },
+                    )
                     // Size configuration
                     DropdownMenuItem(
                         text = {

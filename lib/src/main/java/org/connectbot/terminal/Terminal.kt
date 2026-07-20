@@ -569,6 +569,28 @@ internal fun TerminalWithAccessibility(
     val baseCharBaseline = remember(textPaint) {
         ceil(-textPaint.fontMetrics.ascent)
     }
+    LaunchedEffect(terminalEmulator, baseCharWidth, baseCharHeight) {
+        terminalEmulator.setCellPixelSize(ceil(baseCharWidth).toInt().coerceAtLeast(1), baseCharHeight.toInt().coerceAtLeast(1))
+    }
+    LaunchedEffect(terminalEmulator, screenState.scrollbackPosition, screenState.snapshot.sequenceNumber) {
+        val store = terminalEmulator.imageStore
+        store.viewportTop = -screenState.scrollbackPosition
+        store.displayedIds = (0 until screenState.snapshot.rows).flatMap { screenState.getVisibleLine(it).images }.map { it.asset.id }.toSet()
+        if (store.assets.isEmpty()) return@LaunchedEffect
+        while (true) {
+            store.advanceAnimations(android.os.SystemClock.uptimeMillis())
+            delay(16)
+        }
+    }
+    DisposableEffect(terminalEmulator) {
+        onDispose {
+            val store = terminalEmulator.imageStore
+            synchronized(store) {
+                store.displayedIds = emptySet()
+                store.assets.values.forEach { it.clearDecoded() }
+            }
+        }
+    }
     val underlinePaint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
@@ -1680,10 +1702,16 @@ internal fun DrawScope.drawLine(
     val y = row * charHeight
     val cells = line.cells
     if (backgroundsOnly) {
+        val behindBackground = line.images.filter { it.z < -1_073_741_824 }
+        if (behindBackground.isNotEmpty()) {
+            drawRect(defaultBg, Offset(0f, y), Size(cells.size * charWidth, charHeight))
+            behindBackground.forEach { it.draw(drawContext.canvas.nativeCanvas, row, charWidth, charHeight) }
+        }
         // Coalesce adjacent backgrounds so a plain row needs a single rectangle.
         var runColor = Color.Unspecified
         var runStart = 0f
         var runEnd = 0f
+        var runVisible = true
         for (col in 0 until cells.size) {
             val width = cells.width(col)
             if (width == 0) continue
@@ -1698,17 +1726,20 @@ internal fun DrawScope.drawLine(
                 cells.background(col)
             }
             val x = col * charWidth
-            if (color != runColor) {
-                if (runEnd > runStart) drawRect(runColor, Offset(runStart, y), Size(runEnd - runStart, charHeight))
+            val visible = behindBackground.isEmpty() || selected || cells.flags(col) and 32 != 0 || cells.flags(col) and CellData.DEFAULT_BACKGROUND == 0
+            if (color != runColor || visible != runVisible) {
+                if (runEnd > runStart && runVisible) drawRect(runColor, Offset(runStart, y), Size(runEnd - runStart, charHeight))
                 runColor = color
                 runStart = x
+                runVisible = visible
             }
             runEnd = (col + width) * charWidth
         }
-        if (runEnd > runStart) drawRect(runColor, Offset(runStart, y), Size(runEnd - runStart, charHeight))
+        if (runEnd > runStart && runVisible) drawRect(runColor, Offset(runStart, y), Size(runEnd - runStart, charHeight))
         return
     }
     val canvas = drawContext.canvas.nativeCanvas
+    line.images.filter { it.z in -1_073_741_824 until 0 }.forEach { it.draw(canvas, row, charWidth, charHeight) }
     textPaint.isUnderlineText = false
     textPaint.isStrikeThruText = false
     var paintedColor = Color.Unspecified
@@ -1732,7 +1763,7 @@ internal fun DrawScope.drawLine(
             cells.foreground(col)
         }
         val hyperlink = hyperlinkMask?.getOrNull(col) ?: (line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
-        if (!cells.blank(col)) {
+        if (!cells.blank(col) && !cells.placeholder(col)) {
             if (fg != paintedColor) {
                 textPaint.color = fg.toArgb()
                 paintedColor = fg
@@ -1760,6 +1791,7 @@ internal fun DrawScope.drawLine(
             drawCurlyUnderline(x, y + charBaseline, cellWidth, charWidth, fg, underlinePaint)
         }
     }
+    line.images.filter { it.z >= 0 }.forEach { it.draw(canvas, row, charWidth, charHeight) }
 }
 
 /**

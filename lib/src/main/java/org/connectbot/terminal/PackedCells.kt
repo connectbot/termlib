@@ -15,9 +15,23 @@ internal class PackedCells private constructor(
     private val offsets: IntArray,
     private val colors: IntArray,
     private val attributes: IntArray,
+    private val placeholderIds: Map<Int, Int> = emptyMap(),
 ) : AbstractList<TerminalLine.Cell>() {
     override val size: Int get() = attributes.size
     fun width(col: Int): Int = attributes[col] ushr 24
+    fun placeholder(col: Int): Boolean = offsets[col + 1] - offsets[col] >= 2 && Character.codePointAt(text, offsets[col], offsets[col + 1]) == 0x10EEEE
+    fun placeholderPlacement(col: Int): Long = (placeholderIds[col] ?: 0).toLong() and 0xFFFFFF
+    fun placeholderImage(col: Int): Long = colors[col * 2].toLong() and 0xFFFFFF
+    fun placeholderMarks(col: Int): List<Int> {
+        var index = offsets[col] + 2
+        return buildList {
+            while (index < offsets[col + 1]) {
+                val cp = Character.codePointAt(text, index, offsets[col + 1])
+                add(cp)
+                index += Character.charCount(cp)
+            }
+        }
+    }
     fun flags(col: Int): Int = attributes[col] and 0xFFFFFF
     fun foreground(col: Int): Color = Color(colors[col * 2])
     fun background(col: Int): Color = Color(colors[col * 2 + 1])
@@ -27,10 +41,15 @@ internal class PackedCells private constructor(
         require(start in 0..end && end <= size)
         if (start == end) return ""
         val first = if (start < size && width(start) == 0 && start > 0) start - 1 else start
-        return String(text, offsets[first], offsets[end] - offsets[first])
+        if ((first until end).none(::placeholder)) return String(text, offsets[first], offsets[end] - offsets[first])
+        return buildString {
+            for (col in first until end) {
+                if (placeholder(col)) append(' ') else append(text, offsets[col], offsets[col + 1] - offsets[col])
+            }
+        }
     }
 
-    fun columnText(): String = String(CharArray(size) { charAt(it) })
+    fun columnText(): String = String(CharArray(size) { if (placeholder(it)) ' ' else charAt(it) })
 
     // One lazily allocated measurement array per retained row, replaced on font changes.
     private var measuredTypeface: android.graphics.Typeface? = null
@@ -98,6 +117,7 @@ internal class PackedCells private constructor(
             if (width(col) != buffer.getInt(base + CellData.WIDTH) || flags(col) != buffer.getInt(base + CellData.FLAGS)) return false
             // Continuation cells carry no independently rendered content or attributes.
             if (width(col) == 0) continue
+            if (placeholder(col) && placeholderIds[col] != buffer.getInt(base + 14 * 4)) return false
             if (colors[col * 2] != buffer.getInt(base + CellData.FOREGROUND) or (0xFF shl 24) ||
                 colors[col * 2 + 1] != buffer.getInt(base + CellData.BACKGROUND) or (0xFF shl 24)
             ) {
@@ -135,6 +155,7 @@ internal class PackedCells private constructor(
         buffer.putInt(offset + CellData.FOREGROUND, colors[col * 2])
         buffer.putInt(offset + CellData.BACKGROUND, colors[col * 2 + 1])
         buffer.putInt(offset + CellData.FLAGS, flags(col))
+        if (placeholder(col)) buffer.putInt(offset + 14 * 4, placeholderIds[col] ?: 0)
     }
 
     class Builder(private val columns: Int) {
@@ -144,6 +165,7 @@ internal class PackedCells private constructor(
         private val colors = IntArray(columns * 2)
         private val attributes = IntArray(columns)
         private var column = 0
+        private val placeholderIds = mutableMapOf<Int, Int>()
 
         private fun append(char: Char) {
             if (used == text.size) text = text.copyOf(maxOf(16, used * 2))
@@ -152,6 +174,7 @@ internal class PackedCells private constructor(
 
         fun copy(source: PackedCells, start: Int, end: Int) {
             for (col in start until end) {
+                source.placeholderIds[col]?.let { placeholderIds[column] = it }
                 offsets[column] = used
                 for (i in source.offsets[col] until source.offsets[col + 1]) append(source.text[i])
                 colors[column * 2] = source.colors[col * 2]
@@ -166,6 +189,7 @@ internal class PackedCells private constructor(
             for (i in 0 until count) {
                 val base = offset + i * CellData.BYTES
                 val width = buffer.getInt(base + CellData.WIDTH)
+                if (buffer.getInt(base) == 0x10EEEE) placeholderIds[column] = buffer.getInt(base + 14 * 4)
                 require(width in 0..2 && width <= columns - column)
                 offsets[column] = used
                 if (width != 0) {
@@ -196,7 +220,7 @@ internal class PackedCells private constructor(
 
         fun build(): PackedCells {
             check(column == columns)
-            return PackedCells(if (used == text.size) text else text.copyOf(used), offsets, colors, attributes)
+            return PackedCells(if (used == text.size) text else text.copyOf(used), offsets, colors, attributes, placeholderIds.toMap())
         }
     }
 

@@ -18,10 +18,10 @@ emulation.
 * Zoomable
 * Dynamically resizable
 * Multiple font support
+* Inline images using iTerm2 `imgcat` and Kitty's graphics protocol
 
 ### Planned
 
-* Inline display of images (compatible with [iTerm2 format](https://iterm2.com/documentation-images.html) via `imgcat`)
 * Support for [iTerm2 escape codes](https://iterm2.com/documentation-escape-codes.html)
 * Forced size terminal available (size in pixels returned via callback)
 * Pasting support

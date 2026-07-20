@@ -199,6 +199,13 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   }
   if(i < VTERM_MAX_CHARS_PER_CELL)
     cell->chars[i] = 0;
+  if(info->chars[0] == 0x10eeee) {
+    cell->pen.fg = screen->state->pen.fg;
+    const VTermColor *color = &screen->state->pen.underline_color;
+    cell->chars[4] = 0;
+    cell->chars[14] = VTERM_COLOR_IS_INDEXED(color) ? color->indexed.idx :
+      (color->rgb.red << 16) | (color->rgb.green << 8) | color->rgb.blue;
+  }
 
   for(int col = 1; col < info->width; col++) {
     ScreenCell *continuation = getcell(screen, pos.row, pos.col + col);
@@ -216,6 +223,9 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   cell->pen.protected_cell = info->protected_cell;
   cell->pen.dwl            = info->dwl;
   cell->pen.dhl            = info->dhl;
+
+  if(screen->callbacks && screen->callbacks->edit)
+    screen->callbacks->edit(rect, screen->cbdata);
 
   damagerect(screen, rect);
 
@@ -305,11 +315,21 @@ static int erase_internal(VTermRect rect, int selective, void *user)
       damagerect(screen, damaged);
     }
 
+    if(!selective && screen->callbacks && screen->callbacks->edit) {
+      VTermRect changed = { row, row + 1, start, end };
+      screen->callbacks->edit(changed, screen->cbdata);
+    }
+
     for(int col = start; col < end; col++) {
       ScreenCell *cell = getcell(screen, row, col);
 
       if(selective && cell->pen.protected_cell)
         continue;
+
+      if(selective && screen->callbacks && screen->callbacks->edit) {
+        VTermRect changed = { row, row + 1, col, col + 1 };
+        screen->callbacks->edit(changed, screen->cbdata);
+      }
 
       cell->chars[0] = 0;
       cell->pen = (ScreenPen){
@@ -336,6 +356,11 @@ static int erase_user(VTermRect rect, int selective, void *user)
 
 static int erase(VTermRect rect, int selective, void *user)
 {
+  VTermScreen *screen = user;
+  if(!selective && rect.start_row == 0 && rect.start_col == 0 &&
+      rect.end_row == screen->rows && rect.end_col == screen->cols &&
+      screen->callbacks && screen->callbacks->clear_images)
+    screen->callbacks->clear_images(screen->cbdata);
   erase_internal(rect, selective, user);
   return erase_user(rect, 0, user);
 }
@@ -343,6 +368,9 @@ static int erase(VTermRect rect, int selective, void *user)
 static int scrollrect(VTermRect rect, int downward, int rightward, void *user)
 {
   VTermScreen *screen = user;
+
+  if(screen->callbacks && screen->callbacks->scroll)
+    screen->callbacks->scroll(rect, downward, rightward, screen->cbdata);
 
   if(screen->damage_merge != VTERM_DAMAGE_SCROLL) {
     vterm_scroll_rect(rect, downward, rightward,
@@ -735,6 +763,7 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
 
         dst->pen.fg = src->fg;
         dst->pen.bg = src->bg;
+        if(src->chars[0] == 0x10eeee) dst->chars[14] = src->chars[14];
 
         if(src->width == 2 && pos.col < (new_cols-1))
           (dst + 1)->chars[0] = (uint32_t) -1;
@@ -761,6 +790,9 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
       new_lineinfo[new_row] = (VTermLineInfo){ 0 };
     }
   }
+
+  if(screen->callbacks && screen->callbacks->image_resize)
+    screen->callbacks->image_resize(bufidx, new_cursor.row - old_cursor.row, new_rows, new_cols, screen->cbdata);
 
   vterm_allocator_free(screen->vt, old_buffer);
   screen->buffers[bufidx] = new_buffer;
@@ -1027,6 +1059,7 @@ int vterm_screen_get_cell(const VTermScreen *screen, VTermPos pos, VTermScreenCe
 
   cell->fg = intcell->pen.fg;
   cell->bg = intcell->pen.bg;
+  if(intcell->chars[0] == 0x10eeee) cell->chars[14] = intcell->chars[14];
 
   if(pos.col < (screen->cols - 1) &&
      getcell(screen, pos.row, pos.col + 1)->chars[0] == (uint32_t)-1)

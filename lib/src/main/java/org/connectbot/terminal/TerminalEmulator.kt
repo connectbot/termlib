@@ -74,6 +74,15 @@ sealed class UrlScanScope {
  * the terminal emulation state.
  */
 sealed interface TerminalEmulator {
+    /** Whether incoming inline image commands are accepted. Enabled by default. */
+    val inlineImagesEnabled: Boolean
+
+    /** Disabling drops all retained images and in-progress uploads. */
+    fun setInlineImagesEnabled(enabled: Boolean)
+
+    /** Physical cell dimensions used by image placement; defaults to 8 by 16 pixels. */
+    fun setCellPixelSize(width: Int, height: Int)
+
     /**
      * Write data to the terminal (from PTY/transport).
      */
@@ -220,6 +229,8 @@ class TerminalEmulatorFactory {
          * @param boldAsBright Whether bold text using low-intensity ANSI colors (0–7) promotes to
          *                     the corresponding bright palette color (8–15), matching xterm's
          *                     default boldColors behavior. Defaults to true.
+         * @param inlineImagesEnabled Accept iTerm2 and Kitty inline images. Defaults to true.
+         * @param inlineImageLimits RAM and metadata limits for inline image processing.
          */
         fun create(
             looper: Looper = Looper.getMainLooper(),
@@ -234,6 +245,8 @@ class TerminalEmulatorFactory {
             onProgressChange: ((ProgressState, Int) -> Unit)? = null,
             autoDetectUrls: Boolean = false,
             boldAsBright: Boolean = true,
+            inlineImagesEnabled: Boolean = true,
+            inlineImageLimits: InlineImageLimits = InlineImageLimits(),
         ): TerminalEmulator = TerminalEmulatorImpl(
             looper = looper,
             initialRows = initialRows,
@@ -247,6 +260,8 @@ class TerminalEmulatorFactory {
             onProgressChange = onProgressChange,
             autoDetectUrls = autoDetectUrls,
             boldAsBright = boldAsBright,
+            inlineImagesEnabled = inlineImagesEnabled,
+            inlineImageLimits = inlineImageLimits,
         )
     }
 }
@@ -294,11 +309,67 @@ internal class TerminalEmulatorImpl(
     private val onProgressChange: ((ProgressState, Int) -> Unit)? = null,
     override val autoDetectUrls: Boolean = false,
     override val boldAsBright: Boolean = true,
+    inlineImagesEnabled: Boolean = true,
+    inlineImageLimits: InlineImageLimits = InlineImageLimits(),
 ) : TerminalEmulator,
     TerminalCallbacks {
 
     // Handler for escaping native mutex
     private val handler = Handler(looper)
+
+    internal val imageStore = InlineImageStore(inlineImageLimits, handler).apply {
+        rows = initialRows
+        cols = initialCols
+    }
+    private val imageProtocol = InlineImageProtocol(imageStore, { onKeyboardInput(it) }, { payload, row, col -> onOscSequence(1337, payload, row, col) }).apply {
+        enabled = inlineImagesEnabled
+    }
+    override val inlineImagesEnabled: Boolean get() = imageProtocol.enabled
+
+    override fun setInlineImagesEnabled(enabled: Boolean): Unit = synchronized(damageLock) {
+        imageProtocol.enabled = enabled
+        if (!enabled) {
+            imageProtocol.reset()
+            imageStore.clear()
+        }
+        propertyChanged = true
+        requestProcessPendingUpdatesLocked()
+    }
+
+    override fun setCellPixelSize(width: Int, height: Int): Unit = synchronized(damageLock) {
+        require(width > 0 && height > 0)
+        imageStore.cellWidth = width
+        imageStore.cellHeight = height
+    }
+
+    override fun onImageFragment(kitty: Boolean, data: ByteArray, initial: Boolean, final: Boolean, row: Int, col: Int): Long = synchronized(damageLock) {
+        val result = synchronized(imageStore) { imageProtocol.accept(kitty, data, initial, final, row, col) }
+        propertyChanged = true
+        requestProcessPendingUpdatesLocked()
+        result
+    }
+
+    override fun onImageEdit(kind: Int, top: Int, bottom: Int, left: Int, right: Int, downward: Int, rightward: Int) {
+        synchronized(damageLock) {
+            when (kind) {
+                0 -> imageStore.edit(TermRect(top, bottom, left, right))
+                1 -> imageStore.scroll(TermRect(top, bottom, left, right), downward, rightward)
+                2 -> imageStore.clearScreen()
+                3 -> imageStore.resizeImages(top != 0, downward, bottom, left)
+                4 -> imageProtocol.reset()
+            }
+        }
+    }
+
+    override fun onImageQuery(query: Int) {
+        val response = when (query) {
+            14 -> "\u001b[4;${imageStore.rows.toLong() * imageStore.cellHeight};${imageStore.cols.toLong() * imageStore.cellWidth}t"
+            16 -> "\u001b[6;${imageStore.cellHeight};${imageStore.cellWidth}t"
+            18 -> "\u001b[8;${imageStore.rows};${imageStore.cols}t"
+            else -> return
+        }
+        onKeyboardInput(response.toByteArray(Charsets.US_ASCII))
+    }
 
     // Default colors (can be updated via setDefaultColors)
     private var currentDefaultForeground: Color = defaultForeground
@@ -408,6 +479,8 @@ internal class TerminalEmulatorImpl(
      */
     override fun resize(newRows: Int, newCols: Int): Unit = synchronized(damageLock) {
         require(newRows > 0 && newCols > 0) { "Terminal dimensions must be positive" }
+        imageStore.rows = newRows
+        imageStore.cols = newCols
         if (newRows == rows && newCols == cols) return@synchronized
         terminalNative.resize(newRows, newCols)
         rows = newRows
@@ -598,6 +671,7 @@ internal class TerminalEmulatorImpl(
 
                         // Property 3 is VTERM_PROP_ALTSCREEN (from vterm.h line 256)
                         3 -> {
+                            imageStore.switchScreen(value.value)
                             isAltScreenActive = value.value
                             propertyChanged = true
                         }
@@ -707,6 +781,7 @@ internal class TerminalEmulatorImpl(
 
     override fun clearScrollback(): Int {
         synchronized(damageLock) {
+            imageStore.trimHistory(0)
             scrollback.clear()
             scrollbackDirty = true
             propertyChanged = true
@@ -1019,7 +1094,7 @@ internal class TerminalEmulatorImpl(
     /**
      * Build a complete snapshot of terminal state.
      */
-    private fun buildSnapshot(): TerminalSnapshot {
+    private fun buildSnapshot(): TerminalSnapshot = synchronized(damageLock) {
         // Read all mutable state under damageLock to ensure cross-thread visibility.
         // addSemanticSegment writes currentLines on the JNI callback thread; without
         // the lock here, the snapshot-building thread might see a stale reference.
@@ -1039,9 +1114,25 @@ internal class TerminalEmulatorImpl(
             scrollbackCopy = scrollbackSnapshot // Reuse cached immutable copy
         }
 
-        return TerminalSnapshot(
-            lines = lines,
-            scrollback = scrollbackCopy,
+        val hasImages = imageStore.assets.isNotEmpty()
+        if (hasImages) imageStore.preparePlaceholders(lines, scrollbackCopy)
+        TerminalSnapshot(
+            lines = if (!hasImages) {
+                lines
+            } else {
+                lines.mapIndexed { row, line ->
+                    val images = (imageStore.slices(row) + imageStore.placeholders(line.cells)).sortedWith(compareBy<ImageSlice> { it.z }.thenBy { it.asset.id })
+                    if (images.isEmpty()) line else line.copy(images = images)
+                }
+            },
+            scrollback = if (!hasImages) {
+                scrollbackCopy
+            } else {
+                scrollbackCopy.mapIndexed { row, line ->
+                    val images = imageStore.slices(row - scrollbackCopy.size, false) + imageStore.placeholders(line.cells)
+                    if (images.isEmpty()) line else line.copy(images = images)
+                }
+            },
             cursorRow = cursorRow,
             cursorCol = cursorCol,
             cursorVisible = cursorVisible,

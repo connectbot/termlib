@@ -117,6 +117,12 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
 
     mTextFragmentMethod = env->GetMethodID(callbacksClass, "onTextFragment", "(II[BZZII)I");
     if (env->ExceptionCheck()) return;
+    mImageFragmentMethod = env->GetMethodID(callbacksClass, "onImageFragment", "(Z[BZZII)J");
+    if (env->ExceptionCheck()) return;
+    mImageEditMethod = env->GetMethodID(callbacksClass, "onImageEdit", "(IIIIIII)V");
+    if (env->ExceptionCheck()) return;
+    mImageQueryMethod = env->GetMethodID(callbacksClass, "onImageQuery", "(I)V");
+    if (env->ExceptionCheck()) return;
     mCellBufferMethod = env->GetMethodID(callbacksClass, "cellBuffer", "()Ljava/nio/ByteBuffer;");
     if (env->ExceptionCheck()) return;
 
@@ -194,7 +200,11 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
         .resize = nullptr,  // We handle resize explicitly
         .sb_pushline = termSbPushline,
         .sb_popline = termSbPopline,
-        .sb_clear = termSbClear
+        .sb_clear = termSbClear,
+        .edit = termImageEdit,
+        .scroll = termImageScroll,
+        .clear_images = termImageClear,
+        .image_resize = termImageResize
     };
     vterm_screen_set_callbacks(mVts, &mScreenCallbacks, this);
 
@@ -202,11 +212,11 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     // no-synchronous-reentry rule as screen callbacks above.
     VTermState* state = vterm_obtain_state(mVt);
     VTermStateFallbacks fallbacks = {
-        .control = nullptr,
-        .csi = nullptr,
+        .control = termControlFallback,
+        .csi = termCsiFallback,
         .osc = termOscFallback,
         .dcs = nullptr,
-        .apc = nullptr,
+        .apc = termApcFallback,
         .pm = nullptr,
         .sos = nullptr
     };
@@ -420,10 +430,23 @@ void Terminal::packCell(const VTermScreenCell& cell, jint* out) {
     out[CELL_FG] = (r << 16) | (g << 8) | b;
     resolveColor(cell.bg, r, g, b);
     out[CELL_BG] = (r << 16) | (g << 8) | b;
+    if (cell.chars[0] == 0x10eeee) {
+        auto colorId = [](const VTermColor& color) -> jint {
+            if (VTERM_COLOR_IS_DEFAULT_FG(&color)) return 0;
+            return VTERM_COLOR_IS_INDEXED(&color) ? color.indexed.idx :
+                (color.rgb.red << 16) | (color.rgb.green << 8) | color.rgb.blue;
+        };
+        out[CELL_FG] = colorId(cell.fg);
+        // Placeholder text needs at most four codepoints; reserve a tail slot
+        // for the placement colour without widening ordinary cell records.
+        out[4] = 0;
+        out[14] = cell.chars[14];
+    }
     out[CELL_FLAGS] = cell.attrs.bold | (cell.attrs.underline << 1) | (cell.attrs.italic << 3)
         | (cell.attrs.blink << 4) | (cell.attrs.reverse << 5) | (cell.attrs.conceal << 6)
         | (cell.attrs.strike << 7) | (cell.attrs.font << 8) | (cell.attrs.dwl << 12)
         | (cell.attrs.dhl << 13) | (cell.attrs.small << 15) | (cell.attrs.baseline << 16);
+    if (VTERM_COLOR_IS_DEFAULT_BG(&cell.bg)) out[CELL_FLAGS] |= 1 << 18;
 }
 
 static void unpackCell(const jint* in, VTermScreenCell& cell) {
@@ -433,6 +456,7 @@ static void unpackCell(const jint* in, VTermScreenCell& cell) {
     vterm_color_rgb(&cell.fg, (in[CELL_FG] >> 16) & 255, (in[CELL_FG] >> 8) & 255, in[CELL_FG] & 255);
     vterm_color_rgb(&cell.bg, (in[CELL_BG] >> 16) & 255, (in[CELL_BG] >> 8) & 255, in[CELL_BG] & 255);
     const unsigned flags = static_cast<unsigned>(in[CELL_FLAGS]);
+    if (flags & (1 << 18)) cell.bg.type |= VTERM_COLOR_DEFAULT_BG;
     cell.attrs.bold = flags & 1;
     cell.attrs.underline = (flags >> 1) & 3;
     cell.attrs.italic = (flags >> 3) & 1;
@@ -557,11 +581,103 @@ void Terminal::termOutput(const char* s, size_t len, void* user) {
 // Handles fragmented OSC sequences by accumulating data across callbacks
 int Terminal::termOscFallback(int command, VTermStringFragment frag, void* user) {
     auto* term = static_cast<Terminal*>(user);
+    if (command == 1337) {
+        if (frag.initial) {
+            // Keep ordinary OSC 1337 traffic on the original fast path. A short
+            // first fragment remains ambiguous and is safely accumulated by the
+            // image parser.
+            static constexpr const char* prefixes[] = {
+                "File=", "MultipartFile=", "FilePart=", "FileEnd", "Capabilities"
+            };
+            term->mOsc1337Image = frag.len == 0;
+            for (const char* prefix : prefixes) {
+                if (term->mOsc1337Image) break;
+                const size_t prefixLen = std::strlen(prefix);
+                if (std::memcmp(frag.str, prefix, std::min(frag.len, prefixLen)) == 0) {
+                    term->mOsc1337Image = true;
+                    break;
+                }
+            }
+        }
+        if (term->mOsc1337Image && term->imageFragment(false, frag) >= 0) return 1;
+    }
     VTermPos cursor{};
     vterm_state_get_cursorpos(vterm_obtain_state(term->mVt), &cursor);
     if (frag.initial && command == 8) term->mOscCursorPos = cursor;
     if (command == 8) cursor = term->mOscCursorPos;
     return term->invokeTextFragment(0, command, frag, cursor.row, cursor.col);
+}
+
+jlong Terminal::imageFragment(bool kitty, VTermStringFragment frag) {
+    JNIEnv* env;
+    if (mJavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK || env->ExceptionCheck()) return 0;
+    VTermPos pos{};
+    vterm_state_get_cursorpos(vterm_obtain_state(mVt), &pos);
+    jlong result = 0;
+    size_t offset = 0;
+    do {
+        const jsize count = static_cast<jsize>(std::min(size_t(4096), frag.len - offset));
+        ScopedLocalRef<jbyteArray> bytes(env, env->NewByteArray(count));
+        if (!bytes.get()) return 0;
+        if (count) env->SetByteArrayRegion(bytes, 0, count, (const jbyte*)frag.str + offset);
+        if (env->ExceptionCheck()) return 0;
+        result = env->CallLongMethod(mCallbacks, mImageFragmentMethod, kitty, bytes.get(),
+            frag.initial && offset == 0, frag.final && offset + count == frag.len, pos.row, pos.col);
+        if (env->ExceptionCheck()) return 0;
+        offset += count;
+    } while (offset < frag.len);
+    if (result >= 0) mImageTracking = true;
+    if (result > 0) {
+        int rows = (result >> 32) & 0xffff;
+        int cols = (result >> 1) & 0xffff;
+        mReservingImage = true;
+        vterm_state_place_image(vterm_obtain_state(mVt), rows, cols, result & 1);
+        mReservingImage = false;
+    }
+    return result;
+}
+
+int Terminal::termApcFallback(VTermStringFragment frag, void* user) {
+    static_cast<Terminal*>(user)->imageFragment(true, frag);
+    return 1;
+}
+
+int Terminal::termControlFallback(unsigned char control, void* user) {
+    if (control != 0x18) return 0;
+    return static_cast<Terminal*>(user)->imageEdit(4, {});
+}
+
+int Terminal::termCsiFallback(const char* leader, const long args[], int argcount, const char* intermed, char command, void* user) {
+    if (command != 't' || (leader && *leader) || (intermed && *intermed) || argcount != 1 ||
+        (args[0] != 14 && args[0] != 16 && args[0] != 18)) return 0;
+    auto* term = static_cast<Terminal*>(user);
+    JNIEnv* env;
+    if (term->mJavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK || env->ExceptionCheck()) return 0;
+    env->CallVoidMethod(term->mCallbacks, term->mImageQueryMethod, static_cast<jint>(args[0]));
+    return 1;
+}
+
+int Terminal::termImageResize(int buffer, int delta, int rows, int cols, void* user) {
+    return static_cast<Terminal*>(user)->imageEdit(3, {buffer, rows, cols, 0}, delta, 0);
+}
+
+int Terminal::imageEdit(int kind, VTermRect rect, int downward, int rightward) {
+    if (!mImageTracking) return 1;
+    if (mReservingImage && kind != 1) return 1;
+    JNIEnv* env;
+    if (mJavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK || env->ExceptionCheck()) return 0;
+    env->CallVoidMethod(mCallbacks, mImageEditMethod, kind, rect.start_row, rect.end_row,
+        rect.start_col, rect.end_col, downward, rightward);
+    return 1;
+}
+int Terminal::termImageEdit(VTermRect rect, void* user) {
+    return static_cast<Terminal*>(user)->imageEdit(0, rect);
+}
+int Terminal::termImageScroll(VTermRect rect, int downward, int rightward, void* user) {
+    return static_cast<Terminal*>(user)->imageEdit(1, rect, downward, rightward);
+}
+int Terminal::termImageClear(void* user) {
+    return static_cast<Terminal*>(user)->imageEdit(2, {});
 }
 
 // libvterm has already decoded the OSC 52 base64 transport envelope.
