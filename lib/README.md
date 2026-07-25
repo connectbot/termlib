@@ -42,6 +42,11 @@ Terminal(
 ```
 PTY/SSH → TerminalEmulator.writeInput() → libvterm → Callbacks → TerminalEmulator → Terminal
 Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() → PTY/SSH
+Mouse    → TerminalEmulator.scrollWheel() → libvterm → onKeyboardInput() → PTY/SSH
 ```
+
+Mouse reports are only emitted once the running application asks for them with
+DECSET 1000/1002/1003; check `TerminalEmulator.mouseTracking` to know whether a
+gesture belongs to the application or to the terminal's own scrollback.
 
 **Important**: Callbacks must not call back into Terminal methods (causes deadlock). Defer work to avoid reentrancy.

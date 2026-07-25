@@ -57,6 +57,15 @@ class WheelScrollGestureTest {
         }
     }
 
+    private companion object {
+        /** Longer than WAIT_FOR_SECOND_TOUCH_MS, so a move counts as a scroll. */
+        const val GRACE_PERIOD_MS = 100L
+
+        const val DRAG_STEPS = 4
+        const val DRAG_STEP_MS = 16L
+        const val DRAG_STEP_PX = 100f
+    }
+
     /** The mouse-tracking sequence Claude Code's flicker-free renderer sends. */
     private val enableMouseTracking = "\u001B[?1000h\u001B[?1002h\u001B[?1003h\u001B[?1006h"
 
@@ -95,26 +104,30 @@ class WheelScrollGestureTest {
     /**
      * Drag downwards, which scrolls back towards earlier output.
      *
-     * Two moves, not one: the local scroll path anchors its offset at the moment
-     * the gesture is classified, so it only travels on moves after that point.
+     * Several moves, not one: the local scroll path anchors its offset at the
+     * moment the gesture is classified, so it only travels on moves after that
+     * point.
      */
-    private fun dragDown() {
+    private fun dragDown(sample: () -> Int = { 0 }): DragSamples {
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.onRoot().performTouchInput { down(0, center) }
         // Past the multi-touch grace period, so the move is taken as a scroll.
-        composeTestRule.mainClock.advanceTimeBy(100)
+        composeTestRule.onRoot().performTouchInput { advanceEventTime(GRACE_PERIOD_MS) }
+        composeTestRule.mainClock.advanceTimeBy(GRACE_PERIOD_MS)
 
-        composeTestRule.onRoot().performTouchInput {
-            moveTo(0, center + Offset(0f, 200f))
+        // Event time, not just the frame clock, has to advance across the moves:
+        // it is what the velocity tracker reads, and a fling needs real velocity.
+        repeat(DRAG_STEPS) { step ->
+            composeTestRule.onRoot().performTouchInput {
+                advanceEventTime(DRAG_STEP_MS)
+                moveTo(0, center + Offset(0f, DRAG_STEP_PX * (step + 1)))
+            }
+            composeTestRule.mainClock.advanceTimeBy(DRAG_STEP_MS)
+            composeTestRule.waitForIdle()
         }
-        composeTestRule.mainClock.advanceTimeBy(100)
-        composeTestRule.waitForIdle()
 
-        composeTestRule.onRoot().performTouchInput {
-            moveTo(0, center + Offset(0f, 400f))
-        }
-        composeTestRule.mainClock.advanceTimeBy(100)
-        composeTestRule.waitForIdle()
+        // Sampled before the finger lifts, so the fling cannot contribute.
+        val afterDrag = sample()
 
         composeTestRule.onRoot().performTouchInput { up(0) }
 
@@ -122,7 +135,21 @@ class WheelScrollGestureTest {
         composeTestRule.waitForIdle()
         composeTestRule.mainClock.advanceTimeBy(1000)
         composeTestRule.waitForIdle()
+
+        return DragSamples(afterDrag = afterDrag, afterFling = sample())
     }
+
+    /**
+     * A measurement taken at the end of the drag and again once the fling settles.
+     *
+     * The two are equal in practice here: injected touch input does not carry
+     * enough velocity through this harness for a decay animation to run, on
+     * either the wheel path or the local one. Sampling at the end of the drag is
+     * still what makes these tests specific — without it, reports produced only
+     * by a fling would be indistinguishable from reports produced by the drag.
+     * The fling's own conversion and bound are covered in WheelScrollerTest.
+     */
+    private data class DragSamples(val afterDrag: Int, val afterFling: Int)
 
     @Test
     fun testScrollGoesToApplicationWhenTrackingEnabled() {
@@ -134,11 +161,12 @@ class WheelScrollGestureTest {
         val initialPosition = controller.scrollbackPosition
         output.setLength(0)
 
-        dragDown()
+        val reports = dragDown { wheelReports() }
 
         assertTrue(
-            "Expected wheel reports, got: ${output.toString().replace("\u001B", "ESC")}",
-            wheelReports() > 0,
+            "Expected wheel reports from the drag itself, got: " +
+                output.toString().replace("\u001B", "ESC"),
+            reports.afterDrag > 0,
         )
         assertEquals(
             "Local scrollback must not move; the application owns the viewport",
@@ -172,9 +200,13 @@ class WheelScrollGestureTest {
         val initialPosition = controller.scrollbackPosition
         output.setLength(0)
 
-        dragDown()
+        val lines = dragDown { controller.scrollbackPosition }
 
         assertEquals("no mouse reports without tracking", 0, wheelReports())
+        assertTrue(
+            "the drag itself should scroll, not just the fling",
+            lines.afterDrag > initialPosition,
+        )
         assertTrue(
             "local scrollback should have moved (initial=$initialPosition, " +
                 "current=${controller.scrollbackPosition})",
