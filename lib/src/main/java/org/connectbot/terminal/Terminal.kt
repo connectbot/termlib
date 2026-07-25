@@ -1078,6 +1078,11 @@ internal fun TerminalWithAccessibility(
                         var panAccumulator = Offset.Zero
                         var initialScrollOffset = 0f
 
+                        // Set when the running application has taken over scrolling
+                        // via mouse tracking; null means scroll our own scrollback.
+                        var wheelScroller: WheelScroller? = null
+                        var wheelPanY = 0f
+
                         // 4. Main event loop
                         try {
                             while (true) {
@@ -1114,6 +1119,20 @@ internal fun TerminalWithAccessibility(
                                         isUserScrolling = true
                                         // Adjust initialScrollOffset so (initial + panAccumulator) matches current offset
                                         initialScrollOffset = scrollOffset.value - panAccumulator.y
+                                        // Hand the gesture to the application if it asked
+                                        // for mouse reporting; it owns the viewport then.
+                                        wheelScroller = if (terminalEmulator.mouseTracking.isEnabled) {
+                                            WheelScroller(
+                                                emulator = terminalEmulator,
+                                                lineHeightPx = baseCharHeight,
+                                                anchorRow = (down.position.y / baseCharHeight).toInt()
+                                                    .coerceIn(0, screenState.snapshot.rows - 1),
+                                                anchorCol = (down.position.x / baseCharWidth).toInt()
+                                                    .coerceIn(0, screenState.snapshot.cols - 1),
+                                            )
+                                        } else {
+                                            null
+                                        }
                                         // Clear any active selection when scrolling starts
                                         if (selectionManager.mode != SelectionMode.NONE) {
                                             selectionManager.clearSelection()
@@ -1145,24 +1164,35 @@ internal fun TerminalWithAccessibility(
                                     }
 
                                     GestureType.Scroll -> {
-                                        // Update scroll offset using total pan from the start of the gesture
-                                        // to avoid stuttering from stale scrollOffset.value.
-                                        val currentMaxScroll =
-                                            screenState.snapshot.scrollback.size * baseCharHeight
-                                        val newOffset = (initialScrollOffset + panAccumulator.y)
-                                            .coerceIn(0f, currentMaxScroll)
+                                        val scroller = wheelScroller
+                                        if (scroller != null) {
+                                            // The application scrolls itself; our own
+                                            // scrollback and offset stay put. Feed the
+                                            // delta since the last sample, taken from the
+                                            // accumulator so the travel that satisfied
+                                            // touch slop is not dropped.
+                                            scroller.scrollBy(panAccumulator.y - wheelPanY)
+                                            wheelPanY = panAccumulator.y
+                                        } else {
+                                            // Update scroll offset using total pan from the start of the gesture
+                                            // to avoid stuttering from stale scrollOffset.value.
+                                            val currentMaxScroll =
+                                                screenState.snapshot.scrollback.size * baseCharHeight
+                                            val newOffset = (initialScrollOffset + panAccumulator.y)
+                                                .coerceIn(0f, currentMaxScroll)
 
-                                        // Cancel any ongoing scroll or fling and snap to the new position.
-                                        // Using launch with cancel ensures the latest snap always wins.
-                                        scrollJob?.cancel()
-                                        scrollJob = launch {
-                                            scrollOffset.snapTo(newOffset)
+                                            // Cancel any ongoing scroll or fling and snap to the new position.
+                                            // Using launch with cancel ensures the latest snap always wins.
+                                            scrollJob?.cancel()
+                                            scrollJob = launch {
+                                                scrollOffset.snapTo(newOffset)
+                                            }
+
+                                            // Update terminal buffer scrollback position
+                                            val scrolledLines =
+                                                (newOffset / baseCharHeight).toInt()
+                                            screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
                                         }
-
-                                        // Update terminal buffer scrollback position
-                                        val scrolledLines =
-                                            (newOffset / baseCharHeight).toInt()
-                                        screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
                                     }
 
                                     else -> {}
@@ -1228,16 +1258,32 @@ internal fun TerminalWithAccessibility(
                             GestureType.Scroll -> {
                                 // Apply fling animation
                                 val velocity = velocityTracker.calculateVelocity()
+                                val scroller = wheelScroller
                                 scrollJob?.cancel()
                                 scrollJob = launch {
-                                    scrollOffset.animateDecay(
-                                        initialVelocity = velocity.y,
-                                        animationSpec = splineBasedDecay(density),
-                                    ) {
-                                        // Update terminal buffer during animation
-                                        val scrolledLines =
-                                            (value / baseCharHeight).toInt()
-                                        screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                    if (scroller != null) {
+                                        // Decay a scratch offset on the same curve the
+                                        // local scrollback uses, reporting the detents it
+                                        // passes over so a fling feels the same either way.
+                                        val flingOffset = Animatable(0f)
+                                        var lastValue = 0f
+                                        flingOffset.animateDecay(
+                                            initialVelocity = velocity.y,
+                                            animationSpec = splineBasedDecay(density),
+                                        ) {
+                                            scroller.scrollBy(value - lastValue)
+                                            lastValue = value
+                                        }
+                                    } else {
+                                        scrollOffset.animateDecay(
+                                            initialVelocity = velocity.y,
+                                            animationSpec = splineBasedDecay(density),
+                                        ) {
+                                            // Update terminal buffer during animation
+                                            val scrolledLines =
+                                                (value / baseCharHeight).toInt()
+                                            screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                        }
                                     }
                                 }
                             }
