@@ -1265,7 +1265,13 @@ internal fun TerminalWithAccessibility(
                                         // Decay a scratch offset on the same curve the
                                         // local scrollback uses, reporting the detents it
                                         // passes over so a fling feels the same either way.
+                                        // Bounded because, unlike the local path, there is
+                                        // no scrollback size to run out of.
                                         val flingOffset = Animatable(0f)
+                                        flingOffset.updateBounds(
+                                            lowerBound = -scroller.maxFlingTravelPx,
+                                            upperBound = scroller.maxFlingTravelPx,
+                                        )
                                         var lastValue = 0f
                                         flingOffset.animateDecay(
                                             initialVelocity = velocity.y,

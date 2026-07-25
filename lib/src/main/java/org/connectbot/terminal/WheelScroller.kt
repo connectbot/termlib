@@ -38,6 +38,17 @@ private const val LINES_PER_WHEEL_DETENT = 1f
 private const val MAX_DETENTS_PER_SAMPLE = 8
 
 /**
+ * Most detents a single fling may report, as a bound on its decay distance.
+ *
+ * The local scrollback path is bounded by the scrollback it has; the wheel path
+ * has no comparable limit, because the terminal cannot know where the
+ * application's own history begins or ends. Without a bound, a hard fling keeps
+ * emitting detents long after the application has hit its top, so this caps the
+ * decay well above what an ordinary fling covers.
+ */
+private const val MAX_DETENTS_PER_FLING = 200
+
+/**
  * Turns a continuous vertical scroll gesture into discrete wheel reports for an
  * application that has enabled mouse tracking.
  *
@@ -62,6 +73,12 @@ internal class WheelScroller(
     private val anchorCol: Int,
 ) {
     private val pixelsPerDetent = lineHeightPx * LINES_PER_WHEEL_DETENT
+
+    /**
+     * Travel a fling may cover before it should be stopped, as a bound for the
+     * decay animation driving [scrollBy].
+     */
+    val maxFlingTravelPx = pixelsPerDetent * MAX_DETENTS_PER_FLING
 
     /** Travel not yet worth a whole detent, carried into the next sample. */
     private var residualPx = 0f

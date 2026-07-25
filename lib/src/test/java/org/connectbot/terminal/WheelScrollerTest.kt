@@ -46,8 +46,11 @@ class WheelScrollerTest {
 
     private val output = StringBuilder()
 
+    /** The emulator behind the most recent [scroller], for tests that drive it directly. */
+    private lateinit var emulator: TerminalEmulator
+
     private fun scroller(): WheelScroller {
-        val emulator = TerminalEmulatorFactory.create(
+        emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
             onKeyboardInput = { output.append(String(it, Charsets.ISO_8859_1)) },
@@ -168,15 +171,57 @@ class WheelScrollerTest {
 
     @Test
     fun testNothingIsSentWhileTrackingIsOff() {
-        val emulator = TerminalEmulatorFactory.create(
+        val untracked = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
             onKeyboardInput = { output.append(String(it, Charsets.ISO_8859_1)) },
         )
-        val scroller = WheelScroller(emulator, LINE_HEIGHT, ANCHOR_ROW, ANCHOR_COL)
+        val scroller = WheelScroller(untracked, LINE_HEIGHT, ANCHOR_ROW, ANCHOR_COL)
 
         scroller.scrollBy(LINE_HEIGHT * 5)
 
         assertEquals("", reported())
+    }
+
+    @Test
+    fun testTrackingDisabledMidGestureStopsReports() {
+        // An application can drop mouse tracking while a finger is still down.
+        // The scroller keeps converting travel, but nothing may reach the wire.
+        val scroller = scroller()
+
+        scroller.scrollBy(LINE_HEIGHT)
+        drain()
+        assertEquals("before DECRST", UP, output.toString())
+
+        emulator.writeInput("\u001B[?1000l".toByteArray())
+        drain()
+        output.setLength(0)
+        scroller.scrollBy(LINE_HEIGHT * 3)
+
+        assertEquals("", reported())
+    }
+
+    // -----------------------------------------------------------------------
+    // Fling bound
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun testMaxFlingTravelConvertsToTheDetentCap() {
+        // The bound handed to the fling animation has to mean what it says: the
+        // travel it permits is exactly the detent cap, fed one detent at a time
+        // so the per-sample rate limit does not mask it.
+        val scroller = scroller()
+
+        var reports = 0
+        var travelled = 0f
+        while (travelled < scroller.maxFlingTravelPx) {
+            scroller.scrollBy(LINE_HEIGHT)
+            travelled += LINE_HEIGHT
+            drain()
+            reports += Regex(Regex.escape(UP)).findAll(output.toString()).count()
+            output.setLength(0)
+        }
+
+        assertEquals("detents permitted by the fling bound", 200, reports)
     }
 }
