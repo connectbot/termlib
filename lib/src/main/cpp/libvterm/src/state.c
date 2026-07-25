@@ -2125,6 +2125,12 @@ void vterm_state_reset(VTermState *state, int hard)
   settermprop_bool(state, VTERM_PROP_CURSORVISIBLE, 1);
   settermprop_bool(state, VTERM_PROP_CURSORBLINK,   1);
   settermprop_int (state, VTERM_PROP_CURSORSHAPE,   VTERM_PROP_CURSORSHAPE_BLOCK);
+  /* Local modification: clearing state->mouse_flags above disables reporting
+   * without telling the embedder. A terminal mirroring VTERM_PROP_MOUSE would
+   * then believe an application still wants the mouse and keep routing gestures
+   * into a vterm that silently drops them. This notifies; the assignment above
+   * is kept so the flags are cleared even if the callback vetoes the store. */
+  settermprop_int (state, VTERM_PROP_MOUSE,         VTERM_PROP_MOUSE_NONE);
 
   if(hard) {
     state->pos.row = 0;

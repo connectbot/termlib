@@ -109,6 +109,49 @@ class MouseReportingTest {
         assertTrue(term.mouseTracking.isEnabled)
     }
 
+    @Test
+    fun testHardResetClearsTracking() = runBlocking {
+        // RIS is how a user unwedges a terminal after a full-screen application
+        // dies without restoring modes. It stops libvterm reporting the mouse, so
+        // our mirror of the mode has to follow: believing an application still
+        // wants the mouse routes gestures nowhere and leaves the terminal with no
+        // scrolling at all.
+        val term = emulator(Output())
+        term.send("\u001B[?1003h\u001B[?1006h")
+
+        term.send("\u001Bc")
+
+        assertEquals(MouseTracking.NONE, term.mouseTracking)
+    }
+
+    @Test
+    fun testSoftResetClearsTracking() = runBlocking {
+        // DECSTR, the same story by a different route.
+        val term = emulator(Output())
+        term.send("\u001B[?1003h\u001B[?1006h")
+
+        term.send("\u001B[!p")
+
+        assertEquals(MouseTracking.NONE, term.mouseTracking)
+    }
+
+    @Test
+    fun testNoReportsAfterReset() = runBlocking {
+        // The mode flag and the reporting have to agree: whatever mouseTracking
+        // says, a reset terminal emits nothing.
+        val out = Output()
+        val term = emulator(out)
+        term.send("\u001B[?1003h\u001B[?1006h")
+        term.send("\u001Bc")
+        out.clear()
+
+        term.scrollWheel(WheelDirection.UP, row = 3, col = 5)
+        term.mouseButton(MouseButton.LEFT, row = 3, col = 5, pressed = true)
+        term.mouseMove(row = 4, col = 6)
+
+        assertEquals("", out.text)
+    }
+
     // -----------------------------------------------------------------------
     // Wheel reporting
     // -----------------------------------------------------------------------
@@ -119,7 +162,7 @@ class MouseReportingTest {
         val term = emulator(out)
 
         term.scrollWheel(WheelDirection.UP, row = 3, col = 5)
-        term.mouseButton(MouseButton.LEFT, pressed = true, row = 3, col = 5)
+        term.mouseButton(MouseButton.LEFT, row = 3, col = 5, pressed = true)
         term.mouseMove(row = 4, col = 6)
 
         assertEquals("", out.text)
@@ -225,8 +268,8 @@ class MouseReportingTest {
         term.send("\u001B[?1000h\u001B[?1006h")
         out.clear()
 
-        term.mouseButton(MouseButton.LEFT, pressed = true, row = 2, col = 7)
-        term.mouseButton(MouseButton.LEFT, pressed = false, row = 2, col = 7)
+        term.mouseButton(MouseButton.LEFT, row = 2, col = 7, pressed = true)
+        term.mouseButton(MouseButton.LEFT, row = 2, col = 7, pressed = false)
 
         // Press ends in 'M', release in 'm'; left button is code 0.
         assertEquals("\u001B[<0;8;3M\u001B[<0;8;3m", out.text)
@@ -239,11 +282,11 @@ class MouseReportingTest {
         term.send("\u001B[?1000h\u001B[?1006h")
 
         out.clear()
-        term.mouseButton(MouseButton.MIDDLE, pressed = true, row = 0, col = 0)
+        term.mouseButton(MouseButton.MIDDLE, row = 0, col = 0, pressed = true)
         assertEquals("middle", "\u001B[<1;1;1M", out.text)
 
         out.clear()
-        term.mouseButton(MouseButton.RIGHT, pressed = true, row = 0, col = 0)
+        term.mouseButton(MouseButton.RIGHT, row = 0, col = 0, pressed = true)
         assertEquals("right", "\u001B[<2;1;1M", out.text)
     }
 
