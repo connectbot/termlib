@@ -395,6 +395,14 @@ int Terminal::setDefaultColors(uint32_t fgColor, uint32_t bgColor) {
 }
 
 // Keyboard input handlers
+static VTermModifier toVTermModifier(int modifiers) {
+    VTermModifier mod = VTERM_MOD_NONE;
+    if (modifiers & 1) mod = (VTermModifier)(mod | VTERM_MOD_SHIFT);
+    if (modifiers & 2) mod = (VTermModifier)(mod | VTERM_MOD_ALT);
+    if (modifiers & 4) mod = (VTermModifier)(mod | VTERM_MOD_CTRL);
+    return mod;
+}
+
 bool Terminal::dispatchKey(int modifiers, int key) {
     std::scoped_lock lock(mLock);
 
@@ -402,12 +410,7 @@ bool Terminal::dispatchKey(int modifiers, int key) {
         return false;
     }
 
-    VTermModifier mod = VTERM_MOD_NONE;
-    if (modifiers & 1) mod = (VTermModifier)(mod | VTERM_MOD_SHIFT);
-    if (modifiers & 2) mod = (VTermModifier)(mod | VTERM_MOD_ALT);
-    if (modifiers & 4) mod = (VTermModifier)(mod | VTERM_MOD_CTRL);
-
-    vterm_keyboard_key(mVt, (VTermKey)key, mod);
+    vterm_keyboard_key(mVt, (VTermKey)key, toVTermModifier(modifiers));
     return true;
 }
 
@@ -418,12 +421,33 @@ bool Terminal::dispatchCharacter(int modifiers, int codepoint) {
         return false;
     }
 
-    VTermModifier mod = VTERM_MOD_NONE;
-    if (modifiers & 1) mod = (VTermModifier)(mod | VTERM_MOD_SHIFT);
-    if (modifiers & 2) mod = (VTermModifier)(mod | VTERM_MOD_ALT);
-    if (modifiers & 4) mod = (VTermModifier)(mod | VTERM_MOD_CTRL);
+    vterm_keyboard_unichar(mVt, codepoint, toVTermModifier(modifiers));
+    return true;
+}
 
-    vterm_keyboard_unichar(mVt, codepoint, mod);
+// Mouse input handlers
+bool Terminal::mouseMove(int row, int col, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt) {
+        return false;
+    }
+
+    // libvterm only emits a report here when the application asked for drag or
+    // motion tracking; otherwise this just records the position that a
+    // subsequent mouseButton() report will carry.
+    vterm_mouse_move(mVt, row, col, toVTermModifier(modifiers));
+    return true;
+}
+
+bool Terminal::mouseButton(int button, bool pressed, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt) {
+        return false;
+    }
+
+    vterm_mouse_button(mVt, button, pressed, toVTermModifier(modifiers));
     return true;
 }
 
@@ -1222,6 +1246,21 @@ Java_org_connectbot_terminal_TerminalNative_nativeDispatchCharacter(JNIEnv* /* e
                                                                     jlong ptr, jint modifiers, jint character) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->dispatchCharacter(modifiers, character);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeMouseMove(JNIEnv* /* env */, jobject /* thiz */,
+                                                            jlong ptr, jint row, jint col, jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->mouseMove(row, col, modifiers);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeMouseButton(JNIEnv* /* env */, jobject /* thiz */,
+                                                               jlong ptr, jint button, jboolean pressed,
+                                                               jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->mouseButton(button, pressed, modifiers);
 }
 
 JNIEXPORT jint JNICALL

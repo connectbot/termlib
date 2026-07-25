@@ -61,6 +61,12 @@ public:
     bool dispatchKey(int modifiers, int key);
     bool dispatchCharacter(int modifiers, int codepoint);
 
+    // Mouse input - generates escape sequences only when the application has
+    // requested mouse tracking (DECSET 1000/1002/1003). Encoding follows the
+    // protocol the application selected (X10, UTF-8, SGR or rxvt).
+    bool mouseMove(int row, int col, int modifiers);
+    bool mouseButton(int button, bool pressed, int modifiers);
+
     // Cell data retrieval for rendering
     int getCellRun(JNIEnv* env, int row, int col, jobject runObject);
 

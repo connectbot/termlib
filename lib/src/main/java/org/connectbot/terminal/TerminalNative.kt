@@ -109,6 +109,44 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     }
 
     /**
+     * Move the mouse cursor to a cell.
+     *
+     * Records the position used by subsequent [mouseButton] reports. A motion
+     * report is emitted via onKeyboardInput() only when the application has
+     * requested drag tracking (DECSET 1002, while a button is held) or any-motion
+     * tracking (DECSET 1003). Moving to the cell the mouse already occupies is a
+     * no-op, so repeated calls at the same cell do not flood the application.
+     *
+     * @param row Row index (0-based)
+     * @param col Column index (0-based)
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun mouseMove(row: Int, col: Int, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeMouseMove(nativePtr, row, col, modifiers)
+    }
+
+    /**
+     * Dispatch a mouse button press or release at the current mouse position.
+     *
+     * Nothing is emitted unless the application has enabled mouse tracking. The
+     * report encoding follows the protocol the application selected (X10, UTF-8,
+     * SGR or rxvt).
+     *
+     * @param button 1=left, 2=middle, 3=right, 4=wheel up, 5=wheel down,
+     *               6=wheel left, 7=wheel right
+     * @param pressed true for press, false for release. Wheel buttons only
+     *                report presses; a release is not expected.
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun mouseButton(button: Int, pressed: Boolean, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeMouseButton(nativePtr, button, pressed, modifiers)
+    }
+
+    /**
      * Get a run of cells with identical formatting starting at the given position.
      * This is the primary method for retrieving terminal content for rendering.
      *
@@ -213,6 +251,8 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
+    private external fun nativeMouseMove(ptr: Long, row: Int, col: Int, modifiers: Int): Boolean
+    private external fun nativeMouseButton(ptr: Long, button: Int, pressed: Boolean, modifiers: Int): Boolean
     private external fun nativeGetCellRun(ptr: Long, row: Int, col: Int, run: CellRun): Int
     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int
