@@ -305,6 +305,34 @@ class TerminalEmulatorFactory {
 }
 
 /**
+ * Property identifiers and values libvterm passes to
+ * [TerminalCallbacks.setTermProp], from `VTermProp` in vterm.h.
+ *
+ * These are ordinals of an unnumbered C enum, so inserting a property shifts
+ * every one after it. Keep them in the same order as the header.
+ */
+private object VTermProp {
+    const val CURSOR_VISIBLE = 1 // bool
+    const val CURSOR_BLINK = 2 // bool
+    const val ALT_SCREEN = 3 // bool
+    const val TITLE = 4 // string
+    const val ICON_NAME = 5 // string
+    const val REVERSE = 6 // bool
+    const val CURSOR_SHAPE = 7 // number
+    const val MOUSE = 8 // number
+    const val FOCUS_REPORT = 9 // bool
+
+    const val CURSOR_SHAPE_BLOCK = 1
+    const val CURSOR_SHAPE_UNDERLINE = 2
+    const val CURSOR_SHAPE_BAR_LEFT = 3
+
+    const val MOUSE_NONE = 0
+    const val MOUSE_CLICK = 1
+    const val MOUSE_DRAG = 2
+    const val MOUSE_MOVE = 3
+}
+
+/**
  * Service-compatible terminal state manager.
  *
  * This class manages terminal state independently of the UI layer, making it
@@ -667,8 +695,7 @@ internal class TerminalEmulatorImpl(
         synchronized(damageLock) {
             when (value) {
                 is TerminalProperty.StringValue -> {
-                    // Property 7 is VTERM_PROP_TITLE (from vterm.h line 257)
-                    if (prop == 7) {
+                    if (prop == VTermProp.TITLE) {
                         terminalTitle = value.value
                         propertyChanged = true
                     }
@@ -676,20 +703,17 @@ internal class TerminalEmulatorImpl(
 
                 is TerminalProperty.BoolValue -> {
                     when (prop) {
-                        // Property 1 is VTERM_PROP_CURSORVISIBLE (from vterm.h line 254)
-                        1 -> {
+                        VTermProp.CURSOR_VISIBLE -> {
                             cursorVisible = value.value
                             propertyChanged = true
                         }
 
-                        // Property 2 is VTERM_PROP_CURSORBLINK (from vterm.h line 255)
-                        2 -> {
+                        VTermProp.CURSOR_BLINK -> {
                             cursorBlink = value.value
                             propertyChanged = true
                         }
 
-                        // Property 3 is VTERM_PROP_ALTSCREEN (from vterm.h line 256)
-                        3 -> {
+                        VTermProp.ALT_SCREEN -> {
                             isAltScreenActive = value.value
                             propertyChanged = true
                         }
@@ -698,36 +722,21 @@ internal class TerminalEmulatorImpl(
 
                 is TerminalProperty.IntValue -> {
                     when (prop) {
-                        // Property 6 is VTERM_PROP_CURSORSHAPE (from vterm.h line 260)
-                        6 -> {
+                        VTermProp.CURSOR_SHAPE -> {
                             cursorShape = when (value.value) {
-                                1 -> CursorShape.BLOCK
-
-                                // VTERM_PROP_CURSORSHAPE_BLOCK
-                                2 -> CursorShape.UNDERLINE
-
-                                // VTERM_PROP_CURSORSHAPE_UNDERLINE
-                                3 -> CursorShape.BAR_LEFT
-
-                                // VTERM_PROP_CURSORSHAPE_BAR_LEFT
+                                VTermProp.CURSOR_SHAPE_BLOCK -> CursorShape.BLOCK
+                                VTermProp.CURSOR_SHAPE_UNDERLINE -> CursorShape.UNDERLINE
+                                VTermProp.CURSOR_SHAPE_BAR_LEFT -> CursorShape.BAR_LEFT
                                 else -> CursorShape.BLOCK
                             }
                             propertyChanged = true
                         }
 
-                        // Property 8 is VTERM_PROP_MOUSE (from vterm.h line 261)
-                        8 -> {
+                        VTermProp.MOUSE -> {
                             mouseTracking = when (value.value) {
-                                // VTERM_PROP_MOUSE_CLICK
-                                1 -> MouseTracking.CLICK
-
-                                // VTERM_PROP_MOUSE_DRAG
-                                2 -> MouseTracking.DRAG
-
-                                // VTERM_PROP_MOUSE_MOVE
-                                3 -> MouseTracking.MOVE
-
-                                // VTERM_PROP_MOUSE_NONE
+                                VTermProp.MOUSE_CLICK -> MouseTracking.CLICK
+                                VTermProp.MOUSE_DRAG -> MouseTracking.DRAG
+                                VTermProp.MOUSE_MOVE -> MouseTracking.MOVE
                                 else -> MouseTracking.NONE
                             }
                             propertyChanged = true
