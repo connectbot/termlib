@@ -440,14 +440,36 @@ bool Terminal::mouseMove(int row, int col, int modifiers) {
     return true;
 }
 
-bool Terminal::mouseButton(int button, bool pressed, int modifiers) {
+bool Terminal::mouseButton(int row, int col, int button, bool pressed, int modifiers) {
     std::scoped_lock lock(mLock);
 
     if (!mVt) {
         return false;
     }
 
-    vterm_mouse_button(mVt, button, pressed, toVTermModifier(modifiers));
+    // Position and button are set under one lock: libvterm carries the position
+    // recorded by the move into the button report, so a concurrent move for a
+    // different gesture must not be able to land between the two.
+    VTermModifier mod = toVTermModifier(modifiers);
+    vterm_mouse_move(mVt, row, col, mod);
+    vterm_mouse_button(mVt, button, pressed, mod);
+    return true;
+}
+
+bool Terminal::scrollWheel(int row, int col, int button, int steps, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt || steps < 1) {
+        return false;
+    }
+
+    VTermModifier mod = toVTermModifier(modifiers);
+    vterm_mouse_move(mVt, row, col, mod);
+    for (int i = 0; i < steps; i++) {
+        // Wheel buttons report a press with no matching release; libvterm emits
+        // one report per call.
+        vterm_mouse_button(mVt, button, true, mod);
+    }
     return true;
 }
 
@@ -1257,10 +1279,18 @@ Java_org_connectbot_terminal_TerminalNative_nativeMouseMove(JNIEnv* /* env */, j
 
 JNIEXPORT jboolean JNICALL
 Java_org_connectbot_terminal_TerminalNative_nativeMouseButton(JNIEnv* /* env */, jobject /* thiz */,
-                                                               jlong ptr, jint button, jboolean pressed,
-                                                               jint modifiers) {
+                                                               jlong ptr, jint row, jint col, jint button,
+                                                               jboolean pressed, jint modifiers) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
-    return term->mouseButton(button, pressed, modifiers);
+    return term->mouseButton(row, col, button, pressed, modifiers);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeScrollWheel(JNIEnv* /* env */, jobject /* thiz */,
+                                                               jlong ptr, jint row, jint col, jint button,
+                                                               jint steps, jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->scrollWheel(row, col, button, steps, modifiers);
 }
 
 JNIEXPORT jint JNICALL

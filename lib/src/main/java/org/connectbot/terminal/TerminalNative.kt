@@ -128,12 +128,18 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     }
 
     /**
-     * Dispatch a mouse button press or release at the current mouse position.
+     * Dispatch a mouse button press or release at a cell.
+     *
+     * The move to [row]/[col] and the button report are made under a single
+     * native lock, so a concurrent report for another gesture cannot land
+     * between the two and send this button at the wrong position.
      *
      * Nothing is emitted unless the application has enabled mouse tracking. The
      * report encoding follows the protocol the application selected (X10, UTF-8,
      * SGR or rxvt).
      *
+     * @param row Row index (0-based)
+     * @param col Column index (0-based)
      * @param button 1=left, 2=middle, 3=right, 4=wheel up, 5=wheel down,
      *               6=wheel left, 7=wheel right
      * @param pressed true for press, false for release. Wheel buttons only
@@ -141,9 +147,28 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
      * @return true if handled
      */
-    fun mouseButton(button: Int, pressed: Boolean, modifiers: Int): Boolean {
+    fun mouseButton(row: Int, col: Int, button: Int, pressed: Boolean, modifiers: Int): Boolean {
         checkNotClosed()
-        return nativeMouseButton(nativePtr, button, pressed, modifiers)
+        return nativeMouseButton(nativePtr, row, col, button, pressed, modifiers)
+    }
+
+    /**
+     * Dispatch [steps] presses of a wheel button at a cell.
+     *
+     * Equivalent to [steps] calls to [mouseButton] with a wheel button, but the
+     * whole burst is emitted under a single native lock so it cannot be
+     * interleaved with another gesture's reports.
+     *
+     * @param row Row index (0-based)
+     * @param col Column index (0-based)
+     * @param button 4=wheel up, 5=wheel down, 6=wheel left, 7=wheel right
+     * @param steps Number of detents to report; values below 1 send nothing
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun scrollWheel(row: Int, col: Int, button: Int, steps: Int, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeScrollWheel(nativePtr, row, col, button, steps, modifiers)
     }
 
     /**
@@ -252,7 +277,8 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
     private external fun nativeMouseMove(ptr: Long, row: Int, col: Int, modifiers: Int): Boolean
-    private external fun nativeMouseButton(ptr: Long, button: Int, pressed: Boolean, modifiers: Int): Boolean
+    private external fun nativeMouseButton(ptr: Long, row: Int, col: Int, button: Int, pressed: Boolean, modifiers: Int): Boolean
+    private external fun nativeScrollWheel(ptr: Long, row: Int, col: Int, button: Int, steps: Int, modifiers: Int): Boolean
     private external fun nativeGetCellRun(ptr: Long, row: Int, col: Int, run: CellRun): Int
     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int

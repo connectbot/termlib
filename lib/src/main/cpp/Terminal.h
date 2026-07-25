@@ -65,7 +65,8 @@ public:
     // requested mouse tracking (DECSET 1000/1002/1003). Encoding follows the
     // protocol the application selected (X10, UTF-8, SGR or rxvt).
     bool mouseMove(int row, int col, int modifiers);
-    bool mouseButton(int button, bool pressed, int modifiers);
+    bool mouseButton(int row, int col, int button, bool pressed, int modifiers);
+    bool scrollWheel(int row, int col, int button, int steps, int modifiers);
 
     // Cell data retrieval for rendering
     int getCellRun(JNIEnv* env, int row, int col, jobject runObject);

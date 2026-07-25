@@ -141,9 +141,10 @@ sealed interface TerminalEmulator {
      *
      * @param row Row index (0-based) within the visible screen
      * @param col Column index (0-based) within the visible screen
+     * @param pressed true for a press, false for a release
      * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
      */
-    fun mouseButton(button: MouseButton, pressed: Boolean, row: Int, col: Int, modifiers: Int = 0)
+    fun mouseButton(button: MouseButton, row: Int, col: Int, pressed: Boolean, modifiers: Int = 0)
 
     /**
      * Report [steps] wheel detents at a cell.
@@ -545,9 +546,8 @@ internal class TerminalEmulatorImpl(
     /**
      * Report a mouse button press or release at a cell.
      */
-    override fun mouseButton(button: MouseButton, pressed: Boolean, row: Int, col: Int, modifiers: Int) {
-        terminalNative.mouseMove(row, col, modifiers)
-        terminalNative.mouseButton(button.code, pressed, modifiers)
+    override fun mouseButton(button: MouseButton, row: Int, col: Int, pressed: Boolean, modifiers: Int) {
+        terminalNative.mouseButton(row, col, button.code, pressed, modifiers)
     }
 
     /**
@@ -556,12 +556,7 @@ internal class TerminalEmulatorImpl(
     override fun scrollWheel(direction: WheelDirection, row: Int, col: Int, steps: Int, modifiers: Int) {
         if (steps < 1) return
 
-        terminalNative.mouseMove(row, col, modifiers)
-        repeat(steps) {
-            // Wheel buttons report a press with no matching release; libvterm
-            // emits one report per call.
-            terminalNative.mouseButton(direction.code, true, modifiers)
-        }
+        terminalNative.scrollWheel(row, col, direction.code, steps, modifiers)
     }
 
     /**
@@ -733,13 +728,16 @@ internal class TerminalEmulatorImpl(
                         }
 
                         VTermProp.MOUSE -> {
+                            // No propertyChanged here: this is read straight off
+                            // the volatile field by gesture handling and does not
+                            // appear in the snapshot, so rebuilding one would
+                            // produce an identical value at real cost.
                             mouseTracking = when (value.value) {
                                 VTermProp.MOUSE_CLICK -> MouseTracking.CLICK
                                 VTermProp.MOUSE_DRAG -> MouseTracking.DRAG
                                 VTermProp.MOUSE_MOVE -> MouseTracking.MOVE
                                 else -> MouseTracking.NONE
                             }
-                            propertyChanged = true
                         }
                     }
                 }
