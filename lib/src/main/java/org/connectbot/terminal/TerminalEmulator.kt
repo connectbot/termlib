@@ -307,11 +307,16 @@ class TerminalEmulatorFactory {
 }
 
 /**
- * Property identifiers and values libvterm passes to
- * [TerminalCallbacks.setTermProp], from `VTermProp` in vterm.h.
+ * Property identifiers and values passed to [TerminalCallbacks.setTermProp].
  *
- * These are ordinals of an unnumbered C enum, so inserting a property shifts
- * every one after it. Keep them in the same order as the header.
+ * These are the native wrapper's own identifiers, assigned by `PropCode` in
+ * Terminal.h. They are deliberately not libvterm's `VTermProp` ordinals: that
+ * is an unnumbered C enum whose values shift when upstream inserts a property,
+ * and transcribing them here is what once left the title and cursor shape being
+ * read at the wrong numbers. Terminal.cpp translates by name instead, where the
+ * compiler checks it against the header.
+ *
+ * Keep these in step with `PropCode`, which is the definition.
  */
 private object VTermProp {
     const val CURSOR_VISIBLE = 1 // bool
@@ -589,8 +594,7 @@ internal class TerminalEmulatorImpl(
      * Report wheel detents at a cell.
      */
     override fun scrollWheel(direction: WheelDirection, row: Int, col: Int, steps: Int, modifiers: Int) {
-        if (steps < 1) return
-
+        // Bounds on steps belong with the loop that spends them, in Terminal.cpp.
         terminalNative.scrollWheel(row, col, direction.code, steps, modifiers)
     }
 

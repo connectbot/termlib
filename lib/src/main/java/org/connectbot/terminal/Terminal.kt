@@ -945,6 +945,13 @@ internal fun TerminalWithAccessibility(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         scrollJob?.cancel()
 
+                        // Who this gesture belongs to is decided once, here, and
+                        // read by both the scroll and tap paths below. An
+                        // application that enables or drops mouse tracking
+                        // mid-gesture should not take a gesture that began as
+                        // ours, or abandon one halfway through.
+                        val appOwnsPointer = terminalEmulator.mouseTracking.isEnabled
+
                         // 1a. Check for double-tap to start word selection
                         val isDoubleTap = (down.uptimeMillis - tapTracker.lastTimestamp) < viewConfiguration.doubleTapTimeoutMillis &&
                             (down.position - tapTracker.lastPosition).getDistanceSquared() < touchSlopSquared
@@ -1121,7 +1128,7 @@ internal fun TerminalWithAccessibility(
                                         initialScrollOffset = scrollOffset.value - panAccumulator.y
                                         // Hand the gesture to the application if it asked
                                         // for mouse reporting; it owns the viewport then.
-                                        wheelScroller = if (terminalEmulator.mouseTracking.isEnabled) {
+                                        wheelScroller = if (appOwnsPointer) {
                                             WheelScroller(
                                                 emulator = terminalEmulator,
                                                 lineHeightPx = baseCharHeight,
@@ -1304,7 +1311,7 @@ internal fun TerminalWithAccessibility(
 
                                 if (selectionManager.mode != SelectionMode.NONE) {
                                     selectionManager.clearSelection()
-                                } else if (terminalEmulator.mouseTracking.isEnabled) {
+                                } else if (appOwnsPointer) {
                                     // The application owns the viewport, so it owns the
                                     // click too — including on anything that looks like a
                                     // link, which it drew and will handle itself. Sent as

@@ -824,6 +824,22 @@ void Terminal::invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool v
     JNI_CHECK_EXCEPTION(env);
 }
 
+Terminal::PropCode Terminal::toPropCode(VTermProp prop) {
+    switch (prop) {
+        case VTERM_PROP_CURSORVISIBLE: return PropCode::CursorVisible;
+        case VTERM_PROP_CURSORBLINK:   return PropCode::CursorBlink;
+        case VTERM_PROP_ALTSCREEN:     return PropCode::AltScreen;
+        case VTERM_PROP_TITLE:         return PropCode::Title;
+        case VTERM_PROP_ICONNAME:      return PropCode::IconName;
+        case VTERM_PROP_REVERSE:       return PropCode::Reverse;
+        case VTERM_PROP_CURSORSHAPE:   return PropCode::CursorShape;
+        case VTERM_PROP_MOUSE:         return PropCode::Mouse;
+        case VTERM_PROP_FOCUSREPORT:   return PropCode::FocusReport;
+        case VTERM_N_PROPS:            break;
+    }
+    return PropCode::Unknown;
+}
+
 void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
     if (!mSetTermPropMethod) {
         return;
@@ -866,7 +882,8 @@ void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
     }
 
     if (propValue.get()) {
-        env->CallIntMethod(mCallbacks, mSetTermPropMethod, prop, propValue.get());
+        env->CallIntMethod(mCallbacks, mSetTermPropMethod,
+                           static_cast<jint>(toPropCode(prop)), propValue.get());
         JNI_CHECK_EXCEPTION(env);
     }
 }

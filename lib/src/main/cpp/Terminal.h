@@ -113,6 +113,37 @@ private:
     static int termSelectionSet(VTermSelectionMask mask, VTermStringFragment frag, void* user);
     static int termSelectionQuery(VTermSelectionMask mask, void* user);
 
+    // Property identifiers as sent to Java.
+    //
+    // VTermProp is an unnumbered C enum, so its ordinals shift whenever
+    // upstream inserts a property. Translating by name here, where the compiler
+    // checks the cases against vterm.h, means Java holds identifiers this repo
+    // defines rather than a hand-copied snapshot of upstream's numbering.
+    // Getting that copy wrong is not hypothetical: TITLE and CURSORSHAPE were
+    // read at the wrong ordinals until 6ed03a6, which left OSC 0/2 and DECSCUSR
+    // silently doing nothing.
+    //
+    // These are the wrapper's own protocol. Keep them in step with VTermProp in
+    // TerminalEmulator.kt -- never with vterm.h.
+    enum class PropCode : jint {
+        Unknown = 0,
+        CursorVisible = 1,
+        CursorBlink = 2,
+        AltScreen = 3,
+        Title = 4,
+        IconName = 5,
+        Reverse = 6,
+        CursorShape = 7,
+        Mouse = 8,
+        FocusReport = 9,
+    };
+
+    // Deliberately has no default case: a property added upstream then draws a
+    // -Wswitch warning here, naming the enumerator, rather than silently
+    // arriving in Java as the wrong identifier. (Warning, not error -- the
+    // build sets no -Werror.)
+    static PropCode toPropCode(VTermProp prop);
+
     // Java callback invocation helpers
     void invokeDamage(int startRow, int endRow, int startCol, int endCol);
     int invokeMoverect(VTermRect dest, VTermRect src);
