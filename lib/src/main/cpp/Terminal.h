@@ -142,6 +142,34 @@ private:
     // Caller must hold mLock and must have checked mVt.
     VTermModifier positionMouseLocked(int row, int col, int modifiers);
 
+    // Collects everything libvterm emits within its scope and delivers it as a
+    // single keyboard-output callback.
+    //
+    // libvterm has no output buffer installed, so each report it generates
+    // upcalls into Java on its own - a jbyteArray, a JNI call and a Message for
+    // six bytes. That is fine for a keystroke but wasteful for a wheel burst,
+    // which produces one report per detent. Concatenating them changes nothing
+    // about the bytes reaching the PTY, only how many trips they take.
+    //
+    // Construct under mLock, after checking mVt.
+    class CoalescedOutput {
+    public:
+        explicit CoalescedOutput(Terminal* term);
+        ~CoalescedOutput();
+
+        CoalescedOutput(const CoalescedOutput&) = delete;
+        CoalescedOutput& operator=(const CoalescedOutput&) = delete;
+
+    private:
+        Terminal* mTerm;
+        std::string mBuffer;
+    };
+
+    // Where termOutput() sends bytes while a CoalescedOutput is in scope; null
+    // means upcall immediately. Guarded by mLock like the rest of the output
+    // path.
+    std::string* mOutputSink{nullptr};
+
     // libvterm state
     VTerm* mVt;
     VTermScreen* mVts;

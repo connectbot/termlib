@@ -496,4 +496,60 @@ class MouseReportingTest {
 
         assertEquals("no button is held, so a drag reports nothing", "", out.text)
     }
+
+    // -----------------------------------------------------------------------
+    // Delivery shape
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun testWheelBurstArrivesAsOneCallback() = runBlocking {
+        // libvterm emits one report per detent, and each one reaching Java on
+        // its own costs a byte array, a JNI call and a main-thread message. The
+        // bytes are identical either way, so only the callback count can show
+        // the burst is coalesced.
+        var callbacks = 0
+        val sb = StringBuilder()
+        val term = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = {
+                callbacks++
+                sb.append(String(it, Charsets.ISO_8859_1))
+            },
+        )
+        term.writeInput(CLICK_TRACKING_SGR.toByteArray())
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        callbacks = 0
+        sb.setLength(0)
+
+        term.scrollWheel(WheelDirection.DOWN, row = 0, col = 0, steps = 5)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        assertEquals("five detents, one delivery", 1, callbacks)
+        assertEquals("\u001B[<65;1;1M".repeat(5), sb.toString())
+    }
+
+    @Test
+    fun testClickArrivesAsOneCallback() = runBlocking {
+        var callbacks = 0
+        val sb = StringBuilder()
+        val term = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = {
+                callbacks++
+                sb.append(String(it, Charsets.ISO_8859_1))
+            },
+        )
+        term.writeInput(CLICK_TRACKING_SGR.toByteArray())
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        callbacks = 0
+        sb.setLength(0)
+
+        term.mouseClick(MouseButton.LEFT, row = 2, col = 7)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+
+        assertEquals("press and release, one delivery", 1, callbacks)
+        assertEquals("\u001B[<0;8;3M\u001B[<0;8;3m", sb.toString())
+    }
 }

@@ -475,7 +475,9 @@ bool Terminal::mouseClick(int row, int col, int button, int modifiers) {
     // these reports, so a press whose release is lost - dropped by a caller, or
     // separated from it by a reset that clears the button state in between -
     // leaves the application believing the button is still down. Emitting the
-    // pair as one operation means a click cannot be left half-delivered.
+    // pair as one operation means a click cannot be left half-delivered, and
+    // coalescing sends the pair in one trip rather than two.
+    CoalescedOutput out(this);
     VTermModifier mod = positionMouseLocked(row, col, modifiers);
     vterm_mouse_button(mVt, button, true, mod);
     vterm_mouse_button(mVt, button, false, mod);
@@ -489,6 +491,9 @@ bool Terminal::scrollWheel(int row, int col, int button, int steps, int modifier
         return false;
     }
 
+    // One report per detent leaves libvterm, so the whole burst is collected
+    // and delivered in a single upcall rather than one per detent.
+    CoalescedOutput out(this);
     VTermModifier mod = positionMouseLocked(row, col, modifiers);
     int bounded = std::min(steps, MAX_WHEEL_STEPS_PER_CALL);
     for (int i = 0; i < bounded; i++) {
@@ -664,7 +669,22 @@ int Terminal::termSbClear(void* user) {
 
 void Terminal::termOutput(const char* s, size_t len, void* user) {
     auto* term = static_cast<Terminal*>(user);
+    if (term->mOutputSink) {
+        term->mOutputSink->append(s, len);
+        return;
+    }
     term->invokeKeyboardOutput(s, len);
+}
+
+Terminal::CoalescedOutput::CoalescedOutput(Terminal* term) : mTerm(term) {
+    mTerm->mOutputSink = &mBuffer;
+}
+
+Terminal::CoalescedOutput::~CoalescedOutput() {
+    mTerm->mOutputSink = nullptr;
+    if (!mBuffer.empty()) {
+        mTerm->invokeKeyboardOutput(mBuffer.data(), mBuffer.size());
+    }
 }
 
 // OSC sequence fallback handler
