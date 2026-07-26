@@ -78,6 +78,14 @@ class MouseReportingTest {
 
     private fun TerminalEmulator.send(s: String) = writeInput(s.toByteArray())
 
+    private companion object {
+        /** DECSET 1000 and 1006: click tracking, SGR encoding. */
+        const val CLICK_TRACKING_SGR = "\u001B[?1000h\u001B[?1006h"
+
+        /** DECSET 1003 and 1006: all-motion tracking, SGR encoding. */
+        const val MOVE_TRACKING_SGR = "\u001B[?1003h\u001B[?1006h"
+    }
+
     // -----------------------------------------------------------------------
     // Tracking mode detection (VTERM_PROP_MOUSE)
     // -----------------------------------------------------------------------
@@ -122,7 +130,7 @@ class MouseReportingTest {
         // wants the mouse routes gestures nowhere and leaves the terminal with no
         // scrolling at all.
         val term = emulator(Output())
-        term.send("\u001B[?1003h\u001B[?1006h")
+        term.send(MOVE_TRACKING_SGR)
 
         term.send("\u001Bc")
 
@@ -133,7 +141,7 @@ class MouseReportingTest {
     fun testSoftResetClearsTracking() = runBlocking {
         // DECSTR, the same story by a different route.
         val term = emulator(Output())
-        term.send("\u001B[?1003h\u001B[?1006h")
+        term.send(MOVE_TRACKING_SGR)
 
         term.send("\u001B[!p")
 
@@ -146,7 +154,7 @@ class MouseReportingTest {
         // says, a reset terminal emits nothing.
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1003h\u001B[?1006h")
+        term.send(MOVE_TRACKING_SGR)
         term.send("\u001Bc")
         out.clear()
 
@@ -180,7 +188,7 @@ class MouseReportingTest {
 
         // SGR (1006) is what every modern application selects, because X10
         // cannot address columns beyond 223.
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         out.clear()
 
         term.scrollWheel(WheelDirection.UP, row = 9, col = 19)
@@ -193,7 +201,7 @@ class MouseReportingTest {
     fun testSgrWheelDownAndHorizontal() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
 
         out.clear()
         term.scrollWheel(WheelDirection.DOWN, row = 0, col = 0)
@@ -212,7 +220,7 @@ class MouseReportingTest {
     fun testMultipleStepsSendOneReportEach() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         out.clear()
 
         term.scrollWheel(WheelDirection.DOWN, row = 0, col = 0, steps = 3)
@@ -224,7 +232,7 @@ class MouseReportingTest {
     fun testNonPositiveStepsSendNothing() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         out.clear()
 
         term.scrollWheel(WheelDirection.DOWN, row = 0, col = 0, steps = 0)
@@ -237,7 +245,7 @@ class MouseReportingTest {
     fun testWheelModifiersAreEncoded() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         out.clear()
 
         // Modifier bits are shifted left by 2 in the report: shift=4, alt=8,
@@ -270,7 +278,7 @@ class MouseReportingTest {
     fun testButtonPressAndReleaseEncoding() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         out.clear()
 
         term.mouseButton(MouseButton.LEFT, row = 2, col = 7, pressed = true)
@@ -284,7 +292,7 @@ class MouseReportingTest {
     fun testMiddleAndRightButtonCodes() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
 
         out.clear()
         term.mouseButton(MouseButton.MIDDLE, row = 0, col = 0, pressed = true)
@@ -299,7 +307,7 @@ class MouseReportingTest {
     fun testClickTrackingDoesNotReportMotion() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         out.clear()
 
         term.mouseMove(row = 5, col = 5)
@@ -312,7 +320,7 @@ class MouseReportingTest {
     fun testMoveTrackingReportsMotion() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1003h\u001B[?1006h")
+        term.send(MOVE_TRACKING_SGR)
         out.clear()
 
         term.mouseMove(row = 5, col = 9)
@@ -325,7 +333,7 @@ class MouseReportingTest {
     fun testRepeatedMoveToSameCellIsSuppressed() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1003h\u001B[?1006h")
+        term.send(MOVE_TRACKING_SGR)
         out.clear()
 
         term.mouseMove(row = 5, col = 9)
@@ -339,7 +347,7 @@ class MouseReportingTest {
     fun testWheelDoesNotEmitMotionUnderMoveTracking() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1003h\u001B[?1006h")
+        term.send(MOVE_TRACKING_SGR)
 
         // Park the pointer where the gesture is happening, then scroll there.
         term.mouseMove(row = 4, col = 4)
@@ -360,7 +368,7 @@ class MouseReportingTest {
     fun testClickEmitsPressAndRelease() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         out.clear()
 
         term.mouseClick(MouseButton.LEFT, row = 2, col = 7)
@@ -374,7 +382,7 @@ class MouseReportingTest {
     fun testClickReleasesEveryButton() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
 
         for (button in MouseButton.entries) {
             out.clear()
@@ -409,7 +417,7 @@ class MouseReportingTest {
         // happens natively, against the size the terminal actually has.
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
 
         out.clear()
         term.mouseClick(MouseButton.LEFT, row = -5, col = -9)
@@ -425,7 +433,7 @@ class MouseReportingTest {
     fun testWheelCoordinatesAreClampedToTheScreen() = runBlocking {
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         out.clear()
 
         term.scrollWheel(WheelDirection.UP, row = Int.MIN_VALUE, col = Int.MIN_VALUE)
@@ -440,7 +448,7 @@ class MouseReportingTest {
         // of reports - whatever a caller asks for.
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         out.clear()
 
         term.scrollWheel(WheelDirection.DOWN, row = 0, col = 0, steps = Int.MAX_VALUE)
@@ -459,7 +467,7 @@ class MouseReportingTest {
         // plain DECSET 1000 in a protocol that application never asked for.
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
 
         term.send("\u001Bc")
         term.send("\u001B[?1000h")
@@ -477,7 +485,7 @@ class MouseReportingTest {
         // down, which makes DRAG tracking report motion with nothing held.
         val out = Output()
         val term = emulator(out)
-        term.send("\u001B[?1000h\u001B[?1006h")
+        term.send(CLICK_TRACKING_SGR)
         term.mouseButton(MouseButton.LEFT, row = 0, col = 0, pressed = true)
 
         term.send("\u001Bc")

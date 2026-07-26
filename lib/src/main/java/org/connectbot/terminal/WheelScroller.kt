@@ -66,8 +66,8 @@ private const val MAX_DETENTS_PER_FLING = 200
  *
  * @param emulator The emulator to report to
  * @param lineHeightPx Height of one terminal line in pixels
- * @param anchorRow Row (0-based) the gesture started on
- * @param anchorCol Column (0-based) the gesture started on
+ * @param anchorRow Row (0-based) the gesture started on; the emulator clamps it
+ * @param anchorCol Column (0-based) the gesture started on; the emulator clamps it
  */
 internal class WheelScroller(
     private val emulator: TerminalEmulator,
@@ -144,12 +144,13 @@ internal class WheelScroller(
         val wanted = (residualPx / pixelsPerDetent).toInt()
         if (wanted == 0) return 0
 
+        val up = wanted > 0
         val sent = min(abs(wanted), limit)
         val consumed = if (carryExcess) sent else abs(wanted)
-        residualPx -= if (wanted > 0) consumed * pixelsPerDetent else -consumed * pixelsPerDetent
+        residualPx -= (if (up) consumed else -consumed) * pixelsPerDetent
 
         emulator.scrollWheel(
-            direction = if (wanted > 0) WheelDirection.UP else WheelDirection.DOWN,
+            direction = if (up) WheelDirection.UP else WheelDirection.DOWN,
             row = anchorRow,
             col = anchorCol,
             steps = sent,
