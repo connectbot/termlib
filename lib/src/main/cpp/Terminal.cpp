@@ -861,14 +861,44 @@ void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
             propValue = ScopedLocalRef<jobject>(env, env->NewObject(mTerminalPropertyIntClass, mTerminalPropertyIntConstructor, val->number));
             break;
 
-        case VTERM_VALUETYPE_STRING:
-            if (val->string.str) {
-                char* utf8_str = mutf8_to_utf8(val->string.str, val->string.len, nullptr);
-                ScopedLocalRef<jstring> str(env, env->NewStringUTF(utf8_str));
-                propValue = ScopedLocalRef<jobject>(env, env->NewObject(mTerminalPropertyStringClass, mTerminalPropertyStringConstructor, str.get()));
-                free(utf8_str);
+        case VTERM_VALUETYPE_STRING: {
+            // libvterm hands a string property over in fragments, one per input
+            // buffer, so a title that straddles a PTY read arrives in pieces and
+            // the sequence ends with a fragment that is often empty. Forwarding
+            // each fragment on its own would let the last one win: a title split
+            // across two reads would arrive truncated to its tail, and a
+            // terminator arriving on its own would clear the title outright.
+            //
+            // So accumulate here and deliver once, the same shape as
+            // termOscFallback() and termSelectionSet(). Java then only ever sees
+            // whole values.
+            // Keyed by property rather than a single buffer: OSC 0 sets the icon
+            // name and the title from the same fragment, so two values are in
+            // flight at once and one buffer would interleave them.
+            std::string& buffer = mStringPropData[prop];
+
+            if (val->string.initial) {
+                buffer.clear();
             }
+            if (val->string.str && val->string.len > 0) {
+                // Bounded because the payload is remote input and the sequence
+                // that ends it may never arrive. Excess is dropped rather than
+                // the value abandoned: an over-long title is still worth showing
+                // truncated, and a real one is a line at most.
+                size_t room = MAX_STRING_PROP_BYTES - std::min(buffer.size(), MAX_STRING_PROP_BYTES);
+                buffer.append(val->string.str, std::min(static_cast<size_t>(val->string.len), room));
+            }
+            if (!val->string.final) {
+                break;
+            }
+
+            char* utf8_str = mutf8_to_utf8(buffer.data(), buffer.size(), nullptr);
+            ScopedLocalRef<jstring> str(env, env->NewStringUTF(utf8_str));
+            propValue = ScopedLocalRef<jobject>(env, env->NewObject(mTerminalPropertyStringClass, mTerminalPropertyStringConstructor, str.get()));
+            free(utf8_str);
+            buffer.clear();
             break;
+        }
 
         case VTERM_VALUETYPE_COLOR: {
             uint8_t r, g, b;

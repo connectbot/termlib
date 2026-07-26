@@ -19,6 +19,7 @@
 
 #include <jni.h>
 #include <vterm.h>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -217,6 +218,16 @@ private:
     std::string mOscData;  // Accumulates OSC payload across fragments
     int mOscCommand{-1};   // Current OSC command being accumulated
     VTermPos mOscCursorPos{0, 0};  // Cursor position when OSC sequence started
+
+    // Accumulates a string-valued property (title, icon name) across the
+    // fragments libvterm delivers it in; see invokeSetTermProp(). Keyed by
+    // property because OSC 0 sets two of them from the same fragment.
+    //
+    // Most a single string property may accumulate. The payload is remote input
+    // and nothing guarantees the terminator ever arrives, so the buffer needs a
+    // ceiling; this one is far above any real title.
+    static constexpr size_t MAX_STRING_PROP_BYTES = 4096;
+    std::map<VTermProp, std::string> mStringPropData;
 
     // Terminal dimensions
     int mRows;
