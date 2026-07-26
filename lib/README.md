@@ -62,3 +62,16 @@ detents, so no caller can put a malformed report or an unbounded burst on the
 wire.
 
 **Important**: Callbacks must not call back into Terminal methods (causes deadlock). Defer work to avoid reentrancy.
+
+## Local libvterm modifications
+
+`src/main/cpp/libvterm/` is vendored, and is **not** pristine upstream. Each
+divergence is kept as a patch in `src/main/cpp/libvterm-patches/` as well as
+being applied in tree, so that it survives a libvterm bump — CMake compiles the
+vendored sources directly, so a bump that overwrites them drops the change
+silently, and the symptom is a behavioural regression rather than a build
+failure. After bumping, re-apply each patch and re-run the tests it names.
+
+| Patch | File | Why |
+| --- | --- | --- |
+| `0001-reset-full-mouse-state.patch` | `src/state.c` | `vterm_state_reset()` cleared `mouse_flags` but left the report encoding and any held button stale, and switched reporting off without a `VTERM_PROP_MOUSE` callback — so an embedder mirroring that property kept routing gestures into a vterm that drops them. Not yet submitted upstream. |

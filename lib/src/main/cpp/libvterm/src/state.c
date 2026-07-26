@@ -60,7 +60,11 @@ static void erase(VTermState *state, VTermRect rect, int selective)
  * creating a state and resetting one cannot drift apart. Upstream initialised
  * these in vterm_state_new() and cleared only mouse_flags in
  * vterm_state_reset(), which left the report encoding and any held button
- * surviving a reset. */
+ * surviving a reset.
+ *
+ * Also kept as libvterm-patches/0001-reset-full-mouse-state.patch. Re-apply it
+ * after bumping libvterm; a bump overwrites this file without failing the
+ * build. */
 static void reset_mouse_state(VTermState *state)
 {
   state->mouse_col      = 0;
