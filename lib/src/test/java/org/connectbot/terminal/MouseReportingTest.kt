@@ -1,6 +1,6 @@
 /*
  * ConnectBot Terminal
- * Copyright 2026 Kenny Root
+ * Copyright 2026 Termlib contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,11 +65,16 @@ class MouseReportingTest {
         private fun drain() = InstrumentationRegistry.getInstrumentation().waitForIdleSync()
     }
 
-    private fun emulator(out: Output): TerminalEmulator = TerminalEmulatorFactory.create(
+    /**
+     * The concrete type, not the [TerminalEmulator] interface: motion and bare
+     * button presses are internal to the library, so only the implementation
+     * exposes them.
+     */
+    private fun emulator(out: Output): TerminalEmulatorImpl = TerminalEmulatorFactory.create(
         initialRows = 24,
         initialCols = 80,
         onKeyboardInput = { out.append(it) },
-    )
+    ) as TerminalEmulatorImpl
 
     private fun TerminalEmulator.send(s: String) = writeInput(s.toByteArray())
 
@@ -345,5 +350,142 @@ class MouseReportingTest {
         // Only the two wheel reports — the implicit move is a no-op because the
         // pointer is already on that cell.
         assertEquals("\u001B[<64;5;5M".repeat(2), out.text)
+    }
+
+    // -----------------------------------------------------------------------
+    // Clicks
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun testClickEmitsPressAndRelease() = runBlocking {
+        val out = Output()
+        val term = emulator(out)
+        term.send("\u001B[?1000h\u001B[?1006h")
+        out.clear()
+
+        term.mouseClick(MouseButton.LEFT, row = 2, col = 7)
+
+        // Exactly what a press followed by its release encodes to, and nothing
+        // an application could mistake for a button still being held.
+        assertEquals("\u001B[<0;8;3M\u001B[<0;8;3m", out.text)
+    }
+
+    @Test
+    fun testClickReleasesEveryButton() = runBlocking {
+        val out = Output()
+        val term = emulator(out)
+        term.send("\u001B[?1000h\u001B[?1006h")
+
+        for (button in MouseButton.entries) {
+            out.clear()
+            term.mouseClick(button, row = 0, col = 0)
+
+            val reports = out.text
+            assertTrue(
+                "$button click should end in a release, got: " + reports.replace("\u001B", "ESC"),
+                reports.endsWith("m"),
+            )
+        }
+    }
+
+    @Test
+    fun testClickIsSilentWhileTrackingDisabled() = runBlocking {
+        val out = Output()
+        val term = emulator(out)
+
+        term.mouseClick(MouseButton.LEFT, row = 2, col = 7)
+
+        assertEquals("", out.text)
+    }
+
+    // -----------------------------------------------------------------------
+    // Coordinates outside the screen
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun testCoordinatesAreClampedToTheScreen() = runBlocking {
+        // libvterm's X10 encoder clamps only the high end, so a negative
+        // coordinate would otherwise put a control byte on the wire. Clamping
+        // happens natively, against the size the terminal actually has.
+        val out = Output()
+        val term = emulator(out)
+        term.send("\u001B[?1000h\u001B[?1006h")
+
+        out.clear()
+        term.mouseClick(MouseButton.LEFT, row = -5, col = -9)
+        assertEquals("clamped to the first cell", "\u001B[<0;1;1M\u001B[<0;1;1m", out.text)
+
+        out.clear()
+        term.mouseClick(MouseButton.LEFT, row = 9999, col = 9999)
+        // 24x80 terminal, so the last cell is row 23, col 79, 1-based in SGR.
+        assertEquals("clamped to the last cell", "\u001B[<0;80;24M\u001B[<0;80;24m", out.text)
+    }
+
+    @Test
+    fun testWheelCoordinatesAreClampedToTheScreen() = runBlocking {
+        val out = Output()
+        val term = emulator(out)
+        term.send("\u001B[?1000h\u001B[?1006h")
+        out.clear()
+
+        term.scrollWheel(WheelDirection.UP, row = Int.MIN_VALUE, col = Int.MIN_VALUE)
+
+        assertEquals("\u001B[<64;1;1M", out.text)
+    }
+
+    @Test
+    fun testWheelBurstIsBoundedNatively() = runBlocking {
+        // The native loop emits a report per step while holding the terminal
+        // lock, so an absurd step count must not translate into an absurd number
+        // of reports - whatever a caller asks for.
+        val out = Output()
+        val term = emulator(out)
+        term.send("\u001B[?1000h\u001B[?1006h")
+        out.clear()
+
+        term.scrollWheel(WheelDirection.DOWN, row = 0, col = 0, steps = Int.MAX_VALUE)
+
+        val reports = Regex(Regex.escape("\u001B[<65;1;1M")).findAll(out.text).count()
+        assertTrue("bounded burst, got $reports reports", reports in 1..64)
+    }
+
+    // -----------------------------------------------------------------------
+    // Reset clears the rest of the mouse state, not just the mode
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun testResetClearsReportEncoding() = runBlocking {
+        // A reset that leaves the SGR encoding selected would answer a later
+        // plain DECSET 1000 in a protocol that application never asked for.
+        val out = Output()
+        val term = emulator(out)
+        term.send("\u001B[?1000h\u001B[?1006h")
+
+        term.send("\u001Bc")
+        term.send("\u001B[?1000h")
+        out.clear()
+
+        term.scrollWheel(WheelDirection.UP, row = 0, col = 0)
+
+        // X10 again: CSI M, then (code|mods)+0x20, col+0x21, row+0x21.
+        assertEquals("\u001B[M`!!", out.text)
+    }
+
+    @Test
+    fun testResetClearsHeldButtons() = runBlocking {
+        // A press whose release never came leaves libvterm believing a button is
+        // down, which makes DRAG tracking report motion with nothing held.
+        val out = Output()
+        val term = emulator(out)
+        term.send("\u001B[?1000h\u001B[?1006h")
+        term.mouseButton(MouseButton.LEFT, row = 0, col = 0, pressed = true)
+
+        term.send("\u001Bc")
+        term.send("\u001B[?1002h\u001B[?1006h")
+        out.clear()
+
+        term.mouseMove(row = 5, col = 5)
+
+        assertEquals("no button is held, so a drag reports nothing", "", out.text)
     }
 }

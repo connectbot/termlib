@@ -56,6 +56,20 @@ static void erase(VTermState *state, VTermRect rect, int selective)
       return;
 }
 
+/* Local modification: every field describing the mouse lives here, so that
+ * creating a state and resetting one cannot drift apart. Upstream initialised
+ * these in vterm_state_new() and cleared only mouse_flags in
+ * vterm_state_reset(), which left the report encoding and any held button
+ * surviving a reset. */
+static void reset_mouse_state(VTermState *state)
+{
+  state->mouse_col      = 0;
+  state->mouse_row      = 0;
+  state->mouse_buttons  = 0;
+  state->mouse_flags    = 0;
+  state->mouse_protocol = MOUSE_X10;
+}
+
 static VTermState *vterm_state_new(VTerm *vt)
 {
   VTermState *state = vterm_allocator_malloc(vt, sizeof(VTermState));
@@ -65,11 +79,7 @@ static VTermState *vterm_state_new(VTerm *vt)
   state->rows = vt->rows;
   state->cols = vt->cols;
 
-  state->mouse_col     = 0;
-  state->mouse_row     = 0;
-  state->mouse_buttons = 0;
-
-  state->mouse_protocol = MOUSE_X10;
+  reset_mouse_state(state);
 
   state->callbacks = NULL;
   state->cbdata    = NULL;
@@ -2087,7 +2097,7 @@ void vterm_state_reset(VTermState *state, int hard)
   state->mode.bracketpaste    = 0;
   state->mode.report_focus    = 0;
 
-  state->mouse_flags = 0;
+  reset_mouse_state(state);
 
   state->vt->mode.ctrl8bit   = 0;
 
@@ -2125,11 +2135,11 @@ void vterm_state_reset(VTermState *state, int hard)
   settermprop_bool(state, VTERM_PROP_CURSORVISIBLE, 1);
   settermprop_bool(state, VTERM_PROP_CURSORBLINK,   1);
   settermprop_int (state, VTERM_PROP_CURSORSHAPE,   VTERM_PROP_CURSORSHAPE_BLOCK);
-  /* Local modification: clearing state->mouse_flags above disables reporting
-   * without telling the embedder. A terminal mirroring VTERM_PROP_MOUSE would
-   * then believe an application still wants the mouse and keep routing gestures
-   * into a vterm that silently drops them. This notifies; the assignment above
-   * is kept so the flags are cleared even if the callback vetoes the store. */
+  /* Local modification: reset_mouse_state() above disables reporting without
+   * telling the embedder. A terminal mirroring VTERM_PROP_MOUSE would then
+   * believe an application still wants the mouse and keep routing gestures into
+   * a vterm that silently drops them. This notifies; the reset above is kept so
+   * the state is cleared even if the callback vetoes the store. */
   settermprop_int (state, VTERM_PROP_MOUSE,         VTERM_PROP_MOUSE_NONE);
 
   if(hard) {

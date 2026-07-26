@@ -1,6 +1,6 @@
 /*
  * ConnectBot Terminal
- * Copyright 2026 Kenny Root
+ * Copyright 2026 Termlib contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,6 +84,29 @@ class WheelScrollGestureTest {
     /** Count of wheel reports in the output, ignoring any motion reports. */
     private fun wheelReports(): Int = Regex("\u001B\\[<6[4-7];").findAll(output.toString()).count()
 
+    /** Count of left-button press/release pairs in the output. */
+    private fun clickReports(): Int = Regex("\u001B\\[<0;\\d+;\\d+M" + "\u001B\\[<0;\\d+;\\d+m").findAll(output.toString()).count()
+
+    /**
+     * Tap once in the middle of the terminal.
+     *
+     * Event time is advanced well past the double-tap timeout first, so
+     * consecutive calls stay separate taps rather than becoming a word
+     * selection, and the touch is released quickly enough not to become a long
+     * press.
+     */
+    private fun tap() {
+        composeTestRule.onRoot().performTouchInput {
+            advanceEventTime(GRACE_PERIOD_MS * 10)
+            down(0, center)
+            advanceEventTime(DRAG_STEP_MS)
+            up(0)
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeBy(1000)
+        composeTestRule.waitForIdle()
+    }
+
     private fun showTerminal(emulator: TerminalEmulator): ScrollController {
         var scrollController: ScrollController? = null
         composeTestRule.setContent {
@@ -147,7 +170,11 @@ class WheelScrollGestureTest {
      * either the wheel path or the local one. Sampling at the end of the drag is
      * still what makes these tests specific — without it, reports produced only
      * by a fling would be indistinguishable from reports produced by the drag.
-     * The fling's own conversion and bound are covered in WheelScrollerTest.
+     *
+     * That the fling is invisible here is why WheelScroller owns its decay: it
+     * can then be driven directly from a test frame clock, which is what
+     * WheelScrollerTest does. This harness covers the routing decision; it is
+     * not the place the fling itself gets tested.
      */
     private data class DragSamples(val afterDrag: Int, val afterFling: Int)
 
@@ -212,5 +239,56 @@ class WheelScrollGestureTest {
                 "current=${controller.scrollbackPosition})",
             controller.scrollbackPosition > initialPosition,
         )
+    }
+
+    @Test
+    fun testTapReportsAClickWhenTrackingEnabled() {
+        val emulator = emulatorWithContent()
+        emulator.writeInput(enableMouseTracking.toByteArray())
+        (emulator as? TerminalEmulatorImpl)?.processPendingUpdates()
+
+        showTerminal(emulator)
+        output.setLength(0)
+
+        tap()
+
+        assertEquals(
+            "a tap should reach the application as one complete click, got: " +
+                output.toString().replace("\u001B", "ESC"),
+            1,
+            clickReports(),
+        )
+    }
+
+    @Test
+    fun testTapStaysLocalWhenTrackingDisabled() {
+        val emulator = emulatorWithContent()
+
+        showTerminal(emulator)
+        output.setLength(0)
+
+        tap()
+
+        assertEquals("no mouse reports without tracking", 0, clickReports())
+        assertEquals("", output.toString())
+    }
+
+    @Test
+    fun testTapDoesNotLeaveAButtonHeld() {
+        // Every press the application sees has to be followed by its release, or
+        // it spends the rest of the session believing the button is down.
+        val emulator = emulatorWithContent()
+        emulator.writeInput(enableMouseTracking.toByteArray())
+        (emulator as? TerminalEmulatorImpl)?.processPendingUpdates()
+
+        showTerminal(emulator)
+        output.setLength(0)
+
+        repeat(3) { tap() }
+
+        val presses = Regex("\u001B\\[<0;\\d+;\\d+M").findAll(output.toString()).count()
+        val releases = Regex("\u001B\\[<0;\\d+;\\d+m").findAll(output.toString()).count()
+        assertEquals("every press is released", presses, releases)
+        assertEquals(3, presses)
     }
 }

@@ -64,9 +64,17 @@ public:
     // Mouse input - generates escape sequences only when the application has
     // requested mouse tracking (DECSET 1000/1002/1003). Encoding follows the
     // protocol the application selected (X10, UTF-8, SGR or rxvt).
+    //
+    // Coordinates are clamped to the screen; see positionMouseLocked().
     bool mouseMove(int row, int col, int modifiers);
     bool mouseButton(int row, int col, int button, bool pressed, int modifiers);
+    bool mouseClick(int row, int col, int button, int modifiers);
     bool scrollWheel(int row, int col, int button, int steps, int modifiers);
+
+    // Most wheel detents one scrollWheel() call may report. The loop runs with
+    // mLock held and emits a report per iteration, so the bound belongs here
+    // rather than with any particular caller.
+    static constexpr int MAX_WHEEL_STEPS_PER_CALL = 32;
 
     // Cell data retrieval for rendering
     int getCellRun(JNIEnv* env, int row, int col, jobject runObject);
@@ -120,6 +128,19 @@ private:
     // Helper functions
     static bool cellStyleEqual(const VTermScreenCell& a, const VTermScreenCell& b);
     void resolveColor(const VTermColor& color, uint8_t& r, uint8_t& g, uint8_t& b);
+
+    // The single path by which any mouse report reaches libvterm. Clamps
+    // row/col to the screen and positions the pointer, returning the translated
+    // modifiers for the caller's own report. Every public mouse method goes
+    // through it, so none of them can report at a coordinate off the screen -
+    // libvterm's X10 encoder clamps only the high end and would otherwise emit
+    // a control byte into the PTY stream for a negative coordinate.
+    //
+    // Clamping against mRows/mCols under mLock, rather than against a size the
+    // caller believes, means a resize racing a gesture cannot slip through.
+    //
+    // Caller must hold mLock and must have checked mVt.
+    VTermModifier positionMouseLocked(int row, int col, int modifiers);
 
     // libvterm state
     VTerm* mVt;

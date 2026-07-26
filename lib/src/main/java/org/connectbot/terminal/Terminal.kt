@@ -1262,24 +1262,10 @@ internal fun TerminalWithAccessibility(
                                 scrollJob?.cancel()
                                 scrollJob = launch {
                                     if (scroller != null) {
-                                        // Decay a scratch offset on the same curve the
-                                        // local scrollback uses, reporting the detents it
-                                        // passes over so a fling feels the same either way.
-                                        // Bounded because, unlike the local path, there is
-                                        // no scrollback size to run out of.
-                                        val flingOffset = Animatable(0f)
-                                        flingOffset.updateBounds(
-                                            lowerBound = -scroller.maxFlingTravelPx,
-                                            upperBound = scroller.maxFlingTravelPx,
-                                        )
-                                        var lastValue = 0f
-                                        flingOffset.animateDecay(
-                                            initialVelocity = velocity.y,
-                                            animationSpec = splineBasedDecay(density),
-                                        ) {
-                                            scroller.scrollBy(value - lastValue)
-                                            lastValue = value
-                                        }
+                                        // The application scrolls itself, so the fling is
+                                        // reported rather than animated; the scroller owns
+                                        // the decay and the bound that stops it.
+                                        scroller.fling(velocity.y, splineBasedDecay(density))
                                     } else {
                                         scrollOffset.animateDecay(
                                             initialVelocity = velocity.y,
@@ -1303,15 +1289,29 @@ internal fun TerminalWithAccessibility(
 
                             GestureType.Undetermined -> {
                                 // This is a tap. If a selection is active, clear it.
-                                // Otherwise, check for hyperlink or forward the tap.
+                                // Otherwise the application gets it if it asked for the
+                                // mouse; failing that, check for a hyperlink and forward.
+                                val tapCol = (down.position.x / baseCharWidth).toInt()
+                                    .coerceIn(0, screenState.snapshot.cols - 1)
+                                val tapRow = (down.position.y / baseCharHeight).toInt()
+                                    .coerceIn(0, screenState.snapshot.rows - 1)
+
                                 if (selectionManager.mode != SelectionMode.NONE) {
                                     selectionManager.clearSelection()
+                                } else if (terminalEmulator.mouseTracking.isEnabled) {
+                                    // The application owns the viewport, so it owns the
+                                    // click too — including on anything that looks like a
+                                    // link, which it drew and will handle itself. Sent as
+                                    // one click so the release cannot go missing.
+                                    // Long-press selection stays local: it remains the way
+                                    // to copy text out of a full-screen application.
+                                    terminalEmulator.mouseClick(MouseButton.LEFT, tapRow, tapCol)
+                                    if (keyboardEnabled) {
+                                        focusRequester.requestFocus()
+                                    }
+                                    currentOnTerminalTap()
                                 } else {
                                     // Check if tap is on a hyperlink
-                                    val tapCol = (down.position.x / baseCharWidth).toInt()
-                                        .coerceIn(0, screenState.snapshot.cols - 1)
-                                    val tapRow = (down.position.y / baseCharHeight).toInt()
-                                        .coerceIn(0, screenState.snapshot.rows - 1)
                                     val hyperlinkUrl = screenState.getHyperlinkUrlAt(
                                         tapRow,
                                         tapCol,

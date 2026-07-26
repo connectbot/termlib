@@ -23,6 +23,9 @@ import android.os.Looper
 import android.util.Log
 import android.view.Choreographer
 import androidx.annotation.VisibleForTesting
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -116,35 +119,31 @@ sealed interface TerminalEmulator {
      * Once an application enables tracking it expects to receive the events
      * itself — a full-screen program keeps its own scrollback, so scrolling the
      * terminal's copy would do nothing useful.
+     *
+     * This is Compose snapshot state: reading it inside a composition subscribes
+     * to it, so UI that changes with the tracking mode recomposes when an
+     * application enables or disables it.
      */
     val mouseTracking: MouseTracking
 
     /**
-     * Report the mouse moving to a cell.
+     * Report a complete click — a press and its matching release — at a cell.
      *
-     * A motion report is only emitted when the application asked for
-     * [MouseTracking.DRAG] (and a button is held) or [MouseTracking.MOVE].
-     * Moving to the cell the mouse already occupies is a no-op, so this is safe
-     * to call for every pointer sample.
+     * The pair is emitted as one operation, so the release cannot be lost and
+     * the application cannot be left believing the button is still down.
      *
-     * @param row Row index (0-based) within the visible screen
-     * @param col Column index (0-based) within the visible screen
+     * There is deliberately no way to report a press without its release, or to
+     * report bare pointer motion. Both are only meaningful for input that holds
+     * a button down across events or hovers without one — neither of which a
+     * touch gesture produces — and both are easy to leave half-delivered. If
+     * physical mouse or stylus support needs them later, they can be added then,
+     * against a real caller.
+     *
+     * @param row Row index (0-based); clamped to the visible screen
+     * @param col Column index (0-based); clamped to the visible screen
      * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
      */
-    fun mouseMove(row: Int, col: Int, modifiers: Int = 0)
-
-    /**
-     * Report a mouse button press or release at a cell.
-     *
-     * Each press must be paired with a release; applications track button state
-     * and a dropped release leaves them believing the button is still down.
-     *
-     * @param row Row index (0-based) within the visible screen
-     * @param col Column index (0-based) within the visible screen
-     * @param pressed true for a press, false for a release
-     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
-     */
-    fun mouseButton(button: MouseButton, row: Int, col: Int, pressed: Boolean, modifiers: Int = 0)
+    fun mouseClick(button: MouseButton, row: Int, col: Int, modifiers: Int = 0)
 
     /**
      * Report [steps] wheel detents at a cell.
@@ -153,10 +152,12 @@ sealed interface TerminalEmulator {
      * over the screen. Callers converting a continuous gesture into detents
      * should rate-limit: applications commonly throttle or coalesce a flood of
      * wheel events, so a fling turned into hundreds of detents scrolls less far
-     * than the same distance delivered as a few dozen.
+     * than the same distance delivered as a few dozen. A single call reports a
+     * bounded number of detents however large [steps] is, so no caller can make
+     * one call occupy the terminal for an unbounded time.
      *
-     * @param row Row index (0-based) within the visible screen
-     * @param col Column index (0-based) within the visible screen
+     * @param row Row index (0-based); clamped to the visible screen
+     * @param col Column index (0-based); clamped to the visible screen
      * @param steps Number of detents to report; values below 1 send nothing
      * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
      */
@@ -425,10 +426,13 @@ internal class TerminalEmulatorImpl(
     private var terminalTitle = ""
     private var isAltScreenActive = false
 
-    // Read outside damageLock by gesture handling on the UI thread, written
-    // from the native callback thread.
-    @Volatile
-    override var mouseTracking: MouseTracking = MouseTracking.NONE
+    // Read outside damageLock by gesture handling on the UI thread, written from
+    // the native callback thread. Snapshot state rather than @Volatile so that
+    // reading it in a composition subscribes to it: an embedder whose UI depends
+    // on the tracking mode gets recomposed instead of having to poll. Compose
+    // state supports writes from any thread and carries the same visibility
+    // guarantee @Volatile did.
+    override var mouseTracking: MouseTracking by mutableStateOf(MouseTracking.NONE)
         private set
 
     // Scrollback buffer
@@ -538,16 +542,47 @@ internal class TerminalEmulatorImpl(
 
     /**
      * Report the mouse moving to a cell.
+     *
+     * Not part of the public API: bare motion is only meaningful for a device
+     * that can hover, and nothing in the library produces one yet. Kept because
+     * it is how the tracking modes that report motion — [MouseTracking.DRAG] and
+     * [MouseTracking.MOVE] — are exercised, and because it is the natural
+     * primitive if physical mouse support arrives.
+     *
+     * A motion report is only emitted when the application asked for
+     * [MouseTracking.DRAG] (and a button is held) or [MouseTracking.MOVE].
+     * Moving to the cell the mouse already occupies is a no-op.
+     *
+     * @param row Row index (0-based); clamped to the visible screen
+     * @param col Column index (0-based); clamped to the visible screen
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
      */
-    override fun mouseMove(row: Int, col: Int, modifiers: Int) {
+    internal fun mouseMove(row: Int, col: Int, modifiers: Int = 0) {
         terminalNative.mouseMove(row, col, modifiers)
     }
 
     /**
      * Report a mouse button press or release at a cell.
+     *
+     * Not part of the public API, for the same reason as [mouseMove]: a bare
+     * press is only meaningful for input that holds a button down across events,
+     * and a caller that loses the release leaves the application believing the
+     * button is still down. [mouseClick] is the form that cannot be misused.
+     *
+     * @param row Row index (0-based); clamped to the visible screen
+     * @param col Column index (0-based); clamped to the visible screen
+     * @param pressed true for a press, false for a release
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
      */
-    override fun mouseButton(button: MouseButton, row: Int, col: Int, pressed: Boolean, modifiers: Int) {
+    internal fun mouseButton(button: MouseButton, row: Int, col: Int, pressed: Boolean, modifiers: Int = 0) {
         terminalNative.mouseButton(row, col, button.code, pressed, modifiers)
+    }
+
+    /**
+     * Report a complete click at a cell.
+     */
+    override fun mouseClick(button: MouseButton, row: Int, col: Int, modifiers: Int) {
+        terminalNative.mouseClick(row, col, button.code, modifiers)
     }
 
     /**

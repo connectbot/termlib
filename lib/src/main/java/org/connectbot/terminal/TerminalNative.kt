@@ -117,8 +117,8 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * tracking (DECSET 1003). Moving to the cell the mouse already occupies is a
      * no-op, so repeated calls at the same cell do not flood the application.
      *
-     * @param row Row index (0-based)
-     * @param col Column index (0-based)
+     * @param row Row index (0-based); clamped to the screen natively
+     * @param col Column index (0-based); clamped to the screen natively
      * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
      * @return true if handled
      */
@@ -153,11 +153,30 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     }
 
     /**
+     * Dispatch a press and its matching release at a cell.
+     *
+     * Both reports are emitted under a single native lock, so a click cannot be
+     * left half-delivered — an application that saw the press always sees the
+     * release, whatever else is happening on other threads.
+     *
+     * @param row Row index (0-based)
+     * @param col Column index (0-based)
+     * @param button 1=left, 2=middle, 3=right
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun mouseClick(row: Int, col: Int, button: Int, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeMouseClick(nativePtr, row, col, button, modifiers)
+    }
+
+    /**
      * Dispatch [steps] presses of a wheel button at a cell.
      *
      * Equivalent to [steps] calls to [mouseButton] with a wheel button, but the
      * whole burst is emitted under a single native lock so it cannot be
-     * interleaved with another gesture's reports.
+     * interleaved with another gesture's reports. The native layer bounds the
+     * burst, so no caller can hold that lock for an arbitrary length of time.
      *
      * @param row Row index (0-based)
      * @param col Column index (0-based)
@@ -278,6 +297,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
     private external fun nativeMouseMove(ptr: Long, row: Int, col: Int, modifiers: Int): Boolean
     private external fun nativeMouseButton(ptr: Long, row: Int, col: Int, button: Int, pressed: Boolean, modifiers: Int): Boolean
+    private external fun nativeMouseClick(ptr: Long, row: Int, col: Int, button: Int, modifiers: Int): Boolean
     private external fun nativeScrollWheel(ptr: Long, row: Int, col: Int, button: Int, steps: Int, modifiers: Int): Boolean
     private external fun nativeGetCellRun(ptr: Long, row: Int, col: Int, run: CellRun): Int
     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int

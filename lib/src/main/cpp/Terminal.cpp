@@ -426,6 +426,19 @@ bool Terminal::dispatchCharacter(int modifiers, int codepoint) {
 }
 
 // Mouse input handlers
+VTermModifier Terminal::positionMouseLocked(int row, int col, int modifiers) {
+    VTermModifier mod = toVTermModifier(modifiers);
+
+    // libvterm only emits a report here when the application asked for drag or
+    // motion tracking; otherwise this just records the position that a
+    // subsequent button report will carry.
+    vterm_mouse_move(mVt,
+                     std::clamp(row, 0, mRows > 0 ? mRows - 1 : 0),
+                     std::clamp(col, 0, mCols > 0 ? mCols - 1 : 0),
+                     mod);
+    return mod;
+}
+
 bool Terminal::mouseMove(int row, int col, int modifiers) {
     std::scoped_lock lock(mLock);
 
@@ -433,10 +446,7 @@ bool Terminal::mouseMove(int row, int col, int modifiers) {
         return false;
     }
 
-    // libvterm only emits a report here when the application asked for drag or
-    // motion tracking; otherwise this just records the position that a
-    // subsequent mouseButton() report will carry.
-    vterm_mouse_move(mVt, row, col, toVTermModifier(modifiers));
+    positionMouseLocked(row, col, modifiers);
     return true;
 }
 
@@ -450,9 +460,25 @@ bool Terminal::mouseButton(int row, int col, int button, bool pressed, int modif
     // Position and button are set under one lock: libvterm carries the position
     // recorded by the move into the button report, so a concurrent move for a
     // different gesture must not be able to land between the two.
-    VTermModifier mod = toVTermModifier(modifiers);
-    vterm_mouse_move(mVt, row, col, mod);
-    vterm_mouse_button(mVt, button, pressed, mod);
+    vterm_mouse_button(mVt, button, pressed, positionMouseLocked(row, col, modifiers));
+    return true;
+}
+
+bool Terminal::mouseClick(int row, int col, int button, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt) {
+        return false;
+    }
+
+    // Press and release under one lock. An application tracks button state from
+    // these reports, so a press whose release is lost - dropped by a caller, or
+    // separated from it by a reset that clears the button state in between -
+    // leaves the application believing the button is still down. Emitting the
+    // pair as one operation means a click cannot be left half-delivered.
+    VTermModifier mod = positionMouseLocked(row, col, modifiers);
+    vterm_mouse_button(mVt, button, true, mod);
+    vterm_mouse_button(mVt, button, false, mod);
     return true;
 }
 
@@ -463,9 +489,9 @@ bool Terminal::scrollWheel(int row, int col, int button, int steps, int modifier
         return false;
     }
 
-    VTermModifier mod = toVTermModifier(modifiers);
-    vterm_mouse_move(mVt, row, col, mod);
-    for (int i = 0; i < steps; i++) {
+    VTermModifier mod = positionMouseLocked(row, col, modifiers);
+    int bounded = std::min(steps, MAX_WHEEL_STEPS_PER_CALL);
+    for (int i = 0; i < bounded; i++) {
         // Wheel buttons report a press with no matching release; libvterm emits
         // one report per call.
         vterm_mouse_button(mVt, button, true, mod);
@@ -1283,6 +1309,14 @@ Java_org_connectbot_terminal_TerminalNative_nativeMouseButton(JNIEnv* /* env */,
                                                                jboolean pressed, jint modifiers) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->mouseButton(row, col, button, pressed, modifiers);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeMouseClick(JNIEnv* /* env */, jobject /* thiz */,
+                                                              jlong ptr, jint row, jint col, jint button,
+                                                              jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->mouseClick(row, col, button, modifiers);
 }
 
 JNIEXPORT jboolean JNICALL

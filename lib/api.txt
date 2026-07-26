@@ -123,8 +123,7 @@ package org.connectbot.terminal {
     method public String? getLastCommandOutput();
     method @InaccessibleFromKotlin public org.connectbot.terminal.MouseTracking getMouseTracking();
     method public java.util.List<org.connectbot.terminal.TerminalUrl> getUrls(optional org.connectbot.terminal.UrlScanScope scope);
-    method public void mouseButton(org.connectbot.terminal.MouseButton button, int row, int col, boolean pressed, optional int modifiers);
-    method public void mouseMove(int row, int col, optional int modifiers);
+    method public void mouseClick(org.connectbot.terminal.MouseButton button, int row, int col, optional int modifiers);
     method public void resize(int newRows, int newCols);
     method public void scrollWheel(org.connectbot.terminal.WheelDirection direction, int row, int col, optional int steps, optional int modifiers);
     method public int setAnsiPalette(int[] ansiColors);
