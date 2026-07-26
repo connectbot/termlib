@@ -1,5 +1,47 @@
 # Terminal text rendering
 
+## Compose scheduling and input ordering
+
+Terminal input parsing remains synchronous: feed `writeInput` from the caller's
+reader/IO thread, not the UI thread. The input buffer can be reused when the
+call returns. Snapshot construction is coalesced on a background dispatcher;
+Compose applies the latest snapshot on its frame clock. Row content is read in
+the draw phase, so ordinary text damage does not recompose every row.
+Native cursor movement notifications are also coalesced within each
+`writeInput`: libvterm retains every logical movement, while rendering receives
+the final position, visibility, and the batch's original position once the
+write has completed. Cursor callbacks outside input writes remain immediate.
+
+Composition, layout, and drawing do not acquire terminal or image-store locks.
+Compose submits keyboard/IME input, resize, and cell-size updates asynchronously.
+Existing synchronous public methods retain their behavior and may still block
+when explicitly called by an application on the UI thread.
+
+Keyboard events, committed IME text, and `TerminalEmulator.pasteText(text)` use
+one FIFO per terminal. Each paste or IME commit is an indivisible command group;
+UTF-8 output may be split into transport chunks, but later typing cannot appear
+between them. Paste honors the application's bracketed-paste mode. Handle
+`onPasteRequest` by obtaining clipboard text and calling `pasteText`; writing
+clipboard data directly to a separate transport bypasses this ordering.
+Output callbacks still run on the configured Handler. Ordering starts when text
+is submitted, not when an asynchronous clipboard request was initiated.
+
+Image decode requests and animation advancement are coalesced off the UI thread.
+Draw reads a published bitmap/drawable handle, without consulting the mutable
+image store. Platform drawable lifecycle work remains on the main thread.
+Published bitmaps are not recycled while recorded draws may reference them;
+retired resources remain in the decode budget until weak-reference notification
+reports their release. Memory pressure can therefore defer a decode rather than
+exceed the budget.
+This accounts for library-owned image resources and estimated decoder working
+memory, not a hard process-RAM ceiling: Android's RenderThread, GPU caches, and
+allocator overhead can retain additional native memory beyond Java lifetimes.
+
+The frame benchmark in `benchmark/README.md` measures the complete Android
+Compose/RenderThread pipeline. Removing backend locks does not guarantee every
+device meets 60 Hz: text shaping, recording, GPU work, GC, and scheduling still
+consume frame time.
+
 Terminal columns come from the native parser, independently of glyph advances.
 Emoji properties and sequences are generated from Unicode 17.0.0 by `python3
 tools/generate-unicode.py`. The source files, generated tables, and source
@@ -29,7 +71,11 @@ ink outside the row without retaining a screen-sized bitmap. The magnifier uses
 the same two passes.
 
 Measurements are cached in one lazy float array per packed row, replaced when
-the font or size changes. Regular glyphs use direct Canvas drawing; only
+the font or size changes. The Compose renderer also uses a bounded 2 KiB
+single-glyph Latin-1 advance cache per font/size paint, with separate regular
+and bold entries. Complex clusters still use normal platform shaping. This
+avoids repeating text measurement just because row contents/colors changed.
+Regular glyphs use direct Canvas drawing; only
 oversized glyphs require a canvas transform.
 
 ## Explicit font fallback

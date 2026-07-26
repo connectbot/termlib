@@ -79,15 +79,28 @@ class NativeBoundaryTest {
     }
 
     private open class Callbacks : TerminalCallbacks {
+        data class CursorEvent(
+            val row: Int,
+            val col: Int,
+            val oldRow: Int,
+            val oldCol: Int,
+            val visible: Boolean,
+        )
+
         val decoder = TerminalTextDecoder()
         val texts = mutableListOf<Pair<Int, String>>()
         val scrollback = mutableListOf<List<TerminalLine.Cell>>()
+        val cursorEvents = mutableListOf<CursorEvent>()
         private val buffer = CellData.buffer()
         private var builder: PackedCells.Builder? = null
         override fun cellBuffer(): ByteBuffer = buffer
         override fun damage(startRow: Int, endRow: Int, startCol: Int, endCol: Int) = 0
         override fun moverect(dest: TermRect, src: TermRect) = 0
         override fun moveCursor(pos: CursorPosition, oldPos: CursorPosition, visible: Boolean) = 0
+        override fun moveCursor(row: Int, col: Int, oldRow: Int, oldCol: Int, visible: Boolean): Int {
+            cursorEvents += CursorEvent(row, col, oldRow, oldCol, visible)
+            return 0
+        }
         override fun setTermProp(prop: Int, value: TerminalProperty) = 0
         override fun bell() = 0
         override fun clearScrollback() = 0
@@ -110,6 +123,37 @@ class NativeBoundaryTest {
         override fun onTextFragment(kind: Int, command: Int, data: ByteArray, initial: Boolean, final: Boolean, cursorRow: Int, cursorCol: Int): Int {
             decoder.accept(kind, command, data, initial, final)?.let { texts.add(command to it) }
             return 1
+        }
+    }
+
+    @Test
+    fun cursorMovesAreCoalescedPerInputBatch() {
+        val callbacks = Callbacks()
+        TerminalNative(callbacks).use { terminal ->
+            callbacks.cursorEvents.clear()
+            terminal.writeInput("abcdefgh".toByteArray())
+            assertEquals(listOf(Callbacks.CursorEvent(0, 8, 0, 0, true)), callbacks.cursorEvents)
+
+            callbacks.cursorEvents.clear()
+            terminal.writeInput("ij\r".toByteArray())
+            assertEquals(listOf(Callbacks.CursorEvent(0, 0, 0, 8, true)), callbacks.cursorEvents)
+
+            callbacks.cursorEvents.clear()
+            terminal.writeInput("\u001B[?25l\u001B[4;5Habc\u001B[?25h".toByteArray())
+            assertEquals(listOf(Callbacks.CursorEvent(3, 7, 0, 0, true)), callbacks.cursorEvents)
+        }
+    }
+
+    @Test
+    fun fragmentedInputPublishesOnlyBatchesThatMoveTheCursor() {
+        val callbacks = Callbacks()
+        TerminalNative(callbacks).use { terminal ->
+            callbacks.cursorEvents.clear()
+            terminal.writeInput("\u001B[4;".toByteArray())
+            assertTrue(callbacks.cursorEvents.isEmpty())
+
+            terminal.writeInput("5Hxy".toByteArray())
+            assertEquals(listOf(Callbacks.CursorEvent(3, 6, 0, 0, true)), callbacks.cursorEvents)
         }
     }
 

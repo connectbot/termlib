@@ -200,6 +200,9 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
+    private external fun nativePaste(ptr: Long, data: ByteArray)
+
+    fun pasteText(data: ByteArray) = withNative { nativePaste(nativePtr, data) }
     private external fun nativeGetCells(ptr: Long, buffer: ByteBuffer, requests: Int): Int
     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int

@@ -64,6 +64,7 @@ internal data class TerminalSnapshot(
     val cols: Int,
     val timestamp: Long,
     val sequenceNumber: Long,
+    val alternateScreen: Boolean = false,
 ) {
     companion object {
         /**

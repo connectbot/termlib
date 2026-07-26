@@ -58,6 +58,7 @@ public:
 
     // Keyboard input - generates escape sequences
     bool dispatchKey(int modifiers, int key);
+    void paste(JNIEnv* env, jbyteArray data);
     bool dispatchCharacter(int modifiers, int codepoint);
 
     // Cell data retrieval for rendering
@@ -113,6 +114,8 @@ private:
     void invokeDamage(int startRow, int endRow, int startCol, int endCol);
     int invokeMoverect(VTermRect dest, VTermRect src);
     void invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool visible);
+    void beginCursorBatch();
+    void finishCursorBatch();
     void invokeSetTermProp(VTermProp prop, VTermValue* val);
     void invokeBell();
     void invokePushScrollbackLine(int cols, const VTermScreenCell* cells, bool softWrapped);
@@ -141,6 +144,14 @@ private:
     // Terminal dimensions
     int mRows;
     int mCols;
+
+    // libvterm may move the cursor once per glyph. Rendering only needs the
+    // position after an input write, so retain one notification per batch.
+    bool mCursorBatchActive = false;
+    bool mCursorPending = false;
+    bool mCursorVisible = true;
+    VTermPos mCursorPosition{0, 0};
+    VTermPos mCursorOldPosition{0, 0};
 
     // Java callback object and method IDs
     JavaVM* mJavaVM{};

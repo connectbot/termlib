@@ -334,9 +334,7 @@ internal class KeyboardHandler(
 
         val modifiers = getModifierMask()
 
-        text.codePoints().forEach { codepoint ->
-            dispatchCodepointOrEnter(modifiers, codepoint)
-        }
+        sendText(modifiers, text, false)
         modifierManager?.clearTransients()
         onInputProcessed?.invoke()
     }
@@ -358,26 +356,7 @@ internal class KeyboardHandler(
         }
         val modifiers = getModifierMask()
 
-        var index = 0
-        while (index < normalized.length) {
-            when (val ch = normalized[index]) {
-                '\n' -> {
-                    terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
-                    index += 1
-                }
-
-                '\r' -> {
-                    terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
-                    index += if (index + 1 < normalized.length && normalized[index + 1] == '\n') 2 else 1
-                }
-
-                else -> {
-                    val codepoint = normalized.codePointAt(index)
-                    terminalEmulator.dispatchCharacter(modifiers, codepoint)
-                    index += Character.charCount(codepoint)
-                }
-            }
-        }
+        sendText(modifiers, normalized, true)
 
         modifierManager?.clearTransients()
         onInputProcessed?.invoke()
@@ -506,6 +485,15 @@ internal class KeyboardHandler(
             terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
         } else {
             terminalEmulator.dispatchCharacter(modifiers, codepoint)
+        }
+    }
+
+    private fun sendText(modifiers: Int, text: String, normalizeNewlines: Boolean) {
+        val target = terminalEmulator
+        if (target is QueuedTerminal) {
+            target.text(modifiers, text, normalizeNewlines)
+        } else {
+            dispatchText(target, modifiers, text, normalizeNewlines)
         }
     }
 

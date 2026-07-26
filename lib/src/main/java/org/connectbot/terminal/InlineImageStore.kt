@@ -24,9 +24,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.io.InputStream
+import java.lang.ref.ReferenceQueue
+import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.InflaterInputStream
 import kotlin.math.ceil
 import kotlin.math.max
@@ -136,6 +140,65 @@ internal data class ImageFrame(
 }
 
 internal class InlineImageStore(val limits: InlineImageLimits, private val handler: Handler) {
+    // Published scheduling hint; UI reads this scalar, never the backend asset map.
+    var frameUpdatesNeeded by mutableStateOf(false)
+        private set
+    private val maintenance = TerminalDispatcher()
+    private val latestView = AtomicReference<ImageViewport?>()
+    private val viewScheduled = AtomicBoolean()
+    private val releasedResources = ReferenceQueue<Any>()
+    private class RetainedResource(value: Any, queue: ReferenceQueue<Any>, val bytes: Long) : WeakReference<Any>(value, queue)
+    private val retainedResources = mutableSetOf<RetainedResource>()
+
+    fun updateViewport(view: ImageViewport) {
+        latestView.set(view)
+        scheduleViewport()
+    }
+
+    private fun scheduleViewport() {
+        if (!viewScheduled.compareAndSet(false, true)) return
+        maintenance.execute {
+            try {
+                latestView.getAndSet(null)?.let { view ->
+                    synchronized(this) {
+                        viewportTop = view.top
+                        displayedIds = view.slices.map { it.asset.id }.toSet()
+                        if (!view.attached) {
+                            assets.values.forEach { it.clearDecoded() }
+                            frameUpdatesNeeded = false
+                        } else {
+                            view.slices.forEach { slice ->
+                                request(slice.asset, max(1, (slice.renderWidth * view.cellWidth * slice.asset.width / slice.crop.width()).toInt()), max(1, (slice.renderHeight * view.cellHeight * slice.asset.height / slice.crop.height()).toInt()))
+                            }
+                            advanceAnimations(view.now)
+                            frameUpdatesNeeded = view.slices.any { slice ->
+                                val asset = slice.asset
+                                assets[asset.id] === asset && (
+                                    asset.pending || (asset.bitmap == null && asset.drawable == null) ||
+                                        asset.movie != null || (asset.animationState != 1 && asset.frames.size > 1)
+                                    )
+                            }
+                        }
+                    }
+                }
+            } finally {
+                viewScheduled.set(false)
+                if (latestView.get() != null) scheduleViewport()
+            }
+        }
+    }
+
+    @Synchronized
+    private fun retain(bitmap: Bitmap?) {
+        if (bitmap == null) return
+        retainResource(bitmap, bitmap.allocationByteCount.toLong())
+    }
+
+    private fun retainResource(resource: Any, bytes: Long) {
+        if (retainedResources.none { it.get() === resource }) {
+            retainedResources.add(RetainedResource(resource, releasedResources, bytes))
+        }
+    }
     val assets = linkedMapOf<Long, ImageAsset>()
     val placements = mutableListOf<ImagePlacement>()
     var alternate = false
@@ -388,7 +451,8 @@ internal class InlineImageStore(val limits: InlineImageLimits, private val handl
         // encoded sources as well, so they cannot escape the memory accounting.
         val reservation = max(frame.workingBytes(w, h), nativeBytes + w.toLong() * h * 4) + borrowedBytes
         assets.values.filter { it !== asset && !visibleAsset(it) }.forEach { it.clearDecoded() }
-        val retained = assets.values.sumOf { (it.bitmap?.allocationByteCount?.toLong() ?: 0) + it.decoderBytes }
+        while (true) retainedResources.remove(releasedResources.poll() ?: break)
+        val retained = retainedResources.sumOf { it.bytes }
         if (reservation + decodedReservation + retained > limits.decodedBytes) return
         decodedReservation += reservation
         asset.pending = true
@@ -413,18 +477,20 @@ internal class InlineImageStore(val limits: InlineImageLimits, private val handl
             } catch (_: Exception) {
                 null
             }
-            handler.post {
+            maintenance.execute {
                 synchronized(this) {
                     decodedReservation -= reservation
                     asset.pending = false
+                    // Even a stale decoder result owns native memory until GC.
+                    (drawable ?: movie)?.let { retainResource(it, nativeBytes) }
                     if (assets[asset.id] === asset && generation == asset.generation) {
+                        retain(decoded)
                         asset.bitmap = decoded
-                        if (asset.drawable !== drawable) AnimatedImage.stop(asset.drawable)
                         asset.drawable = drawable
                         asset.movie = movie
                         asset.decoderBytes = if (drawable != null || movie != null) nativeBytes else 0
                         asset.bitmapGeneration = generation
-                        if (drawable != null && Build.VERSION.SDK_INT >= 28) AnimatedImage.start(drawable, handler) { asset.redraw++ }
+                        asset.presentation.publish(decoded, drawable)
                     } else {
                         decoded?.recycle()
                     }
@@ -474,21 +540,21 @@ internal class InlineImageStore(val limits: InlineImageLimits, private val handl
 }
 
 internal class ImageAsset(val id: Long, val number: Long?, private val store: InlineImageStore, frame: ImageFrame) {
+    val presentation = ImagePresentation(Handler(android.os.Looper.getMainLooper()))
     val created = SystemClock.uptimeMillis()
     val width = frame.width
     val height = frame.height
     val frames = mutableListOf(frame)
     val gaps = mutableListOf(0)
     var frameIndex = 0
-    var generation by mutableStateOf(0)
+    var generation = 0
     var bitmapGeneration = -1
-    var bitmap by mutableStateOf<Bitmap?>(null)
-    var drawable by mutableStateOf<Drawable?>(null)
+    var bitmap: Bitmap? = null
+    var drawable: Drawable? = null
 
     @Suppress("DEPRECATION")
     var movie: Movie? = null
     var decoderBytes = 0L
-    var redraw by mutableStateOf(0)
     var pending = false
     var targetWidth = 0
     var targetHeight = 0
@@ -502,11 +568,12 @@ internal class ImageAsset(val id: Long, val number: Long?, private val store: In
         generation++
     }
     fun clearDecoded() {
-        AnimatedImage.stop(drawable)
+        changed()
         drawable = null
         movie = null
         decoderBytes = 0
         bitmap = null
+        presentation.publish(null, null)
     }
     fun release() {
         changed()
@@ -580,9 +647,9 @@ internal data class ImageSlice(
     val renderHeight: Float = rows.toFloat(),
 ) {
     fun draw(canvas: Canvas, row: Int, cellWidth: Float, cellHeight: Float) {
-        asset.request(max(1, (renderWidth * cellWidth * asset.width / crop.width()).toInt()), max(1, (renderHeight * cellHeight * asset.height / crop.height()).toInt()))
-        asset.redraw // Observe platform animation invalidations in the Canvas draw scope.
-        val drawable = asset.drawable
+        asset.presentation.redraw
+        val frame = asset.presentation.frame
+        val drawable = frame.drawable
         if (drawable != null) {
             canvas.save()
             canvas.clipRect(left * cellWidth, row * cellHeight, right * cellWidth, (row + 1) * cellHeight)
@@ -598,7 +665,7 @@ internal data class ImageSlice(
             canvas.restore()
             return
         }
-        val bitmap = asset.bitmap ?: return
+        val bitmap = frame.bitmap ?: return
         val sx = renderWidth * cellWidth / crop.width()
         val sy = renderHeight * cellHeight / crop.height()
         val x = (left - sourceCol) * cellWidth + offsetX - crop.left * sx

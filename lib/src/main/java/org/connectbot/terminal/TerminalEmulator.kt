@@ -21,12 +21,12 @@ import android.icu.lang.UProperty
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.Choreographer
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 
 /**
@@ -74,6 +74,9 @@ sealed class UrlScanScope {
  * the terminal emulation state.
  */
 sealed interface TerminalEmulator {
+    /** Queue pasted text in the same FIFO as keyboard/IME input, honoring bracketed paste. */
+    fun pasteText(text: String)
+
     /** Whether incoming inline image commands are accepted. Enabled by default. */
     val inlineImagesEnabled: Boolean
 
@@ -282,7 +285,9 @@ class TerminalEmulatorFactory {
  * Threading model:
  * - JNI callbacks run on native thread and accumulate damage
  * - Handler posts to specified Looper to escape native mutex
- * - Snapshot building happens on Handler thread
+ * - Snapshot building runs on a background dispatcher, coalescing pending damage
+ * - Compose applies the latest snapshot on its frame clock and never takes backend locks
+ * - Compose keyboard/IME and pasteText share a per-terminal FIFO; callbacks use the Handler
  * - StateFlow emission is thread-safe
  *
  * @param looper The Looper to use for callback handling (typically main looper)
@@ -316,6 +321,24 @@ internal class TerminalEmulatorImpl(
 
     // Handler for escaping native mutex
     private val handler = Handler(looper)
+    internal val commands = TerminalDispatcher()
+    private val snapshots = TerminalDispatcher()
+    private var outputBatch: ByteArrayOutputStream? = null
+
+    internal fun batchOutput(action: () -> Unit) = synchronized(damageLock) {
+        check(outputBatch == null)
+        val batch = ByteArrayOutputStream(4096)
+        outputBatch = batch
+        try {
+            action()
+        } finally {
+            outputBatch = null
+            if (batch.size() > 0) {
+                val data = batch.toByteArray()
+                handler.post { onKeyboardInput.invoke(data) }
+            }
+        }
+    }
 
     internal val imageStore = InlineImageStore(inlineImageLimits, handler).apply {
         rows = initialRows
@@ -381,16 +404,9 @@ internal class TerminalEmulatorImpl(
     private val damageLock = Object()
     private val pendingDamageRegions = mutableListOf<DamageRegion>()
     private var damagePosted = false
+    private var nextSnapshotNanos = System.nanoTime()
     private var cursorMoved = false
     private var propertyChanged = false
-    private val frameCallback = Choreographer.FrameCallback { processScheduledUpdates() }
-    private val updateRunnable = Runnable {
-        if (looper == Looper.getMainLooper()) {
-            Choreographer.getInstance().postFrameCallback(frameCallback)
-        } else {
-            processScheduledUpdates()
-        }
-    }
 
     // Pending semantic segments to apply during processPendingUpdates
     private val pendingSemanticSegments = mutableListOf<PendingSemanticSegment>()
@@ -408,10 +424,13 @@ internal class TerminalEmulatorImpl(
 
     // Terminal dimensions
     override val dimensions: TerminalDimensions
-        get() = TerminalDimensions(rows = rows, columns = cols)
+        get() = publishedDimensions
 
-    private var rows = initialRows
-    private var cols = initialCols
+    @Volatile private var rows = initialRows
+
+    @Volatile private var cols = initialCols
+
+    @Volatile private var publishedDimensions = TerminalDimensions(initialRows, initialCols)
 
     // Cursor state
     private var cursorRow = 0
@@ -422,7 +441,8 @@ internal class TerminalEmulatorImpl(
 
     // Terminal properties
     private var terminalTitle = ""
-    private var isAltScreenActive = false
+
+    @Volatile private var isAltScreenActive = false
 
     // Scrollback buffer
     private val scrollback = ArrayDeque<TerminalLine>()
@@ -485,6 +505,7 @@ internal class TerminalEmulatorImpl(
         terminalNative.resize(newRows, newCols)
         rows = newRows
         cols = newCols
+        publishedDimensions = TerminalDimensions(newRows, newCols)
 
         // Retain existing immutable rows until the first complete resized snapshot.
         // New rows have no content yet; retrieval fills them without an empty screen.
@@ -498,23 +519,32 @@ internal class TerminalEmulatorImpl(
         invalidateDisplay()
 
         // Resize callback - post to handler to avoid blocking native thread
-        handler.post {
-            onResize?.invoke(TerminalDimensions(rows = rows, columns = cols))
-        }
+        val resized = publishedDimensions
+        handler.post { onResize?.invoke(resized) }
     }
 
     /**
      * Dispatch a key event to the terminal.
      */
-    override fun dispatchKey(modifiers: Int, key: Int): Unit = synchronized(damageLock) {
-        terminalNative.dispatchKey(modifiers, key)
+    override fun dispatchKey(modifiers: Int, key: Int): Unit = commands.call {
+        synchronized(damageLock) { terminalNative.dispatchKey(modifiers, key) }
+        Unit
     }
 
     /**
      * Dispatch a character to the terminal.
      */
-    override fun dispatchCharacter(modifiers: Int, codepoint: Int): Unit = synchronized(damageLock) {
-        terminalNative.dispatchCharacter(modifiers, codepoint)
+    override fun dispatchCharacter(modifiers: Int, codepoint: Int): Unit = commands.call {
+        synchronized(damageLock) { terminalNative.dispatchCharacter(modifiers, codepoint) }
+        Unit
+    }
+
+    override fun pasteText(text: String) {
+        commands.execute {
+            batchOutput {
+                terminalNative.pasteText(text.toByteArray(Charsets.UTF_8))
+            }
+        }
     }
 
     /**
@@ -533,9 +563,7 @@ internal class TerminalEmulatorImpl(
 
     override fun getUrls(scope: UrlScanScope): List<TerminalUrl> {
         val currentSnapshot = _snapshot.value
-        val altScreenActive = synchronized(damageLock) {
-            isAltScreenActive
-        }
+        val altScreenActive = currentSnapshot.alternateScreen
         return extractUrls(currentSnapshot.linesForUrlScan(scope, altScreenActive))
     }
 
@@ -633,10 +661,12 @@ internal class TerminalEmulatorImpl(
         return 0
     }
 
-    override fun moveCursor(pos: CursorPosition, oldPos: CursorPosition, visible: Boolean): Int {
+    override fun moveCursor(pos: CursorPosition, oldPos: CursorPosition, visible: Boolean): Int = moveCursor(pos.row, pos.col, oldPos.row, oldPos.col, visible)
+
+    override fun moveCursor(row: Int, col: Int, oldRow: Int, oldCol: Int, visible: Boolean): Int {
         synchronized(damageLock) {
-            cursorRow = pos.row
-            cursorCol = pos.col
+            cursorRow = row
+            cursorCol = col
             cursorVisible = visible
             cursorMoved = true
             requestProcessPendingUpdatesLocked()
@@ -813,6 +843,15 @@ internal class TerminalEmulatorImpl(
     }
 
     override fun onKeyboardInput(data: ByteArray): Int {
+        outputBatch?.let { batch ->
+            batch.write(data)
+            if (batch.size() >= 16 * 1024) {
+                val chunk = batch.toByteArray()
+                batch.reset()
+                handler.post { onKeyboardInput.invoke(chunk) }
+            }
+            return 0
+        }
         // Keyboard output callback - post to handler
         handler.post {
             onKeyboardInput.invoke(data)
@@ -938,7 +977,7 @@ internal class TerminalEmulatorImpl(
 
     /**
      * Process pending updates and emit new snapshot.
-     * This runs on the Handler thread, NOT in the JNI callback.
+     * This runs on the snapshot dispatcher, NOT in the JNI callback or on the UI thread.
      */
     @VisibleForTesting
     fun processPendingUpdates(): Unit = synchronized(damageLock) {
@@ -1143,6 +1182,7 @@ internal class TerminalEmulatorImpl(
             cols = cols,
             timestamp = System.currentTimeMillis(),
             sequenceNumber = sequenceNumber++,
+            alternateScreen = isAltScreenActive,
         )
     }
 
@@ -1332,11 +1372,19 @@ internal class TerminalEmulatorImpl(
     private fun requestProcessPendingUpdatesLocked() {
         if (damagePosted) return
         damagePosted = true
-        handler.post(updateRunnable)
+        val waitNanos = nextSnapshotNanos - System.nanoTime()
+        if (waitNanos <= 0) {
+            snapshots.execute { processScheduledUpdates() }
+        } else {
+            snapshots.executeAfter((waitNanos + 999_999) / 1_000_000) { processScheduledUpdates() }
+        }
     }
 
     private fun processScheduledUpdates(): Unit = synchronized(damageLock) {
         damagePosted = false
+        // Limit sustained work to roughly one snapshot per refresh interval,
+        // without adding a full interval to every newly arriving input burst.
+        nextSnapshotNanos = System.nanoTime() + 16_000_000L
         processPendingUpdates()
     }
 

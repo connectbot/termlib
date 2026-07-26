@@ -91,7 +91,7 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     if (env->ExceptionCheck()) return;
 
     mMoveCursorMethod = env->GetMethodID(callbacksClass, "moveCursor",
-        "(Lorg/connectbot/terminal/CursorPosition;Lorg/connectbot/terminal/CursorPosition;Z)I");
+        "(IIIIZ)I");
     if (env->ExceptionCheck()) return;
 
     mSetTermPropMethod = env->GetMethodID(callbacksClass, "setTermProp",
@@ -278,11 +278,17 @@ int Terminal::writeInput(const uint8_t* data, size_t length) {
         return 0;
     }
 
+    // A single transport read can move the cursor thousands of times. Only
+    // publish the final rendering position for this input batch.
+    beginCursorBatch();
+
     // Feed data to libvterm for processing
     size_t written = vterm_input_write(mVt, (const char*)data, length);
 
     // Flush screen state to trigger callbacks
     vterm_screen_flush_damage(mVts);
+
+    finishCursorBatch();
 
     return static_cast<int>(written);
 }
@@ -387,6 +393,22 @@ int Terminal::setDefaultColors(uint32_t fgColor, uint32_t bgColor) {
 }
 
 // Keyboard input handlers
+void Terminal::paste(JNIEnv* env, jbyteArray data) {
+    std::scoped_lock lock(mLock);
+    if (!mVt) return;
+    vterm_keyboard_start_paste(mVt);
+    const jsize size = env->GetArrayLength(data);
+    char chunk[4096];
+    for (jsize offset = 0; offset < size;) {
+        const jsize count = std::min(jsize(sizeof(chunk)), size - offset);
+        env->GetByteArrayRegion(data, offset, count, reinterpret_cast<jbyte*>(chunk));
+        if (env->ExceptionCheck()) return;
+        invokeKeyboardOutput(chunk, count);
+        offset += count;
+    }
+    vterm_keyboard_end_paste(mVt);
+}
+
 bool Terminal::dispatchKey(int modifiers, int key) {
     std::scoped_lock lock(mLock);
 
@@ -526,12 +548,20 @@ int Terminal::termMoverect(VTermRect dest, VTermRect src, void* user) {
 
 int Terminal::termMovecursor(VTermPos pos, VTermPos oldpos, int visible, void* user) {
     auto* term = static_cast<Terminal*>(user);
-    term->invokeMoveCursor(pos.row, pos.col, oldpos.row, oldpos.col, visible != 0);
+    term->mCursorPosition = pos;
+    term->mCursorVisible = visible != 0;
+    if (term->mCursorBatchActive) {
+        if (!term->mCursorPending) term->mCursorOldPosition = oldpos;
+        term->mCursorPending = true;
+    } else {
+        term->invokeMoveCursor(pos.row, pos.col, oldpos.row, oldpos.col, visible != 0);
+    }
     return 1;
 }
 
 int Terminal::termSettermprop(VTermProp prop, VTermValue* val, void* user) {
     auto* term = static_cast<Terminal*>(user);
+    if (prop == VTERM_PROP_CURSORVISIBLE) term->mCursorVisible = val->boolean != 0;
     term->invokeSetTermProp(prop, val);
     return 1;
 }
@@ -729,6 +759,24 @@ int Terminal::invokeMoverect(VTermRect dest, VTermRect src) {
     return result;
 }
 
+void Terminal::beginCursorBatch() {
+    mCursorBatchActive = true;
+    mCursorPending = false;
+}
+
+void Terminal::finishCursorBatch() {
+    mCursorBatchActive = false;
+    if (!mCursorPending) return;
+
+    mCursorPending = false;
+    invokeMoveCursor(
+        mCursorPosition.row,
+        mCursorPosition.col,
+        mCursorOldPosition.row,
+        mCursorOldPosition.col,
+        mCursorVisible);
+}
+
 void Terminal::invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool visible) {
     if (!mMoveCursorMethod) {
         return;
@@ -739,12 +787,7 @@ void Terminal::invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool v
         return;
     }
 
-    ScopedLocalRef<jobject> posObj(env, env->NewObject(mCursorPositionClass, mCursorPositionConstructor, row, col));
-    if (!posObj.get()) return;
-    ScopedLocalRef<jobject> oldPosObj(env, env->NewObject(mCursorPositionClass, mCursorPositionConstructor, oldRow, oldCol));
-
-    if (!oldPosObj.get()) return;
-    env->CallIntMethod(mCallbacks, mMoveCursorMethod, posObj.get(), oldPosObj.get(), visible);
+    env->CallIntMethod(mCallbacks, mMoveCursorMethod, row, col, oldRow, oldCol, visible);
     if (env->ExceptionCheck()) return;
 }
 
@@ -1045,6 +1088,11 @@ Java_org_connectbot_terminal_TerminalNative_nativeDispatchCharacter(JNIEnv* /* e
                                                                     jlong ptr, jint modifiers, jint character) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->dispatchCharacter(modifiers, character);
+}
+
+JNIEXPORT void JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativePaste(JNIEnv* env, jobject, jlong ptr, jbyteArray data) {
+    reinterpret_cast<Terminal*>(ptr)->paste(env, data);
 }
 
 JNIEXPORT jint JNICALL

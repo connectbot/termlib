@@ -67,7 +67,11 @@ internal class PackedCells private constructor(
         if (advance.isNaN()) {
             val skew = paint.textSkewX
             paint.textSkewX = 0f
-            advance = paint.measureText(text, offsets[col], offsets[col + 1] - offsets[col])
+            advance = if (paint is TerminalTextPaint) {
+                paint.measureCell(text, offsets[col], offsets[col + 1] - offsets[col])
+            } else {
+                paint.measureText(text, offsets[col], offsets[col + 1] - offsets[col])
+            }
             paint.textSkewX = skew
             measurements[col] = advance
         }

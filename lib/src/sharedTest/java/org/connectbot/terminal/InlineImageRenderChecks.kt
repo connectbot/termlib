@@ -29,6 +29,7 @@ abstract class InlineImageRenderChecks {
         terminal.processPendingUpdates()
         terminal.imageStore.assets.values.forEach { asset ->
             asset.bitmap = asset.frames[0].decode(asset.width, asset.height)
+            asset.presentation.publish(asset.bitmap, null)
             asset.bitmapGeneration = asset.generation
             asset.targetWidth = asset.width
             asset.targetHeight = asset.height

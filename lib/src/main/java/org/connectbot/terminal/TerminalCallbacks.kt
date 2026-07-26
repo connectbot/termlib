@@ -69,6 +69,9 @@ internal interface TerminalCallbacks {
      */
     fun moveCursor(pos: CursorPosition, oldPos: CursorPosition, visible: Boolean): Int
 
+    /** Primitive JNI fast path; the adapter preserves existing internal callbacks. */
+    fun moveCursor(row: Int, col: Int, oldRow: Int, oldCol: Int, visible: Boolean): Int = moveCursor(CursorPosition(row, col), CursorPosition(oldRow, oldCol), visible)
+
     /**
      * Called when a terminal property changes (title, cursor shape, etc.).
      *

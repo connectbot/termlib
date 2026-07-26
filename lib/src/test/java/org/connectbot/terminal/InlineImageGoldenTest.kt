@@ -69,6 +69,7 @@ class InlineImageGoldenTest {
         // checks final pixels, independently of worker scheduling.
         terminal.imageStore.assets.values.forEach { asset ->
             asset.bitmap = asset.frames.first().decode(asset.width, asset.height)
+            asset.presentation.publish(asset.bitmap, null)
             asset.bitmapGeneration = asset.generation
             asset.targetWidth = asset.width
             asset.targetHeight = asset.height

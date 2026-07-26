@@ -141,6 +141,7 @@ package org.connectbot.terminal {
     method @InaccessibleFromKotlin public boolean getInlineImagesEnabled();
     method public String? getLastCommandOutput();
     method public java.util.List<org.connectbot.terminal.TerminalUrl> getUrls(optional org.connectbot.terminal.UrlScanScope scope);
+    method public void pasteText(String text);
     method public void resize(int newRows, int newCols);
     method public int setAnsiPalette(int[] ansiColors);
     method public void setCellPixelSize(int width, int height);

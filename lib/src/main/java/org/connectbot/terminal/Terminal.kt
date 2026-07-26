@@ -435,7 +435,7 @@ internal fun TerminalWithAccessibility(
 
     // Keyboard handler (will be updated with selectionController after it's created)
     val keyboardHandler = remember(terminalEmulator) {
-        KeyboardHandler(terminalEmulator, modifierManager)
+        KeyboardHandler(QueuedTerminal(terminalEmulator), modifierManager)
     }
     SideEffect {
         keyboardHandler.onInterceptKey = currentOnInterceptKey
@@ -546,11 +546,7 @@ internal fun TerminalWithAccessibility(
 
     // Create TextPaint for measuring and drawing (base size)
     val textPaint = remember(typeface, calculatedFontSize) {
-        TextPaint().apply {
-            this.typeface = typeface
-            textSize = with(density) { calculatedFontSize.toPx() }
-            isAntiAlias = true
-        }
+        TerminalTextPaint(typeface, with(density) { calculatedFontSize.toPx() })
     }
 
     // Base character dimensions (unzoomed)
@@ -570,25 +566,30 @@ internal fun TerminalWithAccessibility(
         ceil(-textPaint.fontMetrics.ascent)
     }
     LaunchedEffect(terminalEmulator, baseCharWidth, baseCharHeight) {
-        terminalEmulator.setCellPixelSize(ceil(baseCharWidth).toInt().coerceAtLeast(1), baseCharHeight.toInt().coerceAtLeast(1))
+        terminalEmulator.commands.execute {
+            terminalEmulator.setCellPixelSize(ceil(baseCharWidth).toInt().coerceAtLeast(1), baseCharHeight.toInt().coerceAtLeast(1))
+        }
     }
-    LaunchedEffect(terminalEmulator, screenState.scrollbackPosition, screenState.snapshot.sequenceNumber) {
+    LaunchedEffect(terminalEmulator, baseCharWidth, baseCharHeight) {
         val store = terminalEmulator.imageStore
-        store.viewportTop = -screenState.scrollbackPosition
-        store.displayedIds = (0 until screenState.snapshot.rows).flatMap { screenState.getVisibleLine(it).images }.map { it.asset.id }.toSet()
-        if (store.assets.isEmpty()) return@LaunchedEffect
-        while (true) {
-            store.advanceAnimations(android.os.SystemClock.uptimeMillis())
-            delay(16)
+        snapshotFlow { Triple(screenState.snapshot, screenState.scrollbackPosition, store.frameUpdatesNeeded) }.collectLatest { (_, _, needsFrames) ->
+            val slices = (0 until screenState.snapshot.rows).flatMap { screenState.getVisibleLine(it).images }
+            store.updateViewport(ImageViewport(-screenState.scrollbackPosition, slices, baseCharWidth, baseCharHeight, android.os.SystemClock.uptimeMillis()))
+            if (slices.isEmpty() || !needsFrames) return@collectLatest
+            while (true) {
+                // Also yield with synthetic/immediate clocks; a static image goes idle
+                // as soon as maintenance publishes that its decode has completed.
+                delay(1)
+                androidx.compose.runtime.withFrameNanos { frameTime ->
+                    store.updateViewport(ImageViewport(-screenState.scrollbackPosition, slices, baseCharWidth, baseCharHeight, frameTime / 1_000_000L))
+                }
+            }
         }
     }
     DisposableEffect(terminalEmulator) {
         onDispose {
             val store = terminalEmulator.imageStore
-            synchronized(store) {
-                store.displayedIds = emptySet()
-                store.assets.values.forEach { it.clearDecoded() }
-            }
+            store.updateViewport(ImageViewport(0, emptyList(), 1f, 1f, 0, attached = false))
         }
     }
     val underlinePaint = remember {
@@ -701,8 +702,12 @@ internal fun TerminalWithAccessibility(
             override fun stopComposeMode() {
                 // Flush any in-flight IME composition into the terminal before leaving
                 // compose mode, so the user's typing isn't silently dropped on toggle off.
-                composeMode.commit()?.codePoints()?.forEach { codepoint ->
-                    terminalEmulator.dispatchCharacter(0, codepoint)
+                composeMode.commit()?.let { text ->
+                    terminalEmulator.commands.execute {
+                        terminalEmulator.batchOutput {
+                            text.codePoints().forEach { terminalEmulator.dispatchCharacter(0, it) }
+                        }
+                    }
                 }
                 composeMode.deactivate()
             }
@@ -899,7 +904,7 @@ internal fun TerminalWithAccessibility(
 
             val dimensions = terminalEmulator.dimensions
             if (newRows != dimensions.rows || newCols != dimensions.columns) {
-                terminalEmulator.resize(newRows, newCols)
+                terminalEmulator.commands.execute { terminalEmulator.resize(newRows, newCols) }
 
                 // If selection is active, ensure it stays within the new visible bounds.
                 // This ensures the Copy button resets to the last visible line when the screen
@@ -1634,14 +1639,17 @@ private fun TerminalRows(
     selectionBackgroundColor: Color,
     selectionForegroundColor: Color,
 ) {
-    val snapshot = screenState.snapshot
+    val rowCount by remember(screenState) { derivedStateOf { screenState.snapshot.rows } }
+    Canvas(Modifier.fillMaxSize()) { TerminalFrameTrace.draw(screenState.snapshot) }
     // Cross-row URL detection depends on visible contents, not cursor/sequence updates.
-    val hyperlinkMasks = remember(snapshot.lines, snapshot.scrollback, screenState.scrollbackPosition, autoDetectUrls) {
-        if (!autoDetectUrls) {
-            emptyList()
-        } else {
-            List(snapshot.rows) { row ->
-                BooleanArray(snapshot.cols) { col -> screenState.getHyperlinkUrlAt(row, col, autoDetectUrls = true) != null }
+    val hyperlinkMasks = remember(screenState, autoDetectUrls) {
+        derivedStateOf {
+            if (!autoDetectUrls) {
+                emptyList()
+            } else {
+                List(screenState.snapshot.rows) { row ->
+                    BooleanArray(screenState.snapshot.cols) { col -> screenState.getHyperlinkUrlAt(row, col, autoDetectUrls = true) != null }
+                }
             }
         }
     }
@@ -1649,18 +1657,18 @@ private fun TerminalRows(
     // Every display list covers the viewport, including ink outside its row.
     // Compose re-records changed rows; all backgrounds are below all glyphs.
     for (backgrounds in listOf(true, false)) {
-        for (row in 0 until snapshot.rows) {
-            val line = screenState.getVisibleLine(row)
+        for (row in 0 until rowCount) {
+            val line = remember(screenState, row) { derivedStateOf { screenState.getVisibleLine(row) } }
             key(backgrounds, row) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     drawLine(
-                        line = line, row = row, charWidth = charWidth,
+                        line = line.value, row = row, charWidth = charWidth,
                         charHeight = charHeight, charBaseline = charBaseline,
                         textPaint = textPaint, underlinePaint = underlinePaint,
                         defaultFg = defaultFg, defaultBg = defaultBg,
                         selectionManager = selectionManager,
                         autoDetectUrls = autoDetectUrls,
-                        hyperlinkMask = hyperlinkMasks.getOrNull(row),
+                        hyperlinkMask = hyperlinkMasks.value.getOrNull(row),
                         selectionBackgroundColor = selectionBackgroundColor,
                         selectionForegroundColor = selectionForegroundColor,
                         backgroundsOnly = backgrounds,
@@ -1701,6 +1709,8 @@ internal fun DrawScope.drawLine(
     }
     val y = row * charHeight
     val cells = line.cells
+    // Observe selection once per row when inactive, not once per terminal cell.
+    val activeSelection = selectionManager?.takeIf { it.selectionRange != null }
     if (backgroundsOnly) {
         val behindBackground = line.images.filter { it.z < -1_073_741_824 }
         if (behindBackground.isNotEmpty()) {
@@ -1715,7 +1725,7 @@ internal fun DrawScope.drawLine(
         for (col in 0 until cells.size) {
             val width = cells.width(col)
             if (width == 0) continue
-            val selected = selectionManager?.let {
+            val selected = activeSelection?.let {
                 it.isCellSelected(row, col, line) || (width == 2 && it.isCellSelected(row, col + 1, line))
             } == true
             val color = if (selected) {
@@ -1751,7 +1761,7 @@ internal fun DrawScope.drawLine(
         val flags = cells.flags(col)
         val underline = (flags ushr 1) and 3
         val cellWidth = charWidth * width
-        val isSelected = selectionManager?.let {
+        val isSelected = activeSelection?.let {
             it.isCellSelected(row, col, line) || (width == 2 && it.isCellSelected(row, col + 1, line))
         } == true
         val reversed = flags and 32 != 0

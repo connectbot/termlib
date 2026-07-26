@@ -22,7 +22,7 @@ internal class InlineImageProtocol(
     private val output: (ByteArray) -> Unit,
     private val otherOsc: (String, Int, Int) -> Unit,
 ) {
-    var enabled = true
+    @Volatile var enabled = true
     private var header = StringBuilder()
     private var payload = false
     private var discarded = false

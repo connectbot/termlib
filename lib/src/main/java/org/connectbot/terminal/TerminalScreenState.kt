@@ -385,7 +385,10 @@ internal fun rememberTerminalScreenState(
     // state.snapshot still invalidate/recompose any composables that read it.
     LaunchedEffect(terminalEmulator) {
         terminalEmulator.snapshot.collect { newSnapshot ->
-            state.updateSnapshot(newSnapshot)
+            if (newSnapshot === state.snapshot) return@collect
+            androidx.compose.runtime.withFrameNanos {
+                state.updateSnapshot(terminalEmulator.snapshot.value)
+            }
         }
     }
 
