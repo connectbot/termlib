@@ -18,3 +18,4 @@ rootProject.name = "termlib"
 
 include(":lib")
 include(":test-app")
+include(":macrobenchmark")

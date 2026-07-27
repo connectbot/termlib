@@ -18,11 +18,17 @@ android {
     }
 
     buildTypes {
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            matchingFallbacks += "release"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }
@@ -35,6 +41,7 @@ android {
     buildFeatures {
         compose = true
     }
+    sourceSets.getByName("benchmark").assets.srcDir(rootProject.layout.projectDirectory.dir("lib/build/benchmark-assets"))
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.3"
@@ -48,6 +55,7 @@ kotlin {
 }
 
 dependencies {
+    "benchmarkImplementation"("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation(project(":lib"))
 
     implementation(libs.androidx.core.ktx)
