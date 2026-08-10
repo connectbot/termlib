@@ -30,6 +30,21 @@ package org.connectbot.terminal {
     method public boolean isShiftActive();
   }
 
+  public enum MouseButton {
+    enum_constant public static final org.connectbot.terminal.MouseButton LEFT;
+    enum_constant public static final org.connectbot.terminal.MouseButton MIDDLE;
+    enum_constant public static final org.connectbot.terminal.MouseButton RIGHT;
+  }
+
+  public enum MouseTracking {
+    method @InaccessibleFromKotlin public boolean isEnabled();
+    property public boolean isEnabled;
+    enum_constant public static final org.connectbot.terminal.MouseTracking CLICK;
+    enum_constant public static final org.connectbot.terminal.MouseTracking DRAG;
+    enum_constant public static final org.connectbot.terminal.MouseTracking MOVE;
+    enum_constant public static final org.connectbot.terminal.MouseTracking NONE;
+  }
+
   public enum ProgressState {
     enum_constant public static final org.connectbot.terminal.ProgressState DEFAULT;
     enum_constant public static final org.connectbot.terminal.ProgressState ERROR;
@@ -106,8 +121,11 @@ package org.connectbot.terminal {
     method @InaccessibleFromKotlin public boolean getBoldAsBright();
     method @InaccessibleFromKotlin public org.connectbot.terminal.TerminalDimensions getDimensions();
     method public String? getLastCommandOutput();
+    method @InaccessibleFromKotlin public org.connectbot.terminal.MouseTracking getMouseTracking();
     method public java.util.List<org.connectbot.terminal.TerminalUrl> getUrls(optional org.connectbot.terminal.UrlScanScope scope);
+    method public void mouseClick(org.connectbot.terminal.MouseButton button, int row, int col, optional int modifiers);
     method public void resize(int newRows, int newCols);
+    method public void scrollWheel(org.connectbot.terminal.WheelDirection direction, int row, int col, optional int steps, optional int modifiers);
     method public int setAnsiPalette(int[] ansiColors);
     method public int setDefaultColors(int foreground, int background);
     method public void writeInput(byte[] data, optional int offset, optional int length);
@@ -115,6 +133,7 @@ package org.connectbot.terminal {
     property public abstract boolean autoDetectUrls;
     property public abstract boolean boldAsBright;
     property public abstract org.connectbot.terminal.TerminalDimensions dimensions;
+    property public abstract org.connectbot.terminal.MouseTracking mouseTracking;
   }
 
   public final class TerminalEmulatorFactory {
@@ -259,4 +278,12 @@ package org.connectbot.terminal {
     field public static final int UP = 5; // 0x5
   }
 
+  public enum WheelDirection {
+    enum_constant public static final org.connectbot.terminal.WheelDirection DOWN;
+    enum_constant public static final org.connectbot.terminal.WheelDirection LEFT;
+    enum_constant public static final org.connectbot.terminal.WheelDirection RIGHT;
+    enum_constant public static final org.connectbot.terminal.WheelDirection UP;
+  }
+
 }
+

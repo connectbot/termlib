@@ -276,4 +276,126 @@ class CursorAndModeEscapeTest {
             after.lines[0].text.trimEnd() == "protected row 0",
         )
     }
+
+    // -----------------------------------------------------------------------
+    // Terminal properties reaching the snapshot
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun testOsc0SetsTitle() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        emulator.send("\u001B]0;hello")
+
+        assertEquals("hello", getSnapshot(impl).terminalTitle)
+    }
+
+    @Test
+    fun testOsc2SetsTitle() = runBlocking {
+        // OSC 2 sets the window title only; OSC 0 sets title and icon name.
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        emulator.send("\u001B]2;window")
+
+        assertEquals("window", getSnapshot(impl).terminalTitle)
+    }
+
+    @Test
+    fun testOscTitleTerminatedByStringTerminator() = runBlocking {
+        // ST rather than BEL. Both end the sequence; either may show up.
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        emulator.send("\u001B]2;window\u001B\\")
+
+        assertEquals("window", getSnapshot(impl).terminalTitle)
+    }
+
+    @Test
+    fun testOscTitleSplitAcrossWrites() = runBlocking {
+        // libvterm hands the payload over one fragment per input buffer, so a
+        // title straddling a PTY read arrives in pieces. They have to be joined,
+        // not overwritten by whichever lands last.
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        emulator.send("\u001B]0;hel")
+        emulator.send("lo, wo")
+        emulator.send("rld\u0007")
+
+        assertEquals("hello, world", getSnapshot(impl).terminalTitle)
+    }
+
+    @Test
+    fun testOscTitleTerminatorArrivingAlone() = runBlocking {
+        // The terminator lands in its own read, so the sequence ends on an empty
+        // fragment. That must complete the title, not blank it.
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        emulator.send("\u001B]0;hello")
+        emulator.send("\u0007")
+
+        assertEquals("hello", getSnapshot(impl).terminalTitle)
+    }
+
+    @Test
+    fun testUnterminatedOscTitleIsNotDelivered() = runBlocking {
+        // Until the sequence ends there is no value to report: the terminal
+        // cannot know whether more of the title is still coming.
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        emulator.send("\u001B]2;first\u0007")
+        assertEquals("first", getSnapshot(impl).terminalTitle)
+
+        emulator.send("\u001B]2;partial")
+
+        assertEquals("the previous title stands", "first", getSnapshot(impl).terminalTitle)
+    }
+
+    @Test
+    fun testSuccessiveOscTitlesDoNotAccumulate() = runBlocking {
+        // The buffer belongs to one sequence: a second title replaces the first
+        // rather than being appended to what the first left behind.
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        emulator.send("\u001B]0;first\u0007")
+        emulator.send("\u001B]0;sec")
+        emulator.send("ond\u0007")
+
+        assertEquals("second", getSnapshot(impl).terminalTitle)
+    }
+
+    @Test
+    fun testDecscusrSelectsCursorShape() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        // DECSCUSR: 4 is a steady underline, 6 a steady bar, 2 a steady block.
+        emulator.send("\u001B[4 q")
+        assertEquals("underline", CursorShape.UNDERLINE, getSnapshot(impl).cursorShape)
+
+        emulator.send("\u001B[6 q")
+        assertEquals("bar", CursorShape.BAR_LEFT, getSnapshot(impl).cursorShape)
+
+        emulator.send("\u001B[2 q")
+        assertEquals("block", CursorShape.BLOCK, getSnapshot(impl).cursorShape)
+    }
+
+    @Test
+    fun testDecscusrSetsBlink() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        // Odd DECSCUSR values blink, even ones are steady.
+        emulator.send("\u001B[2 q")
+        assertEquals("steady block", false, getSnapshot(impl).cursorBlink)
+
+        emulator.send("\u001B[1 q")
+        assertEquals("blinking block", true, getSnapshot(impl).cursorBlink)
+    }
 }

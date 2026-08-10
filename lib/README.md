@@ -42,6 +42,36 @@ Terminal(
 ```
 PTY/SSH → TerminalEmulator.writeInput() → libvterm → Callbacks → TerminalEmulator → Terminal
 Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() → PTY/SSH
+Mouse    → TerminalEmulator.scrollWheel() → libvterm → onKeyboardInput() → PTY/SSH
 ```
 
+Mouse reports are only emitted once the running application asks for them with
+DECSET 1000/1002/1003; check `TerminalEmulator.mouseTracking` to know whether a
+gesture belongs to the application or to the terminal's own scrollback. It is
+Compose state, so reading it in a composable subscribes to it.
+
+While tracking is on, `Terminal` routes a tap to the application as a click and a
+scroll as wheel detents. Long-press selection stays local — it remains the way to
+copy text out of a full-screen application.
+
+The public surface is `mouseClick` and `scrollWheel` only — a click is always
+delivered with its release, and there is no way to report a bare press or bare
+pointer motion, neither of which a touch gesture produces. Coordinates are
+clamped to the screen and a single `scrollWheel` call reports a bounded number of
+detents, so no caller can put a malformed report or an unbounded burst on the
+wire.
+
 **Important**: Callbacks must not call back into Terminal methods (causes deadlock). Defer work to avoid reentrancy.
+
+## Local libvterm modifications
+
+`src/main/cpp/libvterm/` is vendored, and is **not** pristine upstream. Each
+divergence is kept as a patch in `src/main/cpp/libvterm-patches/` as well as
+being applied in tree, so that it survives a libvterm bump — CMake compiles the
+vendored sources directly, so a bump that overwrites them drops the change
+silently, and the symptom is a behavioural regression rather than a build
+failure. After bumping, re-apply each patch and re-run the tests it names.
+
+| Patch | File | Why |
+| --- | --- | --- |
+| `0001-reset-full-mouse-state.patch` | `src/state.c` | `vterm_state_reset()` cleared `mouse_flags` but left the report encoding and any held button stale, and switched reporting off without a `VTERM_PROP_MOUSE` callback — so an embedder mirroring that property kept routing gestures into a vterm that drops them. Not yet submitted upstream. |

@@ -23,6 +23,9 @@ import android.os.Looper
 import android.util.Log
 import android.view.Choreographer
 import androidx.annotation.VisibleForTesting
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -107,6 +110,58 @@ sealed interface TerminalEmulator {
      * Dispatch a character to the terminal.
      */
     fun dispatchCharacter(modifiers: Int, codepoint: Int)
+
+    /**
+     * The level of mouse reporting the running application has requested.
+     *
+     * While this is [MouseTracking.NONE] the mouse methods below produce no
+     * output, and gestures should be handled locally (scrollback, selection).
+     * Once an application enables tracking it expects to receive the events
+     * itself — a full-screen program keeps its own scrollback, so scrolling the
+     * terminal's copy would do nothing useful.
+     *
+     * This is Compose snapshot state: reading it inside a composition subscribes
+     * to it, so UI that changes with the tracking mode recomposes when an
+     * application enables or disables it.
+     */
+    val mouseTracking: MouseTracking
+
+    /**
+     * Report a complete click — a press and its matching release — at a cell.
+     *
+     * The pair is emitted as one operation, so the release cannot be lost and
+     * the application cannot be left believing the button is still down.
+     *
+     * There is deliberately no way to report a press without its release, or to
+     * report bare pointer motion. Both are only meaningful for input that holds
+     * a button down across events or hovers without one — neither of which a
+     * touch gesture produces — and both are easy to leave half-delivered. If
+     * physical mouse or stylus support needs them later, they can be added then,
+     * against a real caller.
+     *
+     * @param row Row index (0-based); clamped to the visible screen
+     * @param col Column index (0-based); clamped to the visible screen
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     */
+    fun mouseClick(button: MouseButton, row: Int, col: Int, modifiers: Int = 0)
+
+    /**
+     * Report [steps] wheel detents at a cell.
+     *
+     * This is what lets a scroll gesture reach an application that has taken
+     * over the screen. Callers converting a continuous gesture into detents
+     * should rate-limit: applications commonly throttle or coalesce a flood of
+     * wheel events, so a fling turned into hundreds of detents scrolls less far
+     * than the same distance delivered as a few dozen. A single call reports a
+     * bounded number of detents however large [steps] is, so no caller can make
+     * one call occupy the terminal for an unbounded time.
+     *
+     * @param row Row index (0-based); clamped to the visible screen
+     * @param col Column index (0-based); clamped to the visible screen
+     * @param steps Number of detents to report; values below 1 send nothing
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     */
+    fun scrollWheel(direction: WheelDirection, row: Int, col: Int, steps: Int = 1, modifiers: Int = 0)
 
     /**
      * Clears the terminal emulator screen.
@@ -252,6 +307,39 @@ class TerminalEmulatorFactory {
 }
 
 /**
+ * Property identifiers and values passed to [TerminalCallbacks.setTermProp].
+ *
+ * These are the native wrapper's own identifiers, assigned by `PropCode` in
+ * Terminal.h. They are deliberately not libvterm's `VTermProp` ordinals: that
+ * is an unnumbered C enum whose values shift when upstream inserts a property,
+ * and transcribing them here is what once left the title and cursor shape being
+ * read at the wrong numbers. Terminal.cpp translates by name instead, where the
+ * compiler checks it against the header.
+ *
+ * Keep these in step with `PropCode`, which is the definition.
+ */
+private object VTermProp {
+    const val CURSOR_VISIBLE = 1 // bool
+    const val CURSOR_BLINK = 2 // bool
+    const val ALT_SCREEN = 3 // bool
+    const val TITLE = 4 // string
+    const val ICON_NAME = 5 // string
+    const val REVERSE = 6 // bool
+    const val CURSOR_SHAPE = 7 // number
+    const val MOUSE = 8 // number
+    const val FOCUS_REPORT = 9 // bool
+
+    const val CURSOR_SHAPE_BLOCK = 1
+    const val CURSOR_SHAPE_UNDERLINE = 2
+    const val CURSOR_SHAPE_BAR_LEFT = 3
+
+    const val MOUSE_NONE = 0
+    const val MOUSE_CLICK = 1
+    const val MOUSE_DRAG = 2
+    const val MOUSE_MOVE = 3
+}
+
+/**
  * Service-compatible terminal state manager.
  *
  * This class manages terminal state independently of the UI layer, making it
@@ -342,6 +430,15 @@ internal class TerminalEmulatorImpl(
     // Terminal properties
     private var terminalTitle = ""
     private var isAltScreenActive = false
+
+    // Read outside damageLock by gesture handling on the UI thread, written from
+    // the native callback thread. Snapshot state rather than @Volatile so that
+    // reading it in a composition subscribes to it: an embedder whose UI depends
+    // on the tracking mode gets recomposed instead of having to poll. Compose
+    // state supports writes from any thread and carries the same visibility
+    // guarantee @Volatile did.
+    override var mouseTracking: MouseTracking by mutableStateOf(MouseTracking.NONE)
+        private set
 
     // Scrollback buffer
     private val scrollback = mutableListOf<TerminalLine>()
@@ -446,6 +543,59 @@ internal class TerminalEmulatorImpl(
      */
     override fun dispatchCharacter(modifiers: Int, codepoint: Int) {
         terminalNative.dispatchCharacter(modifiers, codepoint)
+    }
+
+    /**
+     * Report the mouse moving to a cell.
+     *
+     * Not part of the public API: bare motion is only meaningful for a device
+     * that can hover, and nothing in the library produces one yet. Kept because
+     * it is how the tracking modes that report motion — [MouseTracking.DRAG] and
+     * [MouseTracking.MOVE] — are exercised, and because it is the natural
+     * primitive if physical mouse support arrives.
+     *
+     * A motion report is only emitted when the application asked for
+     * [MouseTracking.DRAG] (and a button is held) or [MouseTracking.MOVE].
+     * Moving to the cell the mouse already occupies is a no-op.
+     *
+     * @param row Row index (0-based); clamped to the visible screen
+     * @param col Column index (0-based); clamped to the visible screen
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     */
+    internal fun mouseMove(row: Int, col: Int, modifiers: Int = 0) {
+        terminalNative.mouseMove(row, col, modifiers)
+    }
+
+    /**
+     * Report a mouse button press or release at a cell.
+     *
+     * Not part of the public API, for the same reason as [mouseMove]: a bare
+     * press is only meaningful for input that holds a button down across events,
+     * and a caller that loses the release leaves the application believing the
+     * button is still down. [mouseClick] is the form that cannot be misused.
+     *
+     * @param row Row index (0-based); clamped to the visible screen
+     * @param col Column index (0-based); clamped to the visible screen
+     * @param pressed true for a press, false for a release
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     */
+    internal fun mouseButton(button: MouseButton, row: Int, col: Int, pressed: Boolean, modifiers: Int = 0) {
+        terminalNative.mouseButton(row, col, button.code, pressed, modifiers)
+    }
+
+    /**
+     * Report a complete click at a cell.
+     */
+    override fun mouseClick(button: MouseButton, row: Int, col: Int, modifiers: Int) {
+        terminalNative.mouseClick(row, col, button.code, modifiers)
+    }
+
+    /**
+     * Report wheel detents at a cell.
+     */
+    override fun scrollWheel(direction: WheelDirection, row: Int, col: Int, steps: Int, modifiers: Int) {
+        // Bounds on steps belong with the loop that spends them, in Terminal.cpp.
+        terminalNative.scrollWheel(row, col, direction.code, steps, modifiers)
     }
 
     /**
@@ -579,8 +729,7 @@ internal class TerminalEmulatorImpl(
         synchronized(damageLock) {
             when (value) {
                 is TerminalProperty.StringValue -> {
-                    // Property 7 is VTERM_PROP_TITLE (from vterm.h line 257)
-                    if (prop == 7) {
+                    if (prop == VTermProp.TITLE) {
                         terminalTitle = value.value
                         propertyChanged = true
                     }
@@ -588,20 +737,17 @@ internal class TerminalEmulatorImpl(
 
                 is TerminalProperty.BoolValue -> {
                     when (prop) {
-                        // Property 1 is VTERM_PROP_CURSORVISIBLE (from vterm.h line 254)
-                        1 -> {
+                        VTermProp.CURSOR_VISIBLE -> {
                             cursorVisible = value.value
                             propertyChanged = true
                         }
 
-                        // Property 2 is VTERM_PROP_CURSORBLINK (from vterm.h line 255)
-                        2 -> {
+                        VTermProp.CURSOR_BLINK -> {
                             cursorBlink = value.value
                             propertyChanged = true
                         }
 
-                        // Property 3 is VTERM_PROP_ALTSCREEN (from vterm.h line 256)
-                        3 -> {
+                        VTermProp.ALT_SCREEN -> {
                             isAltScreenActive = value.value
                             propertyChanged = true
                         }
@@ -609,21 +755,29 @@ internal class TerminalEmulatorImpl(
                 }
 
                 is TerminalProperty.IntValue -> {
-                    // Property 6 is VTERM_PROP_CURSORSHAPE (from vterm.h line 260)
-                    if (prop == 6) {
-                        cursorShape = when (value.value) {
-                            1 -> CursorShape.BLOCK
-
-                            // VTERM_PROP_CURSORSHAPE_BLOCK
-                            2 -> CursorShape.UNDERLINE
-
-                            // VTERM_PROP_CURSORSHAPE_UNDERLINE
-                            3 -> CursorShape.BAR_LEFT
-
-                            // VTERM_PROP_CURSORSHAPE_BAR_LEFT
-                            else -> CursorShape.BLOCK
+                    when (prop) {
+                        VTermProp.CURSOR_SHAPE -> {
+                            cursorShape = when (value.value) {
+                                VTermProp.CURSOR_SHAPE_BLOCK -> CursorShape.BLOCK
+                                VTermProp.CURSOR_SHAPE_UNDERLINE -> CursorShape.UNDERLINE
+                                VTermProp.CURSOR_SHAPE_BAR_LEFT -> CursorShape.BAR_LEFT
+                                else -> CursorShape.BLOCK
+                            }
+                            propertyChanged = true
                         }
-                        propertyChanged = true
+
+                        VTermProp.MOUSE -> {
+                            // No propertyChanged here: this is read straight off
+                            // the volatile field by gesture handling and does not
+                            // appear in the snapshot, so rebuilding one would
+                            // produce an identical value at real cost.
+                            mouseTracking = when (value.value) {
+                                VTermProp.MOUSE_CLICK -> MouseTracking.CLICK
+                                VTermProp.MOUSE_DRAG -> MouseTracking.DRAG
+                                VTermProp.MOUSE_MOVE -> MouseTracking.MOVE
+                                else -> MouseTracking.NONE
+                            }
+                        }
                     }
                 }
 

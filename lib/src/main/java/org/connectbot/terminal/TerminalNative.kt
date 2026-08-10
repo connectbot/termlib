@@ -109,6 +109,88 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     }
 
     /**
+     * Move the mouse cursor to a cell.
+     *
+     * Records the position used by subsequent [mouseButton] reports. A motion
+     * report is emitted via onKeyboardInput() only when the application has
+     * requested drag tracking (DECSET 1002, while a button is held) or any-motion
+     * tracking (DECSET 1003). Moving to the cell the mouse already occupies is a
+     * no-op, so repeated calls at the same cell do not flood the application.
+     *
+     * @param row Row index (0-based); clamped to the screen natively
+     * @param col Column index (0-based); clamped to the screen natively
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun mouseMove(row: Int, col: Int, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeMouseMove(nativePtr, row, col, modifiers)
+    }
+
+    /**
+     * Dispatch a mouse button press or release at a cell.
+     *
+     * The move to [row]/[col] and the button report are made under a single
+     * native lock, so a concurrent report for another gesture cannot land
+     * between the two and send this button at the wrong position.
+     *
+     * Nothing is emitted unless the application has enabled mouse tracking. The
+     * report encoding follows the protocol the application selected (X10, UTF-8,
+     * SGR or rxvt).
+     *
+     * @param row Row index (0-based)
+     * @param col Column index (0-based)
+     * @param button 1=left, 2=middle, 3=right, 4=wheel up, 5=wheel down,
+     *               6=wheel left, 7=wheel right
+     * @param pressed true for press, false for release. Wheel buttons only
+     *                report presses; a release is not expected.
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun mouseButton(row: Int, col: Int, button: Int, pressed: Boolean, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeMouseButton(nativePtr, row, col, button, pressed, modifiers)
+    }
+
+    /**
+     * Dispatch a press and its matching release at a cell.
+     *
+     * Both reports are emitted under a single native lock, so a click cannot be
+     * left half-delivered — an application that saw the press always sees the
+     * release, whatever else is happening on other threads.
+     *
+     * @param row Row index (0-based)
+     * @param col Column index (0-based)
+     * @param button 1=left, 2=middle, 3=right
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun mouseClick(row: Int, col: Int, button: Int, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeMouseClick(nativePtr, row, col, button, modifiers)
+    }
+
+    /**
+     * Dispatch [steps] presses of a wheel button at a cell.
+     *
+     * Equivalent to [steps] calls to [mouseButton] with a wheel button, but the
+     * whole burst is emitted under a single native lock so it cannot be
+     * interleaved with another gesture's reports. The native layer bounds the
+     * burst, so no caller can hold that lock for an arbitrary length of time.
+     *
+     * @param row Row index (0-based)
+     * @param col Column index (0-based)
+     * @param button 4=wheel up, 5=wheel down, 6=wheel left, 7=wheel right
+     * @param steps Number of detents to report; values below 1 send nothing
+     * @param modifiers Bitmask: 1=Shift, 2=Alt, 4=Ctrl
+     * @return true if handled
+     */
+    fun scrollWheel(row: Int, col: Int, button: Int, steps: Int, modifiers: Int): Boolean {
+        checkNotClosed()
+        return nativeScrollWheel(nativePtr, row, col, button, steps, modifiers)
+    }
+
+    /**
      * Get a run of cells with identical formatting starting at the given position.
      * This is the primary method for retrieving terminal content for rendering.
      *
@@ -213,6 +295,10 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
+    private external fun nativeMouseMove(ptr: Long, row: Int, col: Int, modifiers: Int): Boolean
+    private external fun nativeMouseButton(ptr: Long, row: Int, col: Int, button: Int, pressed: Boolean, modifiers: Int): Boolean
+    private external fun nativeMouseClick(ptr: Long, row: Int, col: Int, button: Int, modifiers: Int): Boolean
+    private external fun nativeScrollWheel(ptr: Long, row: Int, col: Int, button: Int, steps: Int, modifiers: Int): Boolean
     private external fun nativeGetCellRun(ptr: Long, row: Int, col: Int, run: CellRun): Int
     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int
