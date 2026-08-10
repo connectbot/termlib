@@ -20,6 +20,7 @@ import android.icu.lang.UCharacter
 import android.icu.lang.UProperty
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Choreographer
 import androidx.annotation.VisibleForTesting
@@ -220,6 +221,12 @@ class TerminalEmulatorFactory {
          * @param boldAsBright Whether bold text using low-intensity ANSI colors (0–7) promotes to
          *                     the corresponding bright palette color (8–15), matching xterm's
          *                     default boldColors behavior. Defaults to true.
+         * @param minUpdateIntervalMs Minimum interval in milliseconds between snapshot emissions.
+         *                            0 (the default) coalesces updates to display-frame cadence.
+         *                            Larger values batch fast terminal output into fewer, larger
+         *                            redraws — useful on e-ink displays where frequent partial
+         *                            refreshes cause ghosting. Damage is never dropped, only
+         *                            deferred: the final state is always emitted.
          */
         fun create(
             looper: Looper = Looper.getMainLooper(),
@@ -234,6 +241,7 @@ class TerminalEmulatorFactory {
             onProgressChange: ((ProgressState, Int) -> Unit)? = null,
             autoDetectUrls: Boolean = false,
             boldAsBright: Boolean = true,
+            minUpdateIntervalMs: Long = 0L,
         ): TerminalEmulator = TerminalEmulatorImpl(
             looper = looper,
             initialRows = initialRows,
@@ -247,6 +255,7 @@ class TerminalEmulatorFactory {
             onProgressChange = onProgressChange,
             autoDetectUrls = autoDetectUrls,
             boldAsBright = boldAsBright,
+            minUpdateIntervalMs = minUpdateIntervalMs,
         )
     }
 }
@@ -280,6 +289,8 @@ class TerminalEmulatorFactory {
  * @param onResize Optional callback for terminal resize
  * @param onClipboardCopy Optional callback for OSC 52 clipboard copy operations
  * @param onProgressChange Optional callback for OSC 9;4 progress reporting
+ * @param minUpdateIntervalMs Minimum interval in milliseconds between snapshot emissions
+ *                            (0 = display-frame cadence)
  */
 internal class TerminalEmulatorImpl(
     private val looper: Looper = Looper.getMainLooper(),
@@ -294,6 +305,7 @@ internal class TerminalEmulatorImpl(
     private val onProgressChange: ((ProgressState, Int) -> Unit)? = null,
     override val autoDetectUrls: Boolean = false,
     override val boldAsBright: Boolean = true,
+    private val minUpdateIntervalMs: Long = 0L,
 ) : TerminalEmulator,
     TerminalCallbacks {
 
@@ -308,6 +320,11 @@ internal class TerminalEmulatorImpl(
     private val damageLock = Object()
     private val pendingDamageRegions = mutableListOf<DamageRegion>()
     private var damagePosted = false
+
+    // Uptime of the last snapshot emission; guarded by damageLock. Used to
+    // enforce minUpdateIntervalMs between snapshot emissions. Starts one
+    // interval in the past so the first update is never deferred.
+    private var lastUpdateUptimeMs = SystemClock.uptimeMillis() - minUpdateIntervalMs
     private var cursorMoved = false
     private var propertyChanged = false
 
@@ -894,6 +911,9 @@ internal class TerminalEmulatorImpl(
             needsUpdate = damageRegions.isNotEmpty() || cursorMoved || propertyChanged
             cursorMoved = false
             propertyChanged = false
+            if (needsUpdate) {
+                lastUpdateUptimeMs = SystemClock.uptimeMillis()
+            }
         }
 
         if (!needsUpdate) return
@@ -1324,12 +1344,18 @@ internal class TerminalEmulatorImpl(
      * processed. Running updateLine/buildSnapshot for every callback burst can outpace
      * vsync and make Compose redraw the terminal multiple times for one displayed frame.
      *
+     * When minUpdateIntervalMs > 0, snapshot work is instead deferred until at least that
+     * long after the previous emission, batching bursts of output into fewer redraws.
+     *
      * MUST be called with damageLock held.
      */
     private fun requestProcessPendingUpdatesLocked() {
         if (damagePosted) return
         damagePosted = true
-        if (looper == Looper.getMainLooper()) {
+        if (minUpdateIntervalMs > 0L) {
+            val delayMs = lastUpdateUptimeMs + minUpdateIntervalMs - SystemClock.uptimeMillis()
+            handler.postDelayed({ processPendingUpdates() }, delayMs.coerceAtLeast(0L))
+        } else if (looper == Looper.getMainLooper()) {
             handler.post {
                 Choreographer.getInstance().postFrameCallback {
                     processPendingUpdates()

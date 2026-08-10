@@ -307,6 +307,11 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
  * @param selectionForegroundColor Foreground color for selected text (default: Black)
  * @param delKeyMode How the backspace/delete keys should map to terminal characters
  * @param onInterceptKey Optional callback to intercept raw Compose KeyEvents before the terminal emulator handles them. Return true to consume the event.
+ * @param cursorBlinkMode Whether the cursor blinks. [CursorBlinkMode.Terminal] (default) follows the
+ *                        terminal program's escape sequences; [CursorBlinkMode.Never] keeps the cursor
+ *                        solid, which avoids continuous partial refreshes on e-ink displays.
+ * @param textAntiAlias Whether terminal text is drawn with anti-aliasing (default: true). Disable for
+ *                      crisp black-and-white glyph edges on e-ink or other 1-bit displays.
  */
 @Composable
 fun Terminal(
@@ -334,6 +339,8 @@ fun Terminal(
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
     onInterceptKey: ((ComposeKeyEvent) -> Boolean)? = null,
+    cursorBlinkMode: CursorBlinkMode = CursorBlinkMode.Terminal,
+    textAntiAlias: Boolean = true,
 ) {
     if (LocalInspectionMode.current) {
         TerminalPreview(modifier, backgroundColor, foregroundColor)
@@ -366,6 +373,8 @@ fun Terminal(
         selectionBackgroundColor = selectionBackgroundColor,
         selectionForegroundColor = selectionForegroundColor,
         delKeyMode = delKeyMode,
+        cursorBlinkMode = cursorBlinkMode,
+        textAntiAlias = textAntiAlias,
     )
 }
 
@@ -403,6 +412,8 @@ internal fun TerminalWithAccessibility(
     selectionBackgroundColor: Color = Color(0xFFB3D7FF),
     selectionForegroundColor: Color = Color.Black,
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
+    cursorBlinkMode: CursorBlinkMode = CursorBlinkMode.Terminal,
+    textAntiAlias: Boolean = true,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -524,14 +535,14 @@ internal fun TerminalWithAccessibility(
     }
 
     // Cursor blink animation
-    LaunchedEffect(screenState) {
+    LaunchedEffect(screenState, cursorBlinkMode) {
         snapshotFlow {
             val s = screenState.snapshot
             Triple(s.cursorVisible, s.cursorBlink, s.cursorRow to s.cursorCol)
         }.collectLatest { (visible, blink, _) ->
             if (visible) {
                 cursorBlinkVisible = true
-                if (blink) {
+                if (blink && cursorBlinkMode == CursorBlinkMode.Terminal) {
                     // Show cursor immediately when it moves or becomes visible
                     while (true) {
                         delay(CURSOR_BLINK_RATE_MS)
@@ -545,11 +556,11 @@ internal fun TerminalWithAccessibility(
     }
 
     // Create TextPaint for measuring and drawing (base size)
-    val textPaint = remember(typeface, calculatedFontSize) {
+    val textPaint = remember(typeface, calculatedFontSize, textAntiAlias) {
         TextPaint().apply {
             this.typeface = typeface
             textSize = with(density) { calculatedFontSize.toPx() }
-            isAntiAlias = true
+            isAntiAlias = textAntiAlias
         }
     }
 
