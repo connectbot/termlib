@@ -120,13 +120,21 @@ package org.connectbot.terminal {
 
   public final class TerminalDimensions {
     ctor public TerminalDimensions(int rows, int columns);
+    ctor public TerminalDimensions(int rows, int columns, int widthPixels, int heightPixels);
     method public int component1();
     method public int component2();
-    method public org.connectbot.terminal.TerminalDimensions copy(optional int rows, optional int columns);
+    method public int component3();
+    method public int component4();
+    method public org.connectbot.terminal.TerminalDimensions copy(int rows, int columns);
+    method public org.connectbot.terminal.TerminalDimensions copy(optional int rows, optional int columns, optional int widthPixels, optional int heightPixels);
     method @InaccessibleFromKotlin public int getColumns();
+    method @InaccessibleFromKotlin public int getHeightPixels();
     method @InaccessibleFromKotlin public int getRows();
+    method @InaccessibleFromKotlin public int getWidthPixels();
     property public int columns;
+    property public int heightPixels;
     property public int rows;
+    property public int widthPixels;
   }
 
   public sealed nonexhaustive interface TerminalEmulator {

@@ -891,7 +891,14 @@ internal fun TerminalWithAccessibility(
         }
 
         // Resize terminal when dimensions change
-        LaunchedEffect(terminalEmulator, availableWidth, availableHeight, forcedSize, baseCharWidth, baseCharHeight) {
+        LaunchedEffect(
+            terminalEmulator,
+            availableWidth,
+            availableHeight,
+            forcedSize,
+            baseCharWidth,
+            baseCharHeight,
+        ) {
             if (availableWidth == 0 || availableHeight == 0 || baseCharWidth <= 0f || baseCharHeight <= 0f) {
                 return@LaunchedEffect
             }
@@ -902,9 +909,20 @@ internal fun TerminalWithAccessibility(
             val newRows =
                 forcedSize?.first ?: charsPerDimension(availableHeight, baseCharHeight)
 
+            val widthPixels =
+                if (forcedSize == null) availableWidth else ceil(newCols * baseCharWidth).toInt()
+            val heightPixels =
+                if (forcedSize == null) availableHeight else ceil(newRows * baseCharHeight).toInt()
             val dimensions = terminalEmulator.dimensions
-            if (newRows != dimensions.rows || newCols != dimensions.columns) {
-                terminalEmulator.commands.execute { terminalEmulator.resize(newRows, newCols) }
+            if (
+                newRows != dimensions.rows ||
+                newCols != dimensions.columns ||
+                widthPixels != dimensions.widthPixels ||
+                heightPixels != dimensions.heightPixels
+            ) {
+                terminalEmulator.commands.execute {
+                    terminalEmulator.resize(newRows, newCols, widthPixels, heightPixels)
+                }
 
                 // If selection is active, ensure it stays within the new visible bounds.
                 // This ensures the Copy button resets to the last visible line when the screen

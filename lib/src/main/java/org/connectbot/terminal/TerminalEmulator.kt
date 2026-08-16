@@ -497,29 +497,44 @@ internal class TerminalEmulatorImpl(
     /**
      * Resize the terminal.
      */
-    override fun resize(newRows: Int, newCols: Int): Unit = synchronized(damageLock) {
+    override fun resize(newRows: Int, newCols: Int) {
+        resize(
+            newRows = newRows,
+            newCols = newCols,
+            widthPixels = newCols * imageStore.cellWidth,
+            heightPixels = newRows * imageStore.cellHeight,
+        )
+    }
+
+    /** Resize using the physical viewport measured by the Compose terminal. */
+    internal fun resize(newRows: Int, newCols: Int, widthPixels: Int, heightPixels: Int): Unit = synchronized(damageLock) {
         require(newRows > 0 && newCols > 0) { "Terminal dimensions must be positive" }
+        require(widthPixels > 0 && heightPixels > 0) { "Terminal pixel dimensions must be positive" }
         imageStore.rows = newRows
         imageStore.cols = newCols
-        if (newRows == rows && newCols == cols) return@synchronized
-        terminalNative.resize(newRows, newCols)
-        rows = newRows
-        cols = newCols
-        publishedDimensions = TerminalDimensions(newRows, newCols)
+        val resized = TerminalDimensions(newRows, newCols, widthPixels, heightPixels)
+        val charactersChanged = newRows != rows || newCols != cols
+        if (!charactersChanged && resized == publishedDimensions) return@synchronized
 
-        // Retain existing immutable rows until the first complete resized snapshot.
-        // New rows have no content yet; retrieval fills them without an empty screen.
-        currentLines = MutableList(newRows) { row ->
-            currentLines.getOrNull(row) ?: TerminalLine.empty(row, 0)
+        if (charactersChanged) {
+            terminalNative.resize(newRows, newCols)
+            rows = newRows
+            cols = newCols
+
+            // Retain existing immutable rows until the first complete resized snapshot.
+            // New rows have no content yet; retrieval fills them without an empty screen.
+            currentLines = MutableList(newRows) { row ->
+                currentLines.getOrNull(row) ?: TerminalLine.empty(row, 0)
+            }
+            transferRanges = IntArray(newRows * 2)
+            semanticSegmentTexts.keys.removeAll { it.row >= newRows }
+
+            // Rebuild all lines after resize
+            invalidateDisplay()
         }
-        transferRanges = IntArray(newRows * 2)
-        semanticSegmentTexts.keys.removeAll { it.row >= newRows }
-
-        // Rebuild all lines after resize
-        invalidateDisplay()
+        publishedDimensions = resized
 
         // Resize callback - post to handler to avoid blocking native thread
-        val resized = publishedDimensions
         handler.post { onResize?.invoke(resized) }
     }
 
@@ -1552,9 +1567,20 @@ private data class SemanticSegmentKey(
 }
 
 /**
- * Represents the size of the terminal in characters.
+ * Represents the terminal's character grid and physical viewport.
+ *
+ * Pixel dimensions are populated by the Compose [Terminal]. Headless users get dimensions based
+ * on the cell size supplied to [TerminalEmulator.setCellPixelSize].
  */
 data class TerminalDimensions(
     val rows: Int,
     val columns: Int,
-)
+    val widthPixels: Int,
+    val heightPixels: Int,
+) {
+    /** Retained for source and binary compatibility with character-only callers. */
+    constructor(rows: Int, columns: Int) : this(rows, columns, 0, 0)
+
+    /** Retained for binary compatibility with the original two-field data class. */
+    fun copy(rows: Int, columns: Int): TerminalDimensions = TerminalDimensions(rows, columns, widthPixels, heightPixels)
+}

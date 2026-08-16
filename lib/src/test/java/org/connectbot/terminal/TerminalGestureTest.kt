@@ -74,6 +74,57 @@ class TerminalGestureTest {
     }
 
     @Test
+    fun reportsComposeViewportInCharactersAndPixels() {
+        var viewport: TerminalDimensions? = null
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onResize = { viewport = it },
+        )
+
+        composeTestRule.setContent {
+            Terminal(
+                terminalEmulator = emulator,
+                modifier = Modifier.size(width = 320.dp, height = 200.dp),
+            )
+        }
+
+        composeTestRule.waitUntil { viewport != null }
+        composeTestRule.runOnIdle {
+            val measured = checkNotNull(viewport)
+            assertEquals(320 * 2, measured.widthPixels)
+            assertEquals(200 * 2, measured.heightPixels)
+            assertEquals(emulator.dimensions.rows, measured.rows)
+            assertEquals(emulator.dimensions.columns, measured.columns)
+        }
+    }
+
+    @Test
+    fun reportsForcedTerminalContentSizeInsteadOfItsParent() {
+        var viewport: TerminalDimensions? = null
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onResize = { viewport = it },
+        )
+
+        composeTestRule.setContent {
+            Terminal(
+                terminalEmulator = emulator,
+                modifier = Modifier.size(width = 600.dp, height = 400.dp),
+                forcedSize = 12 to 44,
+            )
+        }
+
+        composeTestRule.waitUntil { viewport?.let { it.rows == 12 && it.columns == 44 } == true }
+        composeTestRule.runOnIdle {
+            val measured = checkNotNull(viewport)
+            assertTrue(measured.widthPixels in 1 until 1200)
+            assertTrue(measured.heightPixels in 1 until 800)
+        }
+    }
+
+    @Test
     fun testLongPressTriggersSelection() {
         val emulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
         var selectionController: SelectionController? = null
