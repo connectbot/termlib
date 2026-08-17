@@ -657,17 +657,36 @@ internal class TerminalEmulatorImpl(
         return 0
     }
 
-    // Track the last moverect source region so pushScrollbackLine knows
-    // whether it was a full-screen or partial scroll region scroll.
-    private var lastMoveRectSrc: TermRect? = null
-
     override fun moverect(dest: TermRect, src: TermRect): Int {
-        // Save source rect — pushScrollbackLine uses it to limit segment shifting
-        // to lines within the scroll region (avoiding corruption of tmux status bars etc.)
-        lastMoveRectSrc = src
         // Treat moverect as display damage on the destination. Semantic segments
-        // are shifted alongside the moved text elsewhere, so preserve them here.
+        // and the cached cells move with the native screen. libvterm invokes
+        // sb_pushline before moverect, so the scrollback callback cannot infer
+        // this region without using stale information from the previous scroll.
         synchronized(damageLock) {
+            if (
+                dest.startCol == 0 && src.startCol == 0 &&
+                dest.endCol == cols && src.endCol == cols &&
+                dest.endRow - dest.startRow == src.endRow - src.startRow
+            ) {
+                val previous = currentLines
+                val updated = previous.toMutableList()
+                for (offset in 0 until dest.endRow - dest.startRow) {
+                    val destRow = dest.startRow + offset
+                    val srcRow = src.startRow + offset
+                    if (destRow in updated.indices && srcRow in previous.indices) {
+                        updated[destRow] = previous[srcRow].copy(row = destRow)
+                    }
+                }
+                currentLines = updated
+
+                val movedTexts = semanticSegmentTexts.entries.mapNotNull { (key, value) ->
+                    if (key.row !in src.startRow until src.endRow) return@mapNotNull null
+                    val destRow = dest.startRow + key.row - src.startRow
+                    if (destRow !in dest.startRow until dest.endRow) null else key.copy(row = destRow) to value
+                }
+                semanticSegmentTexts.keys.removeAll { it.row in dest.startRow until dest.endRow }
+                semanticSegmentTexts.putAll(movedTexts)
+            }
             for (row in dest.startRow until dest.endRow) {
                 movedSegmentRows.add(row)
             }
@@ -791,33 +810,6 @@ internal class TerminalEmulatorImpl(
                 scrollback.removeFirst()
             }
             scrollbackDirty = true
-
-            // Shift semantic segments up within the scroll region only.
-            // Lines outside the region (e.g. tmux status bar) keep their segments.
-            val moveRect = lastMoveRectSrc
-            lastMoveRectSrc = null
-            if (currentLines.size > 1) {
-                val shiftEnd = if (moveRect != null) {
-                    // Partial scroll region: only shift within the region
-                    moveRect.endRow.coerceAtMost(currentLines.size)
-                } else {
-                    // Full-screen scroll
-                    currentLines.size
-                }
-                val newLines = currentLines.toMutableList()
-                for (row in 0 until shiftEnd - 1) {
-                    shiftStoredSegmentTexts(fromRow = row + 1, toRow = row)
-                    newLines[row] = currentLines[row + 1].copy(row = row)
-                }
-                // Clear segments for the last line in the scroll region
-                if (shiftEnd > 0 && shiftEnd <= currentLines.size) {
-                    removeStoredSegmentTexts(shiftEnd - 1)
-                    newLines[shiftEnd - 1] = currentLines[shiftEnd - 1].copy(
-                        semanticSegments = emptyList(),
-                    )
-                }
-                currentLines = newLines
-            }
 
             propertyChanged = true
             requestProcessPendingUpdatesLocked()
@@ -1504,17 +1496,6 @@ internal class TerminalEmulatorImpl(
     private fun removeStoredSegmentTexts(row: Int) {
         synchronized(damageLock) {
             semanticSegmentTexts.keys.removeAll { it.row == row }
-        }
-    }
-
-    private fun shiftStoredSegmentTexts(fromRow: Int, toRow: Int) {
-        synchronized(damageLock) {
-            removeStoredSegmentTexts(toRow)
-            val moved = semanticSegmentTexts.entries
-                .filter { it.key.row == fromRow }
-                .map { (key, value) -> key.copy(row = toRow) to value }
-            removeStoredSegmentTexts(fromRow)
-            semanticSegmentTexts.putAll(moved)
         }
     }
 
