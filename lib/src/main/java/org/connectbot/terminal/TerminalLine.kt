@@ -191,7 +191,7 @@ internal data class TerminalLine(
             row = row,
             cells = List(cols) {
                 Cell(
-                    char = '\u0000',
+                    char = ' ',
                     fgColor = defaultFg,
                     bgColor = defaultBg,
                 )
