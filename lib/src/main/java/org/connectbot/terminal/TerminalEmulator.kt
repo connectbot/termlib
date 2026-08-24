@@ -361,8 +361,9 @@ internal class TerminalEmulatorImpl(
 
     override fun setCellPixelSize(width: Int, height: Int): Unit = synchronized(damageLock) {
         require(width > 0 && height > 0)
-        imageStore.cellWidth = width
-        imageStore.cellHeight = height
+        imageStore.updateCellSize(width, height)
+        propertyChanged = true
+        requestProcessPendingUpdatesLocked()
     }
 
     override fun onImageFragment(kitty: Boolean, data: ByteArray, initial: Boolean, final: Boolean, row: Int, col: Int): Long = synchronized(damageLock) {

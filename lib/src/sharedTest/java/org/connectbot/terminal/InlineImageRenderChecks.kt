@@ -113,4 +113,30 @@ abstract class InlineImageRenderChecks {
         assertTrue(android.graphics.Color.blue(blended) in 127..129)
         assertEquals(null, asset.bitmap)
     }
+
+    @Test
+    fun kittyPlacementsAlphaCompositeInCreationOrder() {
+        val terminal = emulator()
+        terminal.writeInput("\u001b_Ga=T,f=32,s=1,v=1,i=1,c=1,r=1,C=1;/wAAgA==\u001b\\".toByteArray())
+        terminal.writeInput("\u001b_Ga=T,f=32,s=1,v=1,i=2,c=1,r=1,C=1;AAD/gA==\u001b\\".toByteArray())
+        terminal.writeInput("\u001b_Ga=T,f=32,s=1,v=1,i=3,c=1,r=1,C=1;AP8AgA==\u001b\\".toByteArray())
+
+        val pixel = render(terminal).getPixel(4, 8)
+        assertTrue(android.graphics.Color.red(pixel) in 31..33)
+        assertTrue(android.graphics.Color.green(pixel) in 127..129)
+        assertTrue(android.graphics.Color.blue(pixel) in 63..65)
+    }
+
+    @Test
+    fun kittyTerminatorSurvivesOneByteNativeWrites() {
+        val terminal = emulator()
+        val stream = "\u001b_Ga=T,q=2,f=32,s=1,v=1,C=1;/wAA/w==\u001b\\SAFE".toByteArray()
+
+        stream.forEach { terminal.writeInput(byteArrayOf(it)) }
+        terminal.processPendingUpdates()
+
+        assertEquals(1, terminal.imageStore.assets.size)
+        assertTrue(terminal.snapshot.value.lines.any { "SAFE" in it.text })
+        assertTrue(terminal.snapshot.value.lines.any { it.images.isNotEmpty() })
+    }
 }

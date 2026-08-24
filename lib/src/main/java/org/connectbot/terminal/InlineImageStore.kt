@@ -168,7 +168,11 @@ internal class InlineImageStore(val limits: InlineImageLimits, private val handl
                             frameUpdatesNeeded = false
                         } else {
                             view.slices.forEach { slice ->
-                                request(slice.asset, max(1, (slice.renderWidth * view.cellWidth * slice.asset.width / slice.crop.width()).toInt()), max(1, (slice.renderHeight * view.cellHeight * slice.asset.height / slice.crop.height()).toInt()))
+                                request(
+                                    slice.asset,
+                                    max(1, (slice.targetWidth(view.cellWidth) * slice.asset.width / slice.crop.width()).toInt()),
+                                    max(1, (slice.targetHeight(view.cellHeight) * slice.asset.height / slice.crop.height()).toInt()),
+                                )
                             }
                             advanceAnimations(view.now)
                             frameUpdatesNeeded = view.slices.any { slice ->
@@ -213,6 +217,21 @@ internal class InlineImageStore(val limits: InlineImageLimits, private val handl
     var uploadBytes = 0
         private set
     private var decodedReservation = 0L
+
+    @Synchronized
+    fun updateCellSize(width: Int, height: Int) {
+        if (width == cellWidth && height == cellHeight) return
+        placements.filter { it.naturalSize && !it.virtual }.forEach { placement ->
+            val oldWidth = placement.width
+            val oldHeight = placement.height
+            placement.width = ceil((placement.crop.width() + placement.offsetX).toDouble() / width).toInt().coerceAtLeast(1)
+            placement.height = ceil((placement.crop.height() + placement.offsetY).toDouble() / height).toInt().coerceAtLeast(1)
+            if (placement.clipRight == oldWidth) placement.clipRight = placement.width
+            if (placement.clipBottom == oldHeight) placement.clipBottom = placement.height
+        }
+        cellWidth = width
+        cellHeight = height
+    }
 
     @Synchronized
     fun encodedUsage(): Long {
@@ -351,7 +370,6 @@ internal class InlineImageStore(val limits: InlineImageLimits, private val handl
     fun resizeImages(screen: Boolean, delta: Int, rows: Int, cols: Int) {
         placements.filter { it.alternate == screen && !it.virtual && it.parent == null }.forEach {
             it.top += delta
-            it.clipRight = minOf(it.clipRight, cols - it.left)
             if (screen) it.clipTop = maxOf(it.clipTop, -it.top)
         }
         placements.removeAll { it.alternate == screen && !it.virtual && (it.top >= rows || it.clipRight <= it.clipLeft) }
@@ -379,6 +397,7 @@ internal class InlineImageStore(val limits: InlineImageLimits, private val handl
                     ImageSlice(
                         p.asset, left, right, y + p.sourceRow, p.height,
                         left - origin.second + p.sourceCol, p.width, p.crop, p.z, p.offsetX, p.offsetY, p.renderWidth, p.renderHeight,
+                        p.naturalSize,
                     )
                 }
             }
@@ -426,7 +445,12 @@ internal class InlineImageStore(val limits: InlineImageLimits, private val handl
                 if (screenRow != null && placeholderAnchors.values.sumOf { it.size } < limits.maxPlacements) {
                     placeholderAnchors.getOrPut(p.asset.id to p.id) { mutableSetOf() }.add(screenRow - row to col - column)
                 }
-                add(ImageSlice(p.asset, col, col + 1, row, p.height, column, p.width, p.crop, p.z, renderWidth = p.renderWidth, renderHeight = p.renderHeight))
+                add(
+                    ImageSlice(
+                        p.asset, col, col + 1, row, p.height, column, p.width, p.crop, p.z,
+                        renderWidth = p.renderWidth, renderHeight = p.renderHeight, naturalSize = p.naturalSize,
+                    ),
+                )
             }
         }
     }
@@ -589,8 +613,8 @@ internal class ImagePlacement(
     val id: Long,
     var top: Int,
     var left: Int,
-    val width: Int,
-    val height: Int,
+    var width: Int,
+    var height: Int,
     val crop: Rect,
     val z: Int,
     val iterm: Boolean,
@@ -603,6 +627,7 @@ internal class ImagePlacement(
     val renderHeight: Float = height.toFloat(),
     val sourceRow: Int = 0,
     val sourceCol: Int = 0,
+    val naturalSize: Boolean = false,
 ) {
     var clipTop = 0
     var clipBottom = height
@@ -627,7 +652,7 @@ internal class ImagePlacement(
         asset, id, top + row, start, end - start, 1,
         crop, z, true, alternate,
         offsetX = offsetX, offsetY = offsetY, renderWidth = renderWidth, renderHeight = renderHeight,
-        sourceRow = sourceRow + row, sourceCol = sourceCol + start - left,
+        sourceRow = sourceRow + row, sourceCol = sourceCol + start - left, naturalSize = naturalSize,
     )
 }
 
@@ -645,7 +670,12 @@ internal data class ImageSlice(
     val offsetY: Int = 0,
     val renderWidth: Float = columns.toFloat(),
     val renderHeight: Float = rows.toFloat(),
+    val naturalSize: Boolean = false,
 ) {
+    fun targetWidth(cellWidth: Float): Float = if (naturalSize) crop.width().toFloat() else renderWidth * cellWidth
+
+    fun targetHeight(cellHeight: Float): Float = if (naturalSize) crop.height().toFloat() else renderHeight * cellHeight
+
     fun draw(canvas: Canvas, row: Int, cellWidth: Float, cellHeight: Float) {
         asset.presentation.redraw
         val frame = asset.presentation.frame
@@ -653,8 +683,8 @@ internal data class ImageSlice(
         if (drawable != null) {
             canvas.save()
             canvas.clipRect(left * cellWidth, row * cellHeight, right * cellWidth, (row + 1) * cellHeight)
-            val sx = renderWidth * cellWidth / crop.width()
-            val sy = renderHeight * cellHeight / crop.height()
+            val sx = targetWidth(cellWidth) / crop.width()
+            val sy = targetHeight(cellHeight) / crop.height()
             canvas.translate(
                 (left - sourceCol) * cellWidth + offsetX - crop.left * sx,
                 (row - sourceRow) * cellHeight + offsetY - crop.top * sy,
@@ -666,8 +696,10 @@ internal data class ImageSlice(
             return
         }
         val bitmap = frame.bitmap ?: return
-        val sx = renderWidth * cellWidth / crop.width()
-        val sy = renderHeight * cellHeight / crop.height()
+        val targetWidth = targetWidth(cellWidth)
+        val targetHeight = targetHeight(cellHeight)
+        val sx = targetWidth / crop.width()
+        val sy = targetHeight / crop.height()
         val x = (left - sourceCol) * cellWidth + offsetX - crop.left * sx
         val y = (row - sourceRow) * cellHeight + offsetY - crop.top * sy
         canvas.save()
@@ -675,8 +707,8 @@ internal data class ImageSlice(
         canvas.clipRect(
             (left - sourceCol) * cellWidth + offsetX,
             (row - sourceRow) * cellHeight + offsetY,
-            (left - sourceCol) * cellWidth + offsetX + renderWidth * cellWidth,
-            (row - sourceRow) * cellHeight + offsetY + renderHeight * cellHeight,
+            (left - sourceCol) * cellWidth + offsetX + targetWidth,
+            (row - sourceRow) * cellHeight + offsetY + targetHeight,
         )
         canvas.drawBitmap(bitmap, null, RectF(x, y, x + asset.width * sx, y + asset.height * sy), Paint(Paint.FILTER_BITMAP_FLAG))
         canvas.restore()

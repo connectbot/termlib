@@ -38,3 +38,18 @@ decode cost, run:
 TERMLIB_BENCHMARK=1 ./gradlew :lib:testDebugUnitTest \
   --tests '*InlineImageBenchmarkTest' --no-configuration-cache --rerun-tasks
 ```
+
+The optional Kitty TGP 001 transcript test keeps the third-party archive out of
+the source tree. Extract it locally and point the test at the directory that
+contains `timing3` and `typescript3`:
+
+```sh
+mkdir -p /tmp/kitty-tgp-001
+tar -xzf kitty-TGP-001.tar.gz -C /tmp/kitty-tgp-001
+TERMLIB_KITTY_TGP=/tmp/kitty-tgp-001 ./gradlew :lib:testDebugUnitTest \
+  --tests '*InlineImageTest.kittyTgp001Transcript' --no-configuration-cache
+```
+
+The replay honors the recorded output boundaries but omits delays. It verifies
+all 36 uploads, the peak set of 18 simultaneous placements, and the absence of
+protocol rejections without packaging the fixture in the library or test APK.

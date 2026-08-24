@@ -7,6 +7,7 @@ package org.connectbot.terminal
 
 import android.graphics.BitmapFactory
 import android.graphics.Rect
+import android.util.Log
 import java.io.BufferedOutputStream
 import java.io.OutputStream
 import java.util.zip.Deflater
@@ -149,7 +150,13 @@ internal class InlineImageProtocol(
                 else -> otherOsc(header.toString(), row, col)
             }
         } catch (e: Exception) {
-            if (kitty && header.startsWith("G")) reply(keys, e.message?.takeIf { it.contains(':') } ?: "EINVAL:invalid image")
+            val reason = e.message?.takeIf { it.contains(':') } ?: "EINVAL:invalid image"
+            Log.w(
+                TAG,
+                "Rejected ${if (kitty) "Kitty" else "iTerm2"} inline image " +
+                    "(action=${keys["a"]}, format=${keys["f"]}, transport=${keys["t"]}): $reason",
+            )
+            if (kitty && header.startsWith("G")) reply(keys, reason)
             abortUpload()
             discarded = true
         }
@@ -162,7 +169,10 @@ internal class InlineImageProtocol(
             require(header.startsWith("G")) { "ENOTSUP:unknown APC" }
             keys = parse(header.substring(1), ',')
             if (upload != null && !upload!!.iterm && keys.keys.all { it in listOf("m", "q", "a", "i", "I") }) {
-                keys = upload!!.options + keys
+                // m applies to this chunk only. In particular, omitting it on
+                // the last chunk means the protocol default m=0; inheriting
+                // m=1 would leave older Kitty streams open forever.
+                keys = (upload!!.options - "m") + keys
             } else {
                 abortUpload()
                 require(keys["t"] in listOf(null, "d")) { "ENOTSUP:only stream transport is supported" }
@@ -330,6 +340,7 @@ internal class InlineImageProtocol(
         val crop = Rect(x, y, minOf(base.width.toLong(), x.toLong() + w).toInt(), minOf(base.height.toLong(), y.toLong() + h).toInt())
         var columns = integer(options, "c", 0)
         var rows = integer(options, "r", 0)
+        val naturalSize = columns == 0 && rows == 0
         require(columns >= 0 && rows >= 0) { "EINVAL:negative placement size" }
         val offsetX = integer(options, "X", 0)
         val offsetY = integer(options, "Y", 0)
@@ -377,6 +388,7 @@ internal class InlineImageProtocol(
                 if (parent == null) col else integer(options, "H", 0), columns, rows, crop,
                 integer(options, "z", 0), false, store.alternate, virtual, parent, offsetX, offsetY,
                 (pixelWidth / store.cellWidth).toFloat(), (pixelHeight / store.cellHeight).toFloat(),
+                naturalSize = naturalSize,
             ),
         )
         return if (virtual || parent != null || options["C"] == "1") 0 else (rows.toLong() shl 32) or (columns.toLong() shl 1)
@@ -554,4 +566,8 @@ internal class InlineImageProtocol(
     }
 
     private fun rgba(value: Long): Int = ((value and 255) shl 24 or (value ushr 8)).toInt()
+
+    private companion object {
+        const val TAG = "InlineImageProtocol"
+    }
 }

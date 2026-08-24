@@ -105,11 +105,19 @@ internal class ImageBase64(private val output: OutputStream) {
         require(padding == 0) { "EINVAL:data after base64 padding" }
         val decoded = when (value) {
             in 65..90 -> value - 65
+
             in 97..122 -> value - 71
+
             in 48..57 -> value + 4
+
             43 -> 62
+
             47 -> 63
-            else -> throw IllegalArgumentException("EINVAL:invalid base64")
+
+            else -> throw IllegalArgumentException(
+                "EINVAL:invalid base64 byte 0x${value.toString(16).padStart(2, '0')} " +
+                    "at quartet offset $count after $padding padding bytes",
+            )
         }
         bits = (bits shl 6) or decoded
         count++
@@ -123,6 +131,29 @@ internal class ImageBase64(private val output: OutputStream) {
     }
 
     fun finish() {
-        require(count == 0 || (padding > 0 && count + padding == 4)) { "EINVAL:incomplete base64" }
+        if (padding > 0) {
+            require(count + padding == 4) {
+                "EINVAL:incomplete base64 quartet ($count data, $padding padding)"
+            }
+            return
+        }
+        when (count) {
+            0 -> Unit
+
+            2 -> {
+                require(bits and 15 == 0) { "EINVAL:invalid base64 tail" }
+                output.write(bits shr 4)
+            }
+
+            3 -> {
+                require(bits and 3 == 0) { "EINVAL:invalid base64 tail" }
+                output.write(bits shr 10)
+                output.write(bits shr 2)
+            }
+
+            else -> throw IllegalArgumentException("EINVAL:incomplete base64 quartet ($count data, 0 padding)")
+        }
+        count = 0
+        bits = 0
     }
 }

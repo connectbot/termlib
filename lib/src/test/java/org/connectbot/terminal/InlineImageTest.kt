@@ -11,10 +11,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowLog
+import java.io.File
 import java.util.Base64
 
 @RunWith(RobolectricTestRunner::class)
@@ -52,6 +55,27 @@ class InlineImageTest {
     }
 
     @Test
+    fun fragmentedKittyStDoesNotRingOrLeakPayload() {
+        var bells = 0
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            onBell = { bells++ },
+        ) as TerminalEmulatorImpl
+        val stream = "\u001b]0;recorded title\u0007" + kitty("a=T,q=2,f=100", png) + "SAFE"
+
+        stream.toByteArray().forEach { terminal.writeInput(byteArrayOf(it)) }
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(0, bells)
+        assertEquals(1, terminal.imageStore.assets.size)
+        val snapshot = terminal.flush()
+        assertTrue(snapshot.lines.any { it.images.isNotEmpty() })
+        assertTrue(snapshot.lines.any { "SAFE" in it.text })
+        assertTrue(snapshot.lines.none { "Zg" in it.text })
+    }
+
+    @Test
     fun multipartPayloadCanSplitInsideBase64Quartets() {
         val terminal = emulator()
         terminal.write("\u001b]1337;MultipartFile=inline=1;width=2;height=2\u0007")
@@ -72,6 +96,114 @@ class InlineImageTest {
         assertEquals(1, terminal.imageStore.assets.size)
         assertTrue(terminal.imageStore.encodedUsage() > 0)
         assertNull(terminal.imageStore.assets[9]!!.bitmap)
+    }
+
+    @Test
+    fun kittyFinalChunkDefaultsToM0InsteadOfInheritingM1() {
+        val terminal = emulator()
+        val raw = Base64.getEncoder().encodeToString(byteArrayOf(-1, 0, 0, -1))
+        terminal.write(kitty("a=T,f=32,s=1,v=1,i=10,C=1,m=1", raw.take(4)))
+        terminal.write(kitty("a=T,q=2", raw.drop(4)))
+
+        assertEquals(1, terminal.imageStore.assets.size)
+        assertTrue(terminal.flush().lines.any { it.images.isNotEmpty() })
+    }
+
+    @Test
+    fun naturalKittyPlacementKeepsPixelSizeWhenCellSizeChanges() {
+        val terminal = emulator()
+        terminal.setCellPixelSize(8, 16)
+        val raw = Base64.getEncoder().encodeToString(ByteArray(16 * 16 * 4) { -1 })
+        terminal.write(kitty("a=T,q=2,f=32,s=16,v=16,C=1", raw))
+        val placement = terminal.imageStore.placements.single()
+        assertEquals(2, placement.width)
+        assertEquals(1, placement.height)
+
+        terminal.setCellPixelSize(4, 8)
+
+        assertEquals(4, placement.width)
+        assertEquals(2, placement.height)
+        val slice = terminal.imageStore.slices(0).single()
+        assertEquals(16f, slice.targetWidth(4f))
+        assertEquals(16f, slice.targetHeight(8f))
+    }
+
+    @Test
+    fun viewportResizeDoesNotPermanentlyClipWideKittyPlacement() {
+        val terminal = emulator()
+        terminal.setCellPixelSize(8, 16)
+        val raw = Base64.getEncoder().encodeToString(ByteArray(160 * 16 * 4) { -1 })
+        terminal.write(kitty("a=T,q=2,f=32,s=160,v=16,C=1", raw))
+
+        terminal.resize(6, 8)
+        assertEquals(8, terminal.imageStore.slices(0).single().right)
+        terminal.resize(6, 24)
+
+        assertEquals(20, terminal.imageStore.slices(0).single().right)
+    }
+
+    @Test
+    fun kittyAcceptsUnpaddedBase64UsedByIcat() {
+        val terminal = emulator()
+        terminal.write(kitty("a=T,q=2,f=100,s=1,v=1", png.trimEnd('=')))
+
+        assertEquals(1, terminal.imageStore.assets.size)
+        assertTrue(terminal.flush().lines.any { it.images.isNotEmpty() })
+    }
+
+    /** Optional upstream transcript; set TERMLIB_KITTY_TGP to its extracted directory. */
+    @Test
+    fun kittyTgp001Transcript() {
+        val directory = System.getenv("TERMLIB_KITTY_TGP")?.let(::File)
+        assumeTrue(directory?.isDirectory == true)
+        ShadowLog.clear()
+        val terminal = TerminalEmulatorFactory.create(initialRows = 30, initialCols = 137) as TerminalEmulatorImpl
+        terminal.setCellPixelSize(8, 16)
+        var peakAssets = 0
+        var peakPlacements = 0
+        var peakEncoded = 0L
+        var peakSnapshotSlices = 0
+        directory!!.resolve("typescript3").inputStream().buffered().use { input ->
+            val prologue = buildString {
+                while (true) {
+                    val value = input.read()
+                    require(value >= 0) { "Missing typescript prologue" }
+                    append(value.toChar())
+                    if (value == '\n'.code) break
+                }
+            }
+            assertTrue("Unexpected typescript prologue", prologue.startsWith("Script started on "))
+            directory.resolve("timing3").forEachLine { record ->
+                if (!record.startsWith("O ")) return@forEachLine
+                val size = record.substringAfterLast(' ').toInt()
+                val chunk = input.readNBytes(size)
+                assertEquals("Truncated typescript record", size, chunk.size)
+                terminal.writeInput(chunk)
+                peakAssets = maxOf(peakAssets, terminal.imageStore.assets.size)
+                peakPlacements = maxOf(peakPlacements, terminal.imageStore.placements.size)
+                peakEncoded = maxOf(peakEncoded, terminal.imageStore.encodedUsage())
+                if (terminal.imageStore.placements.isNotEmpty()) {
+                    terminal.processPendingUpdates()
+                    peakSnapshotSlices = maxOf(
+                        peakSnapshotSlices,
+                        terminal.snapshot.value.lines.sumOf { it.images.size },
+                    )
+                }
+            }
+            val trailer = input.readBytes().toString(Charsets.UTF_8)
+            assertTrue("Unexpected typescript trailer", trailer.isEmpty() || trailer.trimStart().startsWith("Script done on "))
+        }
+        terminal.processPendingUpdates()
+        val rejections = ShadowLog.getLogsForTag("InlineImageProtocol").map { it.msg }
+        println(
+            "KITTY_TGP peakAssets=$peakAssets peakPlacements=$peakPlacements " +
+                "peakEncoded=$peakEncoded finalAssets=${terminal.imageStore.assets.size} " +
+                "peakSnapshotSlices=$peakSnapshotSlices enabled=${terminal.inlineImagesEnabled} rejections=$rejections",
+        )
+        assertTrue(rejections.joinToString("\n"), rejections.isEmpty())
+        assertEquals(36, peakAssets)
+        assertEquals(18, peakPlacements)
+        assertTrue("No image placement reached a terminal snapshot", peakSnapshotSlices > 0)
     }
 
     @Test
