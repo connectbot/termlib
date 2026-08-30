@@ -51,6 +51,12 @@ internal class PackedCells private constructor(
 
     fun columnText(): String = String(CharArray(size) { if (placeholder(it)) ' ' else charAt(it) })
 
+    fun boxCharacter(col: Int): Char? = if (col in indices && offsets[col + 1] - offsets[col] == 1) {
+        text[offsets[col]].takeIf { it in '\u2500'..'\u259F' }
+    } else {
+        null
+    }
+
     // One lazily allocated measurement array per retained row, replaced on font changes.
     private var measuredTypeface: android.graphics.Typeface? = null
     private var measuredSize = Float.NaN

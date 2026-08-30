@@ -1680,7 +1680,10 @@ private fun TerminalRows(
             key(backgrounds, row) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     drawLine(
-                        line = line.value, row = row, charWidth = charWidth,
+                        line = line.value,
+                        aboveLine = if (row > 0) screenState.getVisibleLine(row - 1) else null,
+                        belowLine = if (row + 1 < rowCount) screenState.getVisibleLine(row + 1) else null,
+                        row = row, charWidth = charWidth,
                         charHeight = charHeight, charBaseline = charBaseline,
                         textPaint = textPaint, underlinePaint = underlinePaint,
                         defaultFg = defaultFg, defaultBg = defaultBg,
@@ -1713,6 +1716,8 @@ internal fun DrawScope.drawLine(
     selectionBackgroundColor: Color = Color(0xFFB3D7FF),
     selectionForegroundColor: Color = Color.Black,
     backgroundsOnly: Boolean? = null,
+    aboveLine: TerminalLine? = null,
+    belowLine: TerminalLine? = null,
 ) {
     // A standalone line (tests/magnifier) also paints backgrounds first.
     if (backgroundsOnly == null) {
@@ -1720,7 +1725,7 @@ internal fun DrawScope.drawLine(
             drawLine(
                 line, row, charWidth, charHeight, charBaseline, textPaint, underlinePaint,
                 defaultFg, defaultBg, selectionManager, autoDetectUrls, hyperlinkMask,
-                selectionBackgroundColor, selectionForegroundColor, backgrounds,
+                selectionBackgroundColor, selectionForegroundColor, backgrounds, aboveLine, belowLine,
             )
         }
         return
@@ -1802,7 +1807,24 @@ internal fun DrawScope.drawLine(
                 textPaint.textSkewX = if (flags and 8 != 0) -0.25f else 0f
                 paintedStyle = style
             }
-            cells.draw(canvas, col, x, y + charBaseline, textPaint, cellWidth)
+            val box = cells.boxCharacter(col)
+            if (box != null) {
+                val renderer = (textPaint as? TerminalTextPaint)?.boxDrawing ?: TerminalBoxDrawing()
+                fun dashKind(ch: Char?, horizontal: Boolean): Int = when (ch?.code) {
+                    in if (horizontal) 0x254C..0x254D else 0x254E..0x254F -> 1
+                    in if (horizontal) 0x2504..0x2505 else 0x2506..0x2507 -> 2
+                    in if (horizontal) 0x2508..0x2509 else 0x250A..0x250B -> 3
+                    else -> 0
+                }
+                val neighboringDashes =
+                    dashKind(cells.boxCharacter(col - 1), true) or
+                        (dashKind(cells.boxCharacter(col + 1), true) shl 2) or
+                        (dashKind(aboveLine?.cells?.boxCharacter(col), false) shl 4) or
+                        (dashKind(belowLine?.cells?.boxCharacter(col), false) shl 6)
+                renderer.draw(canvas, box, x, y, cellWidth, charHeight, fg.toArgb(), textPaint.textSize, neighboringDashes)
+            } else {
+                cells.draw(canvas, col, x, y + charBaseline, textPaint, cellWidth)
+            }
         }
         if (underline != 0 || hyperlink || flags and 128 != 0) underlinePaint.color = fg.toArgb()
         if (underline == 1 || hyperlink) {

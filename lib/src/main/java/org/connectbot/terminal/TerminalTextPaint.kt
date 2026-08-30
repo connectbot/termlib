@@ -16,6 +16,7 @@ import android.text.TextPaint
  */
 internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() {
     private val glyphAdvances = FloatArray(512) { Float.NaN }
+    val boxDrawing = TerminalBoxDrawing()
 
     init {
         this.typeface = typeface

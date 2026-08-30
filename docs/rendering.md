@@ -78,6 +78,34 @@ avoids repeating text measurement just because row contents/colors changed.
 Regular glyphs use direct Canvas drawing; only
 oversized glyphs require a canvas transform.
 
+## Box drawing and block elements
+
+Box drawing (U+2500–U+257F) and block elements (U+2580–U+259F) use
+cell-relative Canvas geometry instead of font outlines. Integer row metrics
+remain unchanged. Shared rounded boundaries keep full blocks, fractional
+blocks, quadrants, and box junctions continuous across cells. Straight edges
+are drawn without antialiasing; arcs and diagonals are antialiased.
+Light/heavy Unicode variants control line weight independently of SGR bold or
+italic. Selection and reverse video still determine the drawing color.
+Shades use fine repeating stipples with approximately 25%, 50%, and 75%
+foreground coverage, following kitty's patterned appearance.
+
+Only standalone characters take this path; combining clusters retain font
+shaping. The magnifier uses the same renderer. Powerline, Braille, and symbols
+outside these two Unicode ranges retain normal font rendering.
+
+The Roborazzi `BoxDrawingGoldenTest` specimens include all 160 characters,
+connected boxes, mixed junctions, shades, and the full-block O at 13, 16,
+and 21 pixel text sizes. The specimens render parsed terminal snapshots using
+the shared two-pass renderer with native graphics, then capture the resulting
+bitmap through Roborazzi. Review generated images visually before accepting
+their appearance as a baseline:
+
+```sh
+./gradlew :lib:recordRoborazziDebug --tests org.connectbot.terminal.BoxDrawingGoldenTest
+./gradlew :lib:verifyRoborazziDebug --tests org.connectbot.terminal.BoxDrawingGoldenTest
+```
+
 ## Explicit font fallback
 
 Callers can pass a `Typeface` built with `CustomFallbackBuilder` on API 29+.
