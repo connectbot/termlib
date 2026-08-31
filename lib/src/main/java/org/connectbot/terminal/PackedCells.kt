@@ -18,6 +18,46 @@ internal class PackedCells private constructor(
     private val placeholderIds: Map<Int, Int> = emptyMap(),
 ) : AbstractList<TerminalLine.Cell>() {
     override val size: Int get() = attributes.size
+
+    fun needsShaping(): Boolean {
+        if (measuredSizeAndScript.isNaN()) {
+            var complex = false
+            var i = 0
+            while (i < text.size) {
+                val cp = Character.codePointAt(text, i, text.size)
+                if (TerminalShaping.script(cp) != 0) {
+                    complex = true
+                    break
+                }
+                i += Character.charCount(cp)
+            }
+            measuredSizeAndScript = if (complex) Float.NEGATIVE_INFINITY else Float.POSITIVE_INFINITY
+        }
+        return measuredSizeAndScript.toRawBits() < 0
+    }
+
+    fun sameShaping(other: PackedCells): Boolean {
+        if (size != other.size || !offsets.contentEquals(other.offsets)) return false
+        if (!text.contentEquals(other.text)) {
+            for (col in indices) {
+                val start = offsets[col]
+                val end = offsets[col + 1]
+                // Single-cell ASCII is always a shaping boundary and is drawn by
+                // the legacy renderer. Updating a counter beside Arabic must not
+                // allocate an entirely new set of native glyph/font objects.
+                if (end == start + 1 && text[start] < '\u0080' && other.text[start] < '\u0080') continue
+                for (index in start until end) if (text[index] != other.text[index]) return false
+            }
+        }
+        for (col in indices) if ((attributes[col] xor other.attributes[col]) and 0xFF000009.toInt() != 0) return false
+        return true
+    }
+
+    // Account for the packed row retained by a cache entry, including array headers.
+    val shapingRetentionBytes: Int get() = 128 + text.size * 2 + offsets.size * 4 + colors.size * 4 + attributes.size * 4
+
+    @androidx.annotation.RequiresApi(31)
+    fun shape(shaper: TerminalShaping): ShapedLine = shaper.shape(text, offsets, this)
     fun width(col: Int): Int = attributes[col] ushr 24
     fun placeholder(col: Int): Boolean = offsets[col + 1] - offsets[col] >= 2 && Character.codePointAt(text, offsets[col], offsets[col + 1]) == 0x10EEEE
     fun placeholderPlacement(col: Int): Long = (placeholderIds[col] ?: 0).toLong() and 0xFFFFFF
@@ -59,13 +99,17 @@ internal class PackedCells private constructor(
 
     // One lazily allocated measurement array per retained row, replaced on font changes.
     private var measuredTypeface: android.graphics.Typeface? = null
-    private var measuredSize = Float.NaN
+
+    // One word holds both the measurement size (magnitude) and script flag (sign).
+    // NaN means unclassified; +/-infinity means classified but not measured yet.
+    // Avoid an extra field on every parsed/scrollback row, including ASCII-only rows.
+    private var measuredSizeAndScript = Float.NaN
     private var advances: FloatArray? = null
 
     fun draw(canvas: android.graphics.Canvas, col: Int, x: Float, baseline: Float, paint: android.graphics.Paint, cellWidth: Float) {
-        if (measuredTypeface !== paint.typeface || measuredSize != paint.textSize || advances == null) {
+        if (measuredTypeface !== paint.typeface || kotlin.math.abs(measuredSizeAndScript) != paint.textSize || advances == null) {
             measuredTypeface = paint.typeface
-            measuredSize = paint.textSize
+            measuredSizeAndScript = if (needsShaping()) -paint.textSize else paint.textSize
             advances = FloatArray(size) { Float.NaN }
         }
         val measurements = advances!!

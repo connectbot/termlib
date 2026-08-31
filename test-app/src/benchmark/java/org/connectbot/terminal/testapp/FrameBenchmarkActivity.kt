@@ -48,7 +48,7 @@ class FrameBenchmarkActivity : ComponentActivity() {
             outputBytes += it.size
             Trace.setCounter("terminal.benchmark.outputBytes", outputBytes)
         })
-        val dimensions = mutableStateOf(24 to 80)
+        val dimensions = mutableStateOf(intent.getIntExtra("rows", 24) to 80)
         val raw = ByteArray(512 * 512 * 4) { i ->
             when (i % 4) {
                 3 -> -1
@@ -66,7 +66,13 @@ class FrameBenchmarkActivity : ComponentActivity() {
             captureFrames()
         } else {
             List(1200) { tick ->
-                ("\u001b[2;1H" + if (workload == "text") "\u001b[3${tick % 8}m${"abc日é ".repeat(150)}\u001b[0m" else "").toByteArray()
+                val content = when (workload) {
+                    "text" -> "abc日é ".repeat(150)
+                    "shaping" -> (if (tick % 2 == 0) "سلام क्षि မြန်မာ " else "مرحبا র্ক ខ្មែរ ").repeat(dimensions.value.first * 7)
+                    "shaping-static" -> "سلام क्षि தமிழ் ".repeat(dimensions.value.first * 7)
+                    else -> ""
+                }
+                ("\u001b[2;1H" + if (content.isNotEmpty()) "\u001b[3${tick % 8}m$content\u001b[0m" else "").toByteArray()
             }
         }
         setContent {

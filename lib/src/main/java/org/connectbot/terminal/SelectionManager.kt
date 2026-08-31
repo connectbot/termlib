@@ -179,6 +179,20 @@ internal class SelectionManager {
         selectionRange = range.copy(endRow = row, endCol = col)
     }
 
+    /** UI navigation uses visual columns; the selection and copied text stay logical. */
+    fun moveVisually(dx: Int, dy: Int, state: TerminalScreenState, paint: TerminalTextPaint, cellWidth: Float) {
+        val range = selectionRange ?: return
+        fun move(row: Int, col: Int): Pair<Int, Int> {
+            val visual = paint.visualColumn(state, row, col, cellWidth)
+            val nextRow = (row + dy).coerceIn(0, state.snapshot.rows - 1)
+            val nextVisual = (visual + dx).coerceIn(0, state.snapshot.cols - 1)
+            return nextRow to paint.logicalColumn(state, nextRow, nextVisual, cellWidth)
+        }
+        val end = move(range.endRow, range.endCol)
+        val start = if (isSelecting) range.startRow to range.startCol else move(range.startRow, range.startCol)
+        selectionRange = SelectionRange(start.first, start.second, end.first, end.second)
+    }
+
     fun moveSelectionUp(maxRow: Int) {
         val range = selectionRange ?: return
         if (isSelecting) {

@@ -36,6 +36,7 @@ class TerminalFrameBenchmark {
                     Intent().apply {
                         setClassName("org.connectbot.terminal.testapp", "org.connectbot.terminal.testapp.FrameBenchmarkActivity")
                         putExtra("workload", workload)
+                        putExtra("rows", args.getString("rows")?.toInt() ?: 24)
                         putExtra("durationMs", duration)
                     },
                 )

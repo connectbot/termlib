@@ -21,6 +21,7 @@ parser.add_argument("--adb", default="adb")
 parser.add_argument("--serial", default="emulator-5554")
 parser.add_argument("--workloads", default="idle,text,cacafire,png,rgba,animation,input")
 parser.add_argument("--iterations", default="5")
+parser.add_argument("--rows", type=int, default=24)
 parser.add_argument("--duration-ms", default="20000")
 parser.add_argument("--emulator", action="store_true", help="Explicitly suppress the emulator validity warning")
 parser.add_argument("--skip-runner-install", action="store_true", help="Reuse the identical runner APK already installed by a previous run")
@@ -28,7 +29,7 @@ args = parser.parse_args()
 if not re.fullmatch(r"[A-Za-z0-9_.-]+", args.output.name):
     parser.error("output directory name must use only letters, numbers, dots, underscores or hyphens")
 workloads = args.workloads.split(",")
-if any(workload not in ("idle", "text", "cacafire", "png", "rgba", "animation", "input") for workload in workloads):
+if any(workload not in ("idle", "text", "shaping", "shaping-static", "cacafire", "png", "rgba", "animation", "input") for workload in workloads):
     parser.error("unknown workload")
 adb = [args.adb, "-s", args.serial]
 args.output.mkdir(parents=True, exist_ok=True)
@@ -42,7 +43,7 @@ for workload in workloads:
         raise RuntimeError(f"Refusing to mix new measurements with existing artifacts: {output}")
     output.mkdir(exist_ok=True)
     metadata = {"serial": args.serial, "checkout": str(args.checkout), "workload": workload,
-                "iterations": int(args.iterations), "duration_ms": int(args.duration_ms)}
+                "iterations": int(args.iterations), "duration_ms": int(args.duration_ms), "rows": args.rows}
     for label, command in (("model", ["getprop", "ro.product.model"]),
                            ("build", ["getprop", "ro.build.fingerprint"]),
                            ("thermal_before", ["dumpsys", "thermalservice"]),
@@ -51,7 +52,7 @@ for workload in workloads:
     (output / "conditions.json").write_text(json.dumps(metadata, indent=2))
     remote = f"/sdcard/Android/media/org.connectbot.terminal.benchmark/{args.output.name}/{workload}"
     command = adb + ["shell", "am", "instrument", "-w", "-r",
-                     "-e", "workload", workload, "-e", "iterations", args.iterations,
+                     "-e", "workload", workload, "-e", "rows", str(args.rows), "-e", "iterations", args.iterations,
                      "-e", "durationMs", args.duration_ms, "-e", "additionalTestOutputDir", remote]
     if args.emulator:
         command += ["-e", "androidx.benchmark.suppressErrors", "EMULATOR"]

@@ -549,6 +549,11 @@ internal fun TerminalWithAccessibility(
         TerminalTextPaint(typeface, with(density) { calculatedFontSize.toPx() })
     }
 
+    textPaint.viewport(screenState)
+    DisposableEffect(textPaint) {
+        onDispose { textPaint.clearShaping() }
+    }
+
     // Base character dimensions (unzoomed)
     val baseCharWidth = remember(textPaint) {
         textPaint.measureText("M")
@@ -614,7 +619,7 @@ internal fun TerminalWithAccessibility(
     }
 
     // Selection controller - expose API for external control
-    val selectionController = remember(terminalEmulator, selectionManager, clipboardManager, screenState) {
+    val selectionController = remember(terminalEmulator, selectionManager, clipboardManager, screenState, textPaint, baseCharWidth) {
         object : SelectionController {
             override val isSelectionActive: Boolean
                 get() = selectionManager.mode != SelectionMode.NONE
@@ -637,19 +642,19 @@ internal fun TerminalWithAccessibility(
             }
 
             override fun moveSelectionUp() {
-                selectionManager.moveSelectionUp(screenState.snapshot.rows)
+                selectionManager.moveVisually(0, -1, screenState, textPaint, baseCharWidth)
             }
 
             override fun moveSelectionDown() {
-                selectionManager.moveSelectionDown(screenState.snapshot.rows)
+                selectionManager.moveVisually(0, 1, screenState, textPaint, baseCharWidth)
             }
 
             override fun moveSelectionLeft() {
-                selectionManager.moveSelectionLeft(screenState.snapshot.cols)
+                selectionManager.moveVisually(-1, 0, screenState, textPaint, baseCharWidth)
             }
 
             override fun moveSelectionRight() {
-                selectionManager.moveSelectionRight(screenState.snapshot.cols)
+                selectionManager.moveVisually(1, 0, screenState, textPaint, baseCharWidth)
             }
 
             override fun toggleSelectionMode() {
@@ -1000,7 +1005,7 @@ internal fun TerminalWithAccessibility(
                                 .coerceIn(0, screenState.snapshot.cols - 1)
                             val tapRow = (down.position.y / baseCharHeight).toInt()
                                 .coerceIn(0, screenState.snapshot.rows - 1)
-                            selectionManager.startSelection(tapRow, tapCol, screenState.snapshot.cols, SelectionMode.WORD, screenState.snapshot, screenState.scrollbackPosition)
+                            selectionManager.startSelection(tapRow, textPaint.logicalColumn(screenState, tapRow, tapCol, baseCharWidth), screenState.snapshot.cols, SelectionMode.WORD, screenState.snapshot, screenState.scrollbackPosition)
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             showMagnifier = true
                             magnifierPosition = down.position
@@ -1013,7 +1018,10 @@ internal fun TerminalWithAccessibility(
                             if (range != null) {
                                 val (touchingStart, touchingEnd) = isTouchingHandle(
                                     down.position,
-                                    range,
+                                    range.copy(
+                                        startCol = textPaint.visualColumn(screenState, range.startRow, range.startCol, baseCharWidth),
+                                        endCol = textPaint.visualColumn(screenState, range.endRow, range.endCol, baseCharWidth),
+                                    ),
                                     baseCharWidth,
                                     baseCharHeight,
                                 )
@@ -1045,7 +1053,7 @@ internal fun TerminalWithAccessibility(
                                                     endCol = current.endCol,
                                                     isMovingStart = isMovingStart,
                                                     newRow = newRow,
-                                                    newCol = newCol,
+                                                    newCol = textPaint.logicalColumn(screenState, newRow, newCol, baseCharWidth),
                                                 )
                                                 isMovingStart = result.isMovingStart
                                                 selectionManager.updateSelectionStart(result.startRow, result.startCol)
@@ -1100,7 +1108,7 @@ internal fun TerminalWithAccessibility(
                                         .coerceIn(0, screenState.snapshot.rows - 1)
                                     selectionManager.startSelection(
                                         row,
-                                        col,
+                                        textPaint.logicalColumn(screenState, row, col, baseCharWidth),
                                         screenState.snapshot.cols,
                                         SelectionMode.CHARACTER,
                                     )
@@ -1178,7 +1186,7 @@ internal fun TerminalWithAccessibility(
                                                     .coerceIn(0, screenState.snapshot.rows - 1)
                                             selectionManager.updateSelection(
                                                 dragRow,
-                                                dragCol,
+                                                textPaint.logicalColumn(screenState, dragRow, dragCol, baseCharWidth),
                                             )
                                             selectionManager.adjustSelectionForMode(
                                                 screenState.snapshot.cols,
@@ -1307,7 +1315,7 @@ internal fun TerminalWithAccessibility(
                                         .coerceIn(0, screenState.snapshot.rows - 1)
                                     val hyperlinkUrl = screenState.getHyperlinkUrlAt(
                                         tapRow,
-                                        tapCol,
+                                        textPaint.logicalColumn(screenState, tapRow, tapCol, baseCharWidth),
                                         terminalEmulator.autoDetectUrls,
                                     )
 
@@ -1371,7 +1379,7 @@ internal fun TerminalWithAccessibility(
                     if (snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
                         drawCursor(
                             row = snapshot.cursorRow,
-                            col = snapshot.cursorCol,
+                            col = textPaint.visualColumn(screenState, snapshot.cursorRow, snapshot.cursorCol, baseCharWidth),
                             charWidth = baseCharWidth,
                             charHeight = baseCharHeight,
                             foregroundColor = foregroundColor,
@@ -1388,7 +1396,7 @@ internal fun TerminalWithAccessibility(
                         drawComposeOverlay(
                             buffer = composeMode.buffer,
                             cursorRow = snapshot.cursorRow,
-                            cursorCol = snapshot.cursorCol,
+                            cursorCol = textPaint.visualColumn(screenState, snapshot.cursorRow, snapshot.cursorCol, baseCharWidth),
                             totalCols = snapshot.cols,
                             charWidth = baseCharWidth,
                             charHeight = baseCharHeight,
@@ -1404,7 +1412,7 @@ internal fun TerminalWithAccessibility(
                             val startPosition = range.getStartPosition()
                             drawSelectionHandle(
                                 row = startPosition.first,
-                                col = startPosition.second,
+                                col = textPaint.visualColumn(screenState, startPosition.first, startPosition.second, baseCharWidth),
                                 charWidth = baseCharWidth,
                                 charHeight = baseCharHeight,
                                 pointingDown = false,
@@ -1413,7 +1421,7 @@ internal fun TerminalWithAccessibility(
                             val endPosition = range.getEndPosition()
                             drawSelectionHandle(
                                 row = endPosition.first,
-                                col = endPosition.second,
+                                col = textPaint.visualColumn(screenState, endPosition.first, endPosition.second, baseCharWidth),
                                 charWidth = baseCharWidth,
                                 charHeight = baseCharHeight,
                                 pointingDown = true,
@@ -1732,6 +1740,7 @@ internal fun DrawScope.drawLine(
     }
     val y = row * charHeight
     val cells = line.cells
+    val shaped = (textPaint as? TerminalTextPaint)?.layout(cells, charWidth)
     // Observe selection once per row when inactive, not once per terminal cell.
     val activeSelection = selectionManager?.takeIf { it.selectionRange != null }
     if (backgroundsOnly) {
@@ -1745,7 +1754,8 @@ internal fun DrawScope.drawLine(
         var runStart = 0f
         var runEnd = 0f
         var runVisible = true
-        for (col in 0 until cells.size) {
+        for (visualCol in 0 until cells.size) {
+            val col = shaped?.logicalColumn(visualCol) ?: visualCol
             val width = cells.width(col)
             if (width == 0) continue
             val selected = activeSelection?.let {
@@ -1758,7 +1768,7 @@ internal fun DrawScope.drawLine(
             } else {
                 cells.background(col)
             }
-            val x = col * charWidth
+            val x = visualCol * charWidth
             val visible = behindBackground.isEmpty() || selected || cells.flags(col) and 32 != 0 || cells.flags(col) and CellData.DEFAULT_BACKGROUND == 0
             if (color != runColor || visible != runVisible) {
                 if (runEnd > runStart && runVisible) drawRect(runColor, Offset(runStart, y), Size(runEnd - runStart, charHeight))
@@ -1766,12 +1776,13 @@ internal fun DrawScope.drawLine(
                 runStart = x
                 runVisible = visible
             }
-            runEnd = (col + width) * charWidth
+            runEnd = (visualCol + width) * charWidth
         }
         if (runEnd > runStart && runVisible) drawRect(runColor, Offset(runStart, y), Size(runEnd - runStart, charHeight))
         return
     }
     val canvas = drawContext.canvas.nativeCanvas
+    shaped?.prepareDraw(canvas)
     line.images.filter { it.z in -1_073_741_824 until 0 }.forEach { it.draw(canvas, row, charWidth, charHeight) }
     textPaint.isUnderlineText = false
     textPaint.isStrikeThruText = false
@@ -1780,7 +1791,7 @@ internal fun DrawScope.drawLine(
     for (col in 0 until cells.size) {
         val width = cells.width(col)
         if (width == 0) continue
-        val x = col * charWidth
+        val x = (shaped?.visualColumn(col) ?: col) * charWidth
         val flags = cells.flags(col)
         val underline = (flags ushr 1) and 3
         val cellWidth = charWidth * width
@@ -1823,7 +1834,9 @@ internal fun DrawScope.drawLine(
                         (dashKind(belowLine?.cells?.boxCharacter(col), false) shl 6)
                 renderer.draw(canvas, box, x, y, cellWidth, charHeight, fg.toArgb(), textPaint.textSize, neighboringDashes)
             } else {
-                cells.draw(canvas, col, x, y + charBaseline, textPaint, cellWidth)
+                if (shaped == null || android.os.Build.VERSION.SDK_INT < 31 || !shaped.drawCell(canvas, col, y + charBaseline, textPaint, charWidth, width)) {
+                    cells.draw(canvas, col, x, y + charBaseline, textPaint, cellWidth)
+                }
             }
         }
         if (underline != 0 || hyperlink || flags and 128 != 0) underlinePaint.color = fg.toArgb()

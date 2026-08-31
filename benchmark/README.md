@@ -150,3 +150,33 @@ TERMLIB_KITTY_TGP=/tmp/kitty-tgp-001 ./gradlew :lib:testDebugUnitTest \
 The replay honors the recorded output boundaries but omits delays. It verifies
 all 36 uploads, the peak set of 18 simultaneous placements, and the absence of
 protocol rejections without packaging the fixture in the library or test APK.
+
+## Complex-script shaping
+
+`shaping` alternates Arabic/Indic/Southeast Asian content; `shaping-static`
+changes colors while retaining text geometry. Both use the production renderer.
+Pass `--workloads shaping,shaping-static --rows 128` (also test 64 and 256)
+to exercise large viewports. The row count is recorded with the capture conditions.
+The default existing workloads and 24-row viewport are unchanged.
+
+The opt-in `AndroidRenderBenchmarkTest` now uses `TerminalTextPaint` and reports
+ART bytes/frame alongside software Canvas ns/frame for ASCII, Unicode, Arabic,
+and Indic text. Copy this same test harness to the baseline checkout before
+comparing; its optional viewport setup also works against the older renderer.
+Run with `-Pandroid.testInstrumentationRunnerArguments.renderBenchmark=true`.
+Run allocation measurements separately from frame traces and CPU profiling.
+
+Shaping retains at most the visible row count and 256 KiB of accounted layout
+and packed-row data, plus at most 32 KiB of reusable advance scratch. These
+limits exclude platform-owned font caches and temporary shaping results;
+measure Java/native heaps and GC traffic as well as the cache's accounting.
+Over-budget rows render without admission and do not evict admitted visible
+rows. Font changes and renderer disposal release the cache. Color and selection
+changes reuse geometry. No glyph layouts are attached to scrollback snapshots.
+
+Correctness coverage is shared between `TerminalShapingTest` (native Robolectric)
+and `AndroidShapingTest` (device), with API 24/30 fallback checks on the host.
+The accessibility overlay exposes entire rows in logical text order; those
+full-width bounds do not change. This component currently has no terminal mouse
+reporting path. Touch selection, hyperlinks, cursor and selection handles use
+the same logical/visual cell mapping.

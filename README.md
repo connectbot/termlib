@@ -19,6 +19,7 @@ emulation.
 * Dynamically resizable
 * Multiple font support
 * Inline images using iTerm2 `imgcat` and Kitty's graphics protocol
+* Shaping of complex scripts (e.g., Arabic, Bengali, Thai, etc)
 
 ### Planned
 
