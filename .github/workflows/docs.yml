@@ -1,0 +1,101 @@
+name: Publish versioned documentation
+
+on:
+  push:
+    branches: [main]
+    tags: ['*.*.*']
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+    inputs:
+      retry_failed:
+        description: Retry previously failed release documentation builds
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'connectbot/termlib'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout publisher from main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up JDK
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          cmdline-tools-version: '13114758'
+          packages: 'platform-tools'
+
+      - name: Validate publisher
+        run: python3 -m unittest discover -s .github/scripts/tests -v
+
+      - name: Reconcile and save documentation archive
+        id: docs
+        env:
+          RETRY_FAILED: ${{ inputs.retry_failed || false }}
+        run: >-
+          python3 .github/scripts/publish-docs.py
+          --output "$RUNNER_TEMP/docs-site"
+          --logs "$RUNNER_TEMP/docs-logs"
+          --retry-failed "$RETRY_FAILED"
+          --publish
+
+      - name: Preserve build logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: documentation-build-logs
+          path: ${{ runner.temp }}/docs-logs
+          if-no-files-found: ignore
+
+      - name: Set up Pages
+        if: steps.docs.outputs.ready == 'true'
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload complete site
+        if: steps.docs.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/docs-site
+
+      - name: Deploy to GitHub Pages
+        if: steps.docs.outputs.ready == 'true'
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+      - name: Report incomplete documentation
+        if: steps.docs.outputs.ready != 'true' || steps.docs.outputs.failures != '0'
+        run: |
+          echo 'Some documentation builds failed. Successful versions were saved; see the job summary and build logs.'
+          exit 1

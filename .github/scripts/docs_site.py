@@ -1,47 +1,11 @@
-#!/usr/bin/env bash
-# Regenerates the root index.html listing all version subdirectories.
-#
-# Usage: generate-index.sh <deploy_dir> <base_url>
-#   deploy_dir  Root of the gh-pages deployment tree (e.g. gh-pages-deploy)
-#   base_url    GitHub Pages base URL (e.g. https://connectbot.github.io/termlib)
+"""Render the version homepage and sitemaps for a complete documentation tree."""
 
-set -euo pipefail
+from html import escape
+from urllib.parse import quote
+import xml.etree.ElementTree as ET
 
-DEPLOY_DIR="$1"
-BASE_URL="$2"
 
-# Collect version dirs that contain an index.html, newest first.
-# Tags sort numerically; "main" is listed last as the development snapshot.
-mapfile -t VERSIONS < <(
-    find "${DEPLOY_DIR}" -mindepth 2 -maxdepth 2 -name "index.html" \
-        | sed "s|${DEPLOY_DIR}/||;s|/index.html||" \
-        | sort -V -r \
-        | grep -v '^main$' || true
-)
-# Prepend main if it exists
-if [ -d "${DEPLOY_DIR}/main" ]; then
-    VERSIONS=("main" "${VERSIONS[@]+"${VERSIONS[@]}"}")
-fi
-
-VERSION_ROWS=""
-for v in "${VERSIONS[@]}"; do
-    if [ "$v" = "main" ]; then
-        LABEL="main <span class=\"platform-tag jvm-like\">snapshot</span>"
-    else
-        LABEL="$v"
-    fi
-    VERSION_ROWS+="      <div class=\"table-row table-row_platform-tagged\">
-        <div>
-          <div class=\"main-subrow\">
-            <div><span class=\"inline-flex\"><div><a href=\"${BASE_URL}/${v}/index.html\">${LABEL}</a></div></span></div>
-          </div>
-        </div>
-      </div>
-"
-done
-
-cat > "${DEPLOY_DIR}/index.html" <<HTML
-<!DOCTYPE html>
+INDEX_HTML = """<!DOCTYPE html>
 <html class="no-js" lang="en">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
@@ -110,5 +74,32 @@ ${VERSION_ROWS}                </div>
     });
 </script>
 </body>
-</html>
-HTML
+</html>\n"""
+
+
+def generate_site(output, versions, base_url):
+    """Versions are supplied in display order: main, then descending releases."""
+    available = [name for name in versions if (output / name / "index.html").is_file()]
+    sitemap_index = ET.Element("sitemapindex", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+    rows = []
+    for name in available:
+        sitemap = ET.Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+        for page in sorted((output / name).rglob("*.html")):
+            if page.name == "navigation.html":
+                continue
+            entry = ET.SubElement(sitemap, "url")
+            ET.SubElement(entry, "loc").text = base_url + "/" + quote(page.relative_to(output).as_posix(), safe="/")
+        ET.ElementTree(sitemap).write(output / name / "sitemap.xml", encoding="utf-8", xml_declaration=True)
+        entry = ET.SubElement(sitemap_index, "sitemap")
+        ET.SubElement(entry, "loc").text = f"{base_url}/{quote(name, safe='')}/sitemap.xml"
+        label = 'main <span class="platform-tag jvm-like">snapshot</span>' if name == "main" else escape(name)
+        href = escape(f"{base_url}/{quote(name, safe='')}/index.html", quote=True)
+        rows.append('      <div class="table-row table-row_platform-tagged">'
+                    '<div><div class="main-subrow"><div><span class="inline-flex">'
+                    f'<a href="{href}">{label}</a></span></div></div></div></div>\n')
+    if "main" not in available:
+        return False
+    index = INDEX_HTML.replace("${BASE_URL}", escape(base_url, quote=True)).replace("${VERSION_ROWS}", "".join(rows))
+    (output / "index.html").write_text(index, encoding="utf-8")
+    ET.ElementTree(sitemap_index).write(output / "sitemap_index.xml", encoding="utf-8", xml_declaration=True)
+    return True

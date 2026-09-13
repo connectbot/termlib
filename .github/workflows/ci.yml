@@ -14,8 +14,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   build:
@@ -126,83 +124,3 @@ jobs:
           generate_release_notes: true
           files: |
             ConnectBotTerminal-*.aar
-
-  docs:
-    name: Publish docs to GitHub Pages
-    needs: build
-    if: ${{ (github.event_name == 'push') && ((github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/')) }}
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Checkout (with history)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Set up JDK
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
-
-      - name: Delete old Android SDK cmdline-tools
-        run: |
-          rm -rf $ANDROID_HOME/cmdline-tools/latest
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
-        with:
-          cmdline-tools-version: '13114758'
-          packages: 'cmdline-tools;latest tools platform-tools'
-
-      - name: Build documents
-        run: ./gradlew :lib:dokkaGeneratePublicationHtml :lib:dokkaGenerateMarkdown --no-configuration-cache
-
-      - name: Determine subdirectory name
-        id: subdir
-        run: |
-          echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-
-      - name: Download existing GitHub Pages content
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: gh-pages
-          path: gh-pages
-        continue-on-error: true
-
-      - name: Setup Pages
-        id: pages
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-
-      - name: Prepare docs for deployment
-        run: |
-          mkdir -p gh-pages-deploy
-          if [ -d "gh-pages" ]; then
-            cp -r gh-pages/* gh-pages-deploy/ 2>/dev/null || true
-          fi
-          SUBDIR="${{ steps.subdir.outputs.name }}"
-          rm -rf "gh-pages-deploy/${SUBDIR}"
-          mkdir -p "gh-pages-deploy/${SUBDIR}"
-          cp -r ./lib/build/dokka/markdown/* "gh-pages-deploy/${SUBDIR}/"
-          cp -r ./lib/build/dokka/html/* "gh-pages-deploy/${SUBDIR}/"
-          .github/scripts/generate-version-sitemap.sh gh-pages-deploy "${SUBDIR}" "${{ steps.pages.outputs.base_url }}"
-          .github/scripts/generate-sitemap-index.sh gh-pages-deploy "${{ steps.pages.outputs.base_url }}"
-          .github/scripts/generate-index.sh gh-pages-deploy "${{ steps.pages.outputs.base_url }}"
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: gh-pages-deploy
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
