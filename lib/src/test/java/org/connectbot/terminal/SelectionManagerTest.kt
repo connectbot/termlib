@@ -633,6 +633,21 @@ class SelectionManagerTest {
         assertEquals("CDEFGHIJ\nabcdefghi", selectionManager.getSelectedText(snapshot))
     }
 
+    @Test
+    fun testSelectedTextCrossesFromScrollbackIntoCurrentScreen() {
+        val snapshot = makeTwoLineSnapshot("live", "next").copy(
+            scrollback = listOf(TerminalLine(row = 0, cells = "old!".map { cell(it) })),
+        )
+
+        // With one row of scrollback visible, viewport row 0 is "old!" and
+        // viewport row 1 is the first current-screen row, "live".
+        selectionManager.startSelection(0, 1, cols = 4, mode = SelectionMode.CHARACTER)
+        selectionManager.updateSelection(1, 2)
+        selectionManager.endSelection()
+
+        assertEquals("ld!\nliv", selectionManager.getSelectedText(snapshot, scrollbackPosition = 1))
+    }
+
     private fun makeTwoLineSnapshot(first: String, second: String): TerminalSnapshot {
         val cols = maxOf(first.length, second.length)
         val lines = listOf(first, second).mapIndexed { i, t ->

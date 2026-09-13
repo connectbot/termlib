@@ -399,9 +399,14 @@ internal class SelectionManager {
             for (row in minRow..maxRow) {
                 // Get line from the appropriate source based on scrollback position
                 val line = if (scrollbackPosition > 0) {
-                    // Viewing scrollback: get from scrollback (stored newest-first, so reverse index)
-                    val scrollbackIndex = snapshot.scrollback.size - scrollbackPosition + row
-                    snapshot.scrollback.getOrNull(scrollbackIndex)
+                    // A scrolled viewport can span the end of scrollback and the
+                    // beginning of the current screen.
+                    val index = snapshot.scrollback.size - scrollbackPosition + row
+                    if (index < snapshot.scrollback.size) {
+                        snapshot.scrollback.getOrNull(index)
+                    } else {
+                        snapshot.lines.getOrNull(index - snapshot.scrollback.size)
+                    }
                 } else {
                     // Viewing current screen: get from visible lines
                     snapshot.lines.getOrNull(row)
