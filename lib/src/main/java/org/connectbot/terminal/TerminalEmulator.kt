@@ -439,7 +439,7 @@ internal class TerminalEmulatorImpl(
     // Session lock: emulator operations -> native lifetime lock -> native mutex.
     // Synchronous JNI callbacks may reenter this monitor, never native methods.
     // MUST be initialized before terminalNative.
-    private val damageLock = Object()
+    private val damageLock = Any()
     private val pendingDamageRegions = mutableListOf<DamageRegion>()
     private var damagePosted = false
     private var nextSnapshotNanos = System.nanoTime()

@@ -34,7 +34,7 @@ apply<DokkaMarkdownPlugin>()
 val hostJniDir = layout.buildDirectory.dir("host-jni")
 val cppSourceDir = layout.projectDirectory.dir("src/main/cpp")
 
-val cmakeConfigureHost by tasks.registering(Exec::class) {
+val cmakeConfigureHost = tasks.register<Exec>("cmakeConfigureHost") {
     group = "build"
     description = "Configure the CMake host build of jni_cb_term"
     inputs.dir(cppSourceDir)
@@ -49,7 +49,7 @@ val cmakeConfigureHost by tasks.registering(Exec::class) {
     )
 }
 
-val cmakeBuildHost by tasks.registering(Exec::class) {
+val cmakeBuildHost = tasks.register<Exec>("cmakeBuildHost") {
     group = "build"
     description = "Build libjni_cb_term for the host JVM"
     dependsOn(cmakeConfigureHost)
@@ -135,10 +135,12 @@ android {
     }
 
     sourceSets {
-        getByName("test").kotlin.srcDir("src/sharedTest/java")
-        getByName("androidTest").kotlin.srcDir("src/sharedTest/java")
-        getByName("androidTest").assets.srcDir(layout.buildDirectory.dir("benchmark-assets").get().asFile)
-        getByName("androidTest").assets.srcDir("src/test/resources/glyph-fixtures")
+        getByName("test").kotlin.directories.add("src/sharedTest/java")
+        getByName("androidTest").kotlin.directories.add("src/sharedTest/java")
+        getByName("androidTest").assets.directories.add(
+            layout.buildDirectory.dir("benchmark-assets").get().asFile.absolutePath,
+        )
+        getByName("androidTest").assets.directories.add("src/test/resources/glyph-fixtures")
     }
 }
 

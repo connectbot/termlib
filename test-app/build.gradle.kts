@@ -41,7 +41,9 @@ android {
     buildFeatures {
         compose = true
     }
-    sourceSets.getByName("benchmark").assets.srcDir(rootProject.layout.projectDirectory.dir("lib/build/benchmark-assets"))
+    sourceSets.getByName("benchmark").assets.directories.add(
+        rootProject.layout.projectDirectory.dir("lib/build/benchmark-assets").asFile.absolutePath,
+    )
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.3"

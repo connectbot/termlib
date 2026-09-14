@@ -37,7 +37,7 @@ class InlineImageBenchmarkTest {
         val store = InlineImageStore(InlineImageLimits(), Handler(Looper.getMainLooper()))
         val protocol = InlineImageProtocol(store, {}, { _, _, _ -> })
         val allocations = ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean
-        val threadId = Thread.currentThread().id
+        val threadId = Thread.currentThread().threadId()
 
         fun upload() {
             protocol.accept(true, sequence, true, true, 0, 0)

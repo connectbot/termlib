@@ -369,7 +369,10 @@ internal class InlineImageProtocol(
             val visited = mutableSetOf(asset.id to id)
             while (current != null) {
                 require(visited.add(current) && visited.size <= 32) { "EINVAL:cyclic or excessive relative placement depth" }
-                val ancestor = store.placements.firstOrNull { it.asset.id == current!!.first && it.id == current!!.second }
+                val (currentAssetId, currentPlacementId) = current
+                val ancestor = store.placements.firstOrNull {
+                    it.asset.id == currentAssetId && it.id == currentPlacementId
+                }
                 current = ancestor?.parent
             }
         }

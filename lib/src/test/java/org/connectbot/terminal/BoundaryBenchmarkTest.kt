@@ -20,7 +20,7 @@ class BoundaryBenchmarkTest {
     fun renderingScrollingAndOsc() {
         assumeTrue(System.getenv("TERMLIB_BENCHMARK") == "1")
         val allocations = ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean
-        val threadId = Thread.currentThread().id
+        val threadId = Thread.currentThread().threadId()
         val workloads = linkedMapOf(
             "ascii" to listOf(("\u001B[H" + "abc def ".repeat(400)).toByteArray()),
             "unicode" to listOf(("\u001B[H" + "é日🎉e\u0301 ".repeat(200)).toByteArray()),
@@ -75,7 +75,7 @@ class BoundaryBenchmarkTest {
         if (end > start) frames.add(data.copyOfRange(start, end))
         val terminal = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80) as TerminalEmulatorImpl
         val allocations = ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean
-        val threadId = Thread.currentThread().id
+        val threadId = Thread.currentThread().threadId()
         fun replay() {
             frames.forEach {
                 terminal.writeInput(it)
