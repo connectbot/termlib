@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "org.connectbot.terminal.testapp"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "org.connectbot.terminal.testapp"

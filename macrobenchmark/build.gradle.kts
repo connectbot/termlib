@@ -4,11 +4,11 @@ plugins {
 
 android {
     namespace = "org.connectbot.terminal.benchmark"
-    compileSdk = 36
+    compileSdk = 37
     targetProjectPath = ":test-app"
     defaultConfig {
         minSdk = 31
-        targetSdk = 36
+        targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
