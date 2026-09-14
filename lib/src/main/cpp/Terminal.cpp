@@ -24,12 +24,10 @@
 #ifdef __ANDROID__
 #  include <android/log.h>
 #  define LOG_TAG "TermNative"
-#  define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #  define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #else
 #  include <cstdio>
 #  define LOG_TAG "TermNative"
-#  define LOGD(...) do { fprintf(stderr, "[D/" LOG_TAG "] " __VA_ARGS__); fputc('\n', stderr); } while(0)
 #  define LOGE(...) do { fprintf(stderr, "[E/" LOG_TAG "] " __VA_ARGS__); fputc('\n', stderr); } while(0)
 #endif
 
@@ -46,6 +44,95 @@ static constexpr int CELL_STRIDE = CELL_FLAGS + 1;
 static constexpr int CELL_BYTES = CELL_STRIDE * sizeof(jint);
 static constexpr int BUFFER_BYTES = 64 * 1024;
 static constexpr int HEADER_BYTES = 4096;
+
+// Immutable JNI metadata is shared by every terminal created from this library
+// load. The global class references remain valid until JNI_OnUnload.
+struct CallbackCache {
+    jclass termRectClass{};
+    jmethodID termRectConstructor{};
+    jclass cursorPositionClass{};
+    jmethodID cursorPositionConstructor{};
+    jclass terminalPropertyBoolClass{};
+    jmethodID terminalPropertyBoolConstructor{};
+    jclass terminalPropertyIntClass{};
+    jmethodID terminalPropertyIntConstructor{};
+    jclass terminalPropertyColorClass{};
+    jmethodID terminalPropertyColorConstructor{};
+    jmethodID damageMethod{};
+    jmethodID moverectMethod{};
+    jmethodID moveCursorMethod{};
+    jmethodID setTermPropMethod{};
+    jmethodID bellMethod{};
+    jmethodID pushScrollbackMethod{};
+    jmethodID popScrollbackMethod{};
+    jmethodID clearScrollbackMethod{};
+    jmethodID keyboardInputMethod{};
+    jmethodID textFragmentMethod{};
+    jmethodID imageFragmentMethod{};
+    jmethodID imageEditMethod{};
+    jmethodID imageQueryMethod{};
+    jmethodID cellBufferMethod{};
+};
+
+static CallbackCache gCallbackCache;
+
+static jclass globalClass(JNIEnv* env, const char* name) {
+    ScopedLocalRef<jclass> local(env, env->FindClass(name));
+    if (!local.get()) return nullptr;
+    return static_cast<jclass>(env->NewGlobalRef(local));
+}
+
+static void clearCallbackCache(JNIEnv* env) {
+    if (gCallbackCache.termRectClass) env->DeleteGlobalRef(gCallbackCache.termRectClass);
+    if (gCallbackCache.cursorPositionClass) env->DeleteGlobalRef(gCallbackCache.cursorPositionClass);
+    if (gCallbackCache.terminalPropertyBoolClass) env->DeleteGlobalRef(gCallbackCache.terminalPropertyBoolClass);
+    if (gCallbackCache.terminalPropertyIntClass) env->DeleteGlobalRef(gCallbackCache.terminalPropertyIntClass);
+    if (gCallbackCache.terminalPropertyColorClass) env->DeleteGlobalRef(gCallbackCache.terminalPropertyColorClass);
+    gCallbackCache = {};
+}
+
+static bool initializeCallbackCache(JNIEnv* env) {
+    ScopedLocalRef<jclass> callbacksClass(
+        env, env->FindClass("org/connectbot/terminal/TerminalCallbacks"));
+    if (!callbacksClass.get()) return false;
+
+    auto& cache = gCallbackCache;
+    cache.damageMethod = env->GetMethodID(callbacksClass, "damage", "(IIII)I");
+    cache.moverectMethod = env->GetMethodID(callbacksClass, "moverect",
+        "(Lorg/connectbot/terminal/TermRect;Lorg/connectbot/terminal/TermRect;)I");
+    cache.moveCursorMethod = env->GetMethodID(callbacksClass, "moveCursor", "(IIIIZ)I");
+    cache.setTermPropMethod = env->GetMethodID(callbacksClass, "setTermProp",
+        "(ILorg/connectbot/terminal/TerminalProperty;)I");
+    cache.bellMethod = env->GetMethodID(callbacksClass, "bell", "()I");
+    cache.pushScrollbackMethod = env->GetMethodID(callbacksClass, "pushScrollbackLine",
+        "(IIILjava/nio/ByteBuffer;Z)I");
+    cache.popScrollbackMethod = env->GetMethodID(callbacksClass, "popScrollbackLine",
+        "(IIILjava/nio/ByteBuffer;)I");
+    cache.clearScrollbackMethod = env->GetMethodID(callbacksClass, "clearScrollback", "()I");
+    cache.keyboardInputMethod = env->GetMethodID(callbacksClass, "onKeyboardInput", "([B)I");
+    cache.textFragmentMethod = env->GetMethodID(callbacksClass, "onTextFragment", "(II[BZZII)I");
+    cache.imageFragmentMethod = env->GetMethodID(callbacksClass, "onImageFragment", "(Z[BZZII)J");
+    cache.imageEditMethod = env->GetMethodID(callbacksClass, "onImageEdit", "(IIIIIII)V");
+    cache.imageQueryMethod = env->GetMethodID(callbacksClass, "onImageQuery", "(I)V");
+    cache.cellBufferMethod = env->GetMethodID(callbacksClass, "cellBuffer", "()Ljava/nio/ByteBuffer;");
+    if (env->ExceptionCheck()) return false;
+
+    cache.termRectClass = globalClass(env, "org/connectbot/terminal/TermRect");
+    cache.cursorPositionClass = globalClass(env, "org/connectbot/terminal/CursorPosition");
+    cache.terminalPropertyBoolClass = globalClass(env, "org/connectbot/terminal/TerminalProperty$BoolValue");
+    cache.terminalPropertyIntClass = globalClass(env, "org/connectbot/terminal/TerminalProperty$IntValue");
+    cache.terminalPropertyColorClass = globalClass(env, "org/connectbot/terminal/TerminalProperty$ColorValue");
+    if (env->ExceptionCheck() || !cache.termRectClass || !cache.cursorPositionClass ||
+        !cache.terminalPropertyBoolClass || !cache.terminalPropertyIntClass ||
+        !cache.terminalPropertyColorClass) return false;
+
+    cache.termRectConstructor = env->GetMethodID(cache.termRectClass, "<init>", "(IIII)V");
+    cache.cursorPositionConstructor = env->GetMethodID(cache.cursorPositionClass, "<init>", "(II)V");
+    cache.terminalPropertyBoolConstructor = env->GetMethodID(cache.terminalPropertyBoolClass, "<init>", "(Z)V");
+    cache.terminalPropertyIntConstructor = env->GetMethodID(cache.terminalPropertyIntClass, "<init>", "(I)V");
+    cache.terminalPropertyColorConstructor = env->GetMethodID(cache.terminalPropertyColorClass, "<init>", "(III)V");
+    return !env->ExceptionCheck();
+}
 
 // Never assume the address of a sliced direct buffer is naturally aligned.
 static uint8_t* writableBuffer(JNIEnv* env, jobject buffer, jlong minimum) {
@@ -71,8 +158,6 @@ static void argumentError(JNIEnv* env, const char* message) {
 Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     : mRows(rows), mCols(cols) {
 
-    LOGD("Terminal constructor: rows=%d, cols=%d", rows, cols);
-
     // Get JavaVM for callback invocations from any thread
     if (env->GetJavaVM(&mJavaVM) != JNI_OK) return;
 
@@ -80,95 +165,31 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     mCallbacks = env->NewGlobalRef(callbacks);
     if (env->ExceptionCheck()) return;
 
-    // Cache method IDs
-    ScopedLocalRef<jclass> callbacksClass(env, env->GetObjectClass(callbacks));
-    if (env->ExceptionCheck()) return;
-    mDamageMethod = env->GetMethodID(callbacksClass, "damage", "(IIII)I");
-    if (env->ExceptionCheck()) return;
-
-    mMoverectMethod = env->GetMethodID(callbacksClass, "moverect",
-        "(Lorg/connectbot/terminal/TermRect;Lorg/connectbot/terminal/TermRect;)I");
-    if (env->ExceptionCheck()) return;
-
-    mMoveCursorMethod = env->GetMethodID(callbacksClass, "moveCursor",
-        "(IIIIZ)I");
-    if (env->ExceptionCheck()) return;
-
-    mSetTermPropMethod = env->GetMethodID(callbacksClass, "setTermProp",
-        "(ILorg/connectbot/terminal/TerminalProperty;)I");
-    if (env->ExceptionCheck()) return;
-
-    mBellMethod = env->GetMethodID(callbacksClass, "bell", "()I");
-    if (env->ExceptionCheck()) return;
-
-    mPushScrollbackMethod = env->GetMethodID(callbacksClass, "pushScrollbackLine",
-        "(IIILjava/nio/ByteBuffer;Z)I");
-    if (env->ExceptionCheck()) return;
-
-    mPopScrollbackMethod = env->GetMethodID(callbacksClass, "popScrollbackLine",
-        "(IIILjava/nio/ByteBuffer;)I");
-    if (env->ExceptionCheck()) return;
-
-    mClearScrollbackMethod = env->GetMethodID(callbacksClass, "clearScrollback", "()I");
-    if (env->ExceptionCheck()) return;
-
-    mKeyboardInputMethod = env->GetMethodID(callbacksClass, "onKeyboardInput", "([B)I");
-    if (env->ExceptionCheck()) return;
-
-    mTextFragmentMethod = env->GetMethodID(callbacksClass, "onTextFragment", "(II[BZZII)I");
-    if (env->ExceptionCheck()) return;
-    mImageFragmentMethod = env->GetMethodID(callbacksClass, "onImageFragment", "(Z[BZZII)J");
-    if (env->ExceptionCheck()) return;
-    mImageEditMethod = env->GetMethodID(callbacksClass, "onImageEdit", "(IIIIIII)V");
-    if (env->ExceptionCheck()) return;
-    mImageQueryMethod = env->GetMethodID(callbacksClass, "onImageQuery", "(I)V");
-    if (env->ExceptionCheck()) return;
-    mCellBufferMethod = env->GetMethodID(callbacksClass, "cellBuffer", "()Ljava/nio/ByteBuffer;");
-    if (env->ExceptionCheck()) return;
-
-
-    // Cache all callback-related classes and methods to avoid repeated FindClass/GetMethodID
-    LOGD("Caching callback classes and methods...");
-
-    // TermRect
-    ScopedLocalRef<jclass> termRectLocal(env, env->FindClass("org/connectbot/terminal/TermRect"));
-    if (env->ExceptionCheck()) return;
-    mTermRectClass = (jclass)env->NewGlobalRef(termRectLocal);
-    if (env->ExceptionCheck()) return;
-    mTermRectConstructor = env->GetMethodID(mTermRectClass, "<init>", "(IIII)V");
-    if (env->ExceptionCheck()) return;
-
-    // CursorPosition
-    ScopedLocalRef<jclass> cursorPosLocal(env, env->FindClass("org/connectbot/terminal/CursorPosition"));
-    if (env->ExceptionCheck()) return;
-    mCursorPositionClass = (jclass)env->NewGlobalRef(cursorPosLocal);
-    if (env->ExceptionCheck()) return;
-    mCursorPositionConstructor = env->GetMethodID(mCursorPositionClass, "<init>", "(II)V");
-    if (env->ExceptionCheck()) return;
-
-    // TerminalProperty classes
-    ScopedLocalRef<jclass> boolLocal(env, env->FindClass("org/connectbot/terminal/TerminalProperty$BoolValue"));
-    if (env->ExceptionCheck()) return;
-    mTerminalPropertyBoolClass = (jclass)env->NewGlobalRef(boolLocal);
-    if (env->ExceptionCheck()) return;
-    mTerminalPropertyBoolConstructor = env->GetMethodID(mTerminalPropertyBoolClass, "<init>", "(Z)V");
-    if (env->ExceptionCheck()) return;
-
-    ScopedLocalRef<jclass> intLocal(env, env->FindClass("org/connectbot/terminal/TerminalProperty$IntValue"));
-    if (env->ExceptionCheck()) return;
-    mTerminalPropertyIntClass = (jclass)env->NewGlobalRef(intLocal);
-    if (env->ExceptionCheck()) return;
-    mTerminalPropertyIntConstructor = env->GetMethodID(mTerminalPropertyIntClass, "<init>", "(I)V");
-    if (env->ExceptionCheck()) return;
-
-    ScopedLocalRef<jclass> colorLocal(env, env->FindClass("org/connectbot/terminal/TerminalProperty$ColorValue"));
-    if (env->ExceptionCheck()) return;
-    mTerminalPropertyColorClass = (jclass)env->NewGlobalRef(colorLocal);
-    if (env->ExceptionCheck()) return;
-    mTerminalPropertyColorConstructor = env->GetMethodID(mTerminalPropertyColorClass, "<init>", "(III)V");
-    if (env->ExceptionCheck()) return;
-
-    LOGD("All callback classes and methods cached successfully");
+    const auto& cache = gCallbackCache;
+    mDamageMethod = cache.damageMethod;
+    mMoverectMethod = cache.moverectMethod;
+    mMoveCursorMethod = cache.moveCursorMethod;
+    mSetTermPropMethod = cache.setTermPropMethod;
+    mBellMethod = cache.bellMethod;
+    mPushScrollbackMethod = cache.pushScrollbackMethod;
+    mPopScrollbackMethod = cache.popScrollbackMethod;
+    mClearScrollbackMethod = cache.clearScrollbackMethod;
+    mKeyboardInputMethod = cache.keyboardInputMethod;
+    mTextFragmentMethod = cache.textFragmentMethod;
+    mImageFragmentMethod = cache.imageFragmentMethod;
+    mImageEditMethod = cache.imageEditMethod;
+    mImageQueryMethod = cache.imageQueryMethod;
+    mCellBufferMethod = cache.cellBufferMethod;
+    mTermRectClass = cache.termRectClass;
+    mTermRectConstructor = cache.termRectConstructor;
+    mCursorPositionClass = cache.cursorPositionClass;
+    mCursorPositionConstructor = cache.cursorPositionConstructor;
+    mTerminalPropertyBoolClass = cache.terminalPropertyBoolClass;
+    mTerminalPropertyBoolConstructor = cache.terminalPropertyBoolConstructor;
+    mTerminalPropertyIntClass = cache.terminalPropertyIntClass;
+    mTerminalPropertyIntConstructor = cache.terminalPropertyIntConstructor;
+    mTerminalPropertyColorClass = cache.terminalPropertyColorClass;
+    mTerminalPropertyColorConstructor = cache.terminalPropertyColorConstructor;
 
     // Create VTerm instance
     mVt = vterm_new(mRows, mCols);
@@ -232,19 +253,15 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     };
     vterm_state_set_selection_callbacks(state, &mSelectionCallbacks, this,
         mSelectionBuffer, SELECTION_BUFFER_SIZE);
-    LOGD("Selection callbacks registered for OSC 52 clipboard support");
 
     // Configure damage merging
     vterm_screen_set_damage_merge(mVts, VTERM_DAMAGE_SCROLL);
 
     vterm_screen_reset(mVts, 1);
 
-    LOGD("Terminal initialized successfully");
 }
 
 Terminal::~Terminal() {
-    LOGD("Terminal destructor");
-
     std::scoped_lock lock(mLock);
 
     if (mVt) {
@@ -260,12 +277,6 @@ Terminal::~Terminal() {
             mCallbacks = nullptr;
         }
 
-        // Clean up cached callback classes
-        if (mTermRectClass) env->DeleteGlobalRef(mTermRectClass);
-        if (mCursorPositionClass) env->DeleteGlobalRef(mCursorPositionClass);
-        if (mTerminalPropertyBoolClass) env->DeleteGlobalRef(mTerminalPropertyBoolClass);
-        if (mTerminalPropertyIntClass) env->DeleteGlobalRef(mTerminalPropertyIntClass);
-        if (mTerminalPropertyColorClass) env->DeleteGlobalRef(mTerminalPropertyColorClass);
     }
 }
 
@@ -717,7 +728,7 @@ int Terminal::termSelectionSet(VTermSelectionMask mask, VTermStringFragment frag
 
 // OSC 52 selection query callback - we don't support clipboard read for security
 int Terminal::termSelectionQuery(VTermSelectionMask mask, void* user) {
-    LOGD("termSelectionQuery: mask=%04X (ignored for security)", mask);
+    (void)mask;
     // Return 0 to indicate we don't support clipboard read
     return 0;
 }
@@ -1006,6 +1017,25 @@ void Terminal::resolveColor(const VTermColor& color, uint8_t& r, uint8_t& g, uin
 
 // JNI function implementations
 extern "C" {
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /* reserved */) {
+    JNIEnv* env = nullptr;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        return JNI_ERR;
+    }
+    if (!initializeCallbackCache(env)) {
+        clearCallbackCache(env);
+        return JNI_ERR;
+    }
+    return JNI_VERSION_1_6;
+}
+
+JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* /* reserved */) {
+    JNIEnv* env = nullptr;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_OK) {
+        clearCallbackCache(env);
+    }
+}
 
 JNIEXPORT jlong JNICALL
 Java_org_connectbot_terminal_TerminalNative_nativeInit(JNIEnv* env, jobject /* thiz */, jobject callbacks) {
