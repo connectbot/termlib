@@ -43,7 +43,7 @@ class InlineImageGoldenTest {
         val bytes = ByteArrayOutputStream().also { image.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
         val payload = Base64.getEncoder().encodeToString(bytes)
         image.recycle()
-        val terminal = TerminalEmulatorFactory.create(initialRows = 12, initialCols = 44) as TerminalEmulatorImpl
+        val terminal = TerminalEmulatorFactory.create(initialRows = 12, initialCols = 44, inlineImages = InlineImages.On()) as TerminalEmulatorImpl
         terminal.writeInput(
             buildString {
                 append("\u001b[?25l")

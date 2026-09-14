@@ -19,17 +19,91 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.ShadowLog
 import java.io.File
 import java.util.Base64
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 @RunWith(RobolectricTestRunner::class)
 class InlineImageTest {
     private val png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
-    private fun emulator() = TerminalEmulatorFactory.create(initialRows = 6, initialCols = 12) as TerminalEmulatorImpl
+    private fun emulator() = TerminalEmulatorFactory.create(initialRows = 6, initialCols = 12, inlineImages = InlineImages.On()) as TerminalEmulatorImpl
     private fun iterm(data: String = png, options: String = "width=3;height=2;preserveAspectRatio=0") = "\u001b]1337;File=inline=1;$options:$data\u0007"
     private fun kitty(options: String, payload: String? = null) = "\u001b_G$options${payload?.let { ";$it" } ?: ""}\u001b\\"
     private fun TerminalEmulatorImpl.write(text: String) = writeInput(text.toByteArray())
     private fun TerminalEmulatorImpl.flush(): TerminalSnapshot {
         processPendingUpdates()
         return snapshot.value
+    }
+
+    @Test
+    fun inlineImagesDefaultToOff() {
+        val terminal = TerminalEmulatorFactory.create(initialRows = 6, initialCols = 12) as TerminalEmulatorImpl
+        terminal.write(iterm())
+        assertEquals(InlineImages.Off, terminal.inlineImages)
+        assertTrue(terminal.imageStore.assets.isEmpty())
+    }
+
+    @Test
+    fun askDoesNotDecodeOrBlockTextBeforeApproval() {
+        lateinit var answer: Continuation<Boolean>
+        lateinit var request: InlineImageRequest
+        val asked = CountDownLatch(1)
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            inlineImages = InlineImages.Ask { value ->
+                request = value
+                suspendCoroutine { continuation ->
+                    answer = continuation
+                    asked.countDown()
+                }
+            },
+        ) as TerminalEmulatorImpl
+
+        terminal.write("\u001b]1337;File=inline=1;name=dGVzdC5wbmc=;size=68;width=3;height=2;preserveAspectRatio=0:")
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(asked.await(1, TimeUnit.SECONDS))
+        assertEquals(InlineImageProtocolType.ITERM2, request.protocol)
+        assertEquals("test.png", request.name)
+        assertEquals(68L, request.declaredSizeBytes)
+        assertTrue(terminal.imageStore.assets.isEmpty())
+        terminal.write(png + "\u0007X")
+        assertEquals('X', terminal.flush().lines[0].cells.charAt(0))
+
+        answer.resume(true)
+        terminal.commands.call { Unit }
+        assertEquals(1, terminal.imageStore.assets.size)
+        assertEquals('X', terminal.flush().lines[0].cells.charAt(0))
+    }
+
+    @Test
+    fun askDenialRepliesToKittyAndSerializesPrompts() {
+        val answers = mutableListOf<Continuation<Boolean>>()
+        val requests = mutableListOf<InlineImageRequest>()
+        val responses = mutableListOf<String>()
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            onKeyboardInput = { responses.add(it.toString(Charsets.US_ASCII)) },
+            inlineImages = InlineImages.Ask { request ->
+                requests.add(request)
+                suspendCoroutine { answers.add(it) }
+            },
+        ) as TerminalEmulatorImpl
+
+        terminal.write(kitty("a=T,f=100,i=7", png) + kitty("a=T,f=100,i=8", png))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, requests.size)
+        answers[0].resume(false)
+        terminal.commands.call { Unit }
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(2, requests.size)
+        assertTrue(responses.any { "EPERM:user denied inline image" in it })
+        answers[1].resume(true)
+        terminal.commands.call { Unit }
+        assertEquals(setOf(8L), terminal.imageStore.assets.keys)
     }
 
     @Test
@@ -61,6 +135,7 @@ class InlineImageTest {
             initialRows = 6,
             initialCols = 12,
             onBell = { bells++ },
+            inlineImages = InlineImages.On(),
         ) as TerminalEmulatorImpl
         val stream = "\u001b]0;recorded title\u0007" + kitty("a=T,q=2,f=100", png) + "SAFE"
 
@@ -157,7 +232,7 @@ class InlineImageTest {
         val directory = System.getenv("TERMLIB_KITTY_TGP")?.let(::File)
         assumeTrue(directory?.isDirectory == true)
         ShadowLog.clear()
-        val terminal = TerminalEmulatorFactory.create(initialRows = 30, initialCols = 137) as TerminalEmulatorImpl
+        val terminal = TerminalEmulatorFactory.create(initialRows = 30, initialCols = 137, inlineImages = InlineImages.On()) as TerminalEmulatorImpl
         terminal.setCellPixelSize(8, 16)
         var peakAssets = 0
         var peakPlacements = 0
@@ -198,7 +273,7 @@ class InlineImageTest {
         println(
             "KITTY_TGP peakAssets=$peakAssets peakPlacements=$peakPlacements " +
                 "peakEncoded=$peakEncoded finalAssets=${terminal.imageStore.assets.size} " +
-                "peakSnapshotSlices=$peakSnapshotSlices enabled=${terminal.inlineImagesEnabled} rejections=$rejections",
+                "peakSnapshotSlices=$peakSnapshotSlices policy=${terminal.inlineImages} rejections=$rejections",
         )
         assertTrue(rejections.joinToString("\n"), rejections.isEmpty())
         assertEquals(36, peakAssets)
@@ -221,12 +296,12 @@ class InlineImageTest {
         val terminal = emulator()
         terminal.write(iterm())
         val oldSnapshot = terminal.flush()
-        terminal.setInlineImagesEnabled(false)
+        terminal.setInlineImages(InlineImages.Off)
         assertEquals(0, terminal.imageStore.encodedUsage())
         assertTrue(oldSnapshot.lines[0].images[0].asset.frames.isEmpty())
         terminal.write(iterm() + "Q")
         assertTrue(terminal.imageStore.assets.isEmpty())
-        terminal.setInlineImagesEnabled(true)
+        terminal.setInlineImages(InlineImages.On())
         terminal.write(iterm())
         assertEquals(1, terminal.imageStore.assets.size)
     }
@@ -330,12 +405,13 @@ class InlineImageTest {
             initialRows = 6,
             initialCols = 12,
             onKeyboardInput = { responses.add(it.toString(Charsets.US_ASCII)) },
+            inlineImages = InlineImages.On(),
         ) as TerminalEmulatorImpl
         terminal.setCellPixelSize(10, 20)
         terminal.write("\u001b[16t\u001b[14t\u001b]1337;Capabilities\u0007")
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(listOf("\u001b[6;20;10t", "\u001b[4;120;120t", "\u001b]1337;Capabilities=F\u001b\\"), responses)
-        terminal.setInlineImagesEnabled(false)
+        terminal.setInlineImages(InlineImages.Off)
         terminal.write("\u001b]1337;Capabilities\u0007")
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals("\u001b]1337;Capabilities=\u001b\\", responses.last())

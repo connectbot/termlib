@@ -139,7 +139,7 @@ internal data class ImageFrame(
     }
 }
 
-internal class InlineImageStore(val limits: InlineImageLimits, private val handler: Handler) {
+internal class InlineImageStore(var limits: InlineImageLimits, private val handler: Handler) {
     // Published scheduling hint; UI reads this scalar, never the backend asset map.
     var frameUpdatesNeeded by mutableStateOf(false)
         private set

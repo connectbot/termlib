@@ -57,11 +57,15 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.connectbot.terminal.InlineImageRequest
+import org.connectbot.terminal.InlineImages
 import org.connectbot.terminal.Terminal
 import org.connectbot.terminal.TerminalEmulator
 import org.connectbot.terminal.TerminalEmulatorFactory
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 const val escape = "\u001B"
 
@@ -94,6 +98,13 @@ private fun createTerminalEmulator(): TerminalEmulator {
     return manager
 }
 
+private enum class InlineImageMode { OFF, ASK, ON }
+
+private data class InlineImagePrompt(
+    val request: InlineImageRequest,
+    val answer: (Boolean) -> Unit,
+)
+
 /**
  * Test app screen with multiple terminal sessions (tabs).
  * Each tab has its own TerminalEmulator instance, simulating
@@ -123,7 +134,8 @@ fun ShellScreen() {
     var customCols by remember { mutableStateOf(80) }
     var showSizeDialog by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
-    var inlineImagesEnabled by remember { mutableStateOf(true) }
+    var inlineImageMode by remember { mutableStateOf(InlineImageMode.OFF) }
+    var inlineImagePrompt by remember { mutableStateOf<InlineImagePrompt?>(null) }
 
     // Color schemes
     data class ColorScheme(
@@ -187,6 +199,31 @@ fun ShellScreen() {
             TerminalSession("Unicode", createTerminalEmulator(), R.raw.test_unicode),
             TerminalSession("Scrolling", createTerminalEmulator(), R.raw.test_scroll),
         )
+    }
+
+    fun applyInlineImageMode(mode: InlineImageMode) {
+        inlineImageMode = mode
+        sessions.forEach { session ->
+            val policy = when (mode) {
+                InlineImageMode.OFF -> InlineImages.Off
+
+                InlineImageMode.ON -> InlineImages.On()
+
+                InlineImageMode.ASK -> {
+                    var cachedAnswer: Boolean? = null
+                    InlineImages.Ask { request ->
+                        cachedAnswer ?: suspendCoroutine { continuation ->
+                            inlineImagePrompt = InlineImagePrompt(request) { answer ->
+                                cachedAnswer = answer
+                                inlineImagePrompt = null
+                                continuation.resume(answer)
+                            }
+                        }
+                    }
+                }
+            }
+            session.emulator.setInlineImages(policy)
+        }
     }
 
     // Initialize all sessions once
@@ -378,19 +415,18 @@ fun ShellScreen() {
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                    DropdownMenuItem(
-                        text = { Text("Inline images") },
-                        trailingIcon = {
-                            Switch(checked = inlineImagesEnabled, onCheckedChange = { enabled ->
-                                inlineImagesEnabled = enabled
-                                sessions.forEach { it.emulator.setInlineImagesEnabled(enabled) }
-                            })
-                        },
-                        onClick = {
-                            inlineImagesEnabled = !inlineImagesEnabled
-                            sessions.forEach { it.emulator.setInlineImagesEnabled(inlineImagesEnabled) }
-                        },
+                    Text(
+                        text = "Inline images",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    InlineImageMode.entries.forEach { mode ->
+                        DropdownMenuItem(
+                            text = { Text(if (mode == inlineImageMode) "✓ ${mode.name.lowercase().replaceFirstChar(Char::uppercase)}" else "   ${mode.name.lowercase().replaceFirstChar(Char::uppercase)}") },
+                            onClick = { applyInlineImageMode(mode) },
+                        )
+                    }
                     // Size configuration
                     DropdownMenuItem(
                         text = {
@@ -523,6 +559,29 @@ fun ShellScreen() {
                 )
             }
         }
+    }
+
+    inlineImagePrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = { prompt.answer(false) },
+            title = { Text("Display inline image?") },
+            text = {
+                val request = prompt.request
+                Text(
+                    buildString {
+                        append(request.protocol.name)
+                        request.name?.let { append(" image “$it”") }
+                        if (request.pixelWidth != null && request.pixelHeight != null) {
+                            append("\n${request.pixelWidth}×${request.pixelHeight} pixels")
+                        }
+                        request.declaredSizeBytes?.let { append("\nDeclared size: $it bytes") }
+                        append("\n\nThis answer will be remembered for this terminal session.")
+                    },
+                )
+            },
+            confirmButton = { TextButton(onClick = { prompt.answer(true) }) { Text("Allow") } },
+            dismissButton = { TextButton(onClick = { prompt.answer(false) }) { Text("Deny") } },
+        )
     }
 }
 

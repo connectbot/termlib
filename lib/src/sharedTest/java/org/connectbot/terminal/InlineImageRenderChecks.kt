@@ -23,7 +23,7 @@ import java.io.ByteArrayOutputStream
 
 /** Identical pixel assertions on Robolectric's native renderer and an Android device. */
 abstract class InlineImageRenderChecks {
-    private fun emulator() = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 8) as TerminalEmulatorImpl
+    private fun emulator() = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 8, inlineImages = InlineImages.On()) as TerminalEmulatorImpl
 
     private fun render(terminal: TerminalEmulatorImpl): Bitmap {
         terminal.processPendingUpdates()

@@ -28,6 +28,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.startCoroutine
 
 /**
  * URL discovered in terminal output.
@@ -77,11 +80,11 @@ sealed interface TerminalEmulator {
     /** Queue pasted text in the same FIFO as keyboard/IME input, honoring bracketed paste. */
     fun pasteText(text: String)
 
-    /** Whether incoming inline image commands are accepted. Enabled by default. */
-    val inlineImagesEnabled: Boolean
+    /** Policy controlling whether incoming inline image commands are accepted. */
+    val inlineImages: InlineImages
 
-    /** Disabling drops all retained images and in-progress uploads. */
-    fun setInlineImagesEnabled(enabled: Boolean)
+    /** Changing policy cancels in-progress and pending image uploads. */
+    fun setInlineImages(inlineImages: InlineImages)
 
     /** Physical cell dimensions used by image placement; defaults to 8 by 16 pixels. */
     fun setCellPixelSize(width: Int, height: Int)
@@ -232,8 +235,7 @@ class TerminalEmulatorFactory {
          * @param boldAsBright Whether bold text using low-intensity ANSI colors (0–7) promotes to
          *                     the corresponding bright palette color (8–15), matching xterm's
          *                     default boldColors behavior. Defaults to true.
-         * @param inlineImagesEnabled Accept iTerm2 and Kitty inline images. Defaults to true.
-         * @param inlineImageLimits RAM and metadata limits for inline image processing.
+         * @param inlineImages Policy for accepting iTerm2 and Kitty inline images. Defaults to off.
          */
         fun create(
             looper: Looper = Looper.getMainLooper(),
@@ -248,8 +250,7 @@ class TerminalEmulatorFactory {
             onProgressChange: ((ProgressState, Int) -> Unit)? = null,
             autoDetectUrls: Boolean = false,
             boldAsBright: Boolean = true,
-            inlineImagesEnabled: Boolean = true,
-            inlineImageLimits: InlineImageLimits = InlineImageLimits(),
+            inlineImages: InlineImages = InlineImages.Off,
         ): TerminalEmulator = TerminalEmulatorImpl(
             looper = looper,
             initialRows = initialRows,
@@ -263,8 +264,7 @@ class TerminalEmulatorFactory {
             onProgressChange = onProgressChange,
             autoDetectUrls = autoDetectUrls,
             boldAsBright = boldAsBright,
-            inlineImagesEnabled = inlineImagesEnabled,
-            inlineImageLimits = inlineImageLimits,
+            inlineImages = inlineImages,
         )
     }
 }
@@ -314,8 +314,7 @@ internal class TerminalEmulatorImpl(
     private val onProgressChange: ((ProgressState, Int) -> Unit)? = null,
     override val autoDetectUrls: Boolean = false,
     override val boldAsBright: Boolean = true,
-    inlineImagesEnabled: Boolean = true,
-    inlineImageLimits: InlineImageLimits = InlineImageLimits(),
+    inlineImages: InlineImages = InlineImages.Off,
 ) : TerminalEmulator,
     TerminalCallbacks {
 
@@ -340,23 +339,58 @@ internal class TerminalEmulatorImpl(
         }
     }
 
-    internal val imageStore = InlineImageStore(inlineImageLimits, handler).apply {
+    private fun limits(policy: InlineImages): InlineImageLimits = when (policy) {
+        InlineImages.Off -> InlineImageLimits()
+        is InlineImages.On -> policy.limits
+        is InlineImages.Ask -> policy.limits
+    }
+
+    internal val imageStore = InlineImageStore(limits(inlineImages), handler).apply {
         rows = initialRows
         cols = initialCols
     }
     private val imageProtocol = InlineImageProtocol(imageStore, { onKeyboardInput(it) }, { payload, row, col -> onOscSequence(1337, payload, row, col) }).apply {
-        enabled = inlineImagesEnabled
+        enabled = inlineImages !is InlineImages.Off
     }
-    override val inlineImagesEnabled: Boolean get() = imageProtocol.enabled
 
-    override fun setInlineImagesEnabled(enabled: Boolean): Unit = synchronized(damageLock) {
-        imageProtocol.enabled = enabled
-        if (!enabled) {
-            imageProtocol.reset()
-            imageStore.clear()
-        }
+    @Volatile private var imagePolicy: InlineImages = inlineImages
+    private var imageConsentGate: InlineImageConsentGate? = consentGate(inlineImages)
+
+    override val inlineImages: InlineImages get() = imagePolicy
+
+    override fun setInlineImages(inlineImages: InlineImages): Unit = synchronized(damageLock) {
+        val oldLimits = imageStore.limits
+        imageConsentGate?.reset() ?: imageProtocol.reset()
+        imagePolicy = inlineImages
+        imageProtocol.enabled = inlineImages !is InlineImages.Off
+        imageStore.limits = limits(inlineImages)
+        imageConsentGate = consentGate(inlineImages)
+        if (inlineImages is InlineImages.Off || oldLimits != imageStore.limits) imageStore.clear()
         propertyChanged = true
         requestProcessPendingUpdatesLocked()
+    }
+
+    private fun consentGate(policy: InlineImages): InlineImageConsentGate? {
+        if (policy !is InlineImages.Ask) return null
+        return InlineImageConsentGate(imageProtocol, { onKeyboardInput(it) }, { request, completion ->
+            handler.post {
+                policy.confirm.startCoroutine(
+                    request,
+                    object : Continuation<Boolean> {
+                        override val context = EmptyCoroutineContext
+                        override fun resumeWith(result: Result<Boolean>) {
+                            commands.execute {
+                                synchronized(damageLock) {
+                                    synchronized(imageStore) { completion(result.getOrDefault(false)) }
+                                    propertyChanged = true
+                                    requestProcessPendingUpdatesLocked()
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+        }, policy.limits)
     }
 
     override fun setCellPixelSize(width: Int, height: Int): Unit = synchronized(damageLock) {
@@ -367,7 +401,10 @@ internal class TerminalEmulatorImpl(
     }
 
     override fun onImageFragment(kitty: Boolean, data: ByteArray, initial: Boolean, final: Boolean, row: Int, col: Int): Long = synchronized(damageLock) {
-        val result = synchronized(imageStore) { imageProtocol.accept(kitty, data, initial, final, row, col) }
+        val result = synchronized(imageStore) {
+            imageConsentGate?.accept(kitty, data, initial, final, row, col)
+                ?: imageProtocol.accept(kitty, data, initial, final, row, col)
+        }
         propertyChanged = true
         requestProcessPendingUpdatesLocked()
         result
