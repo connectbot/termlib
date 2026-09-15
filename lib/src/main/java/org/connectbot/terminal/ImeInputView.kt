@@ -17,6 +17,7 @@
 package org.connectbot.terminal
 
 import android.content.Context
+import android.content.res.Configuration
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
@@ -68,9 +69,11 @@ internal class ImeInputView(
      * Show the IME forcefully. This is more reliable than SoftwareKeyboardController.
      */
     @Suppress("DEPRECATION")
+    private fun showImeFlags(): Int = imeShowFlags(resources.configuration.keyboard, resources.configuration.hardKeyboardHidden)
+
     fun showIme() {
         if (requestFocus()) {
-            inputMethodManager.showSoftInput(this, InputMethodManager.SHOW_FORCED)
+            inputMethodManager.showSoftInput(this, showImeFlags())
         }
     }
 
@@ -376,4 +379,30 @@ internal class ImeInputView(
         /** Upper bound on [InputConnection.deleteSurroundingText]'s `leftLength`. */
         private const val MAX_DELETE_SURROUNDING = 4096
     }
+}
+
+/**
+ * Flags for `showSoftInput` given the current [Configuration] keyboard state.
+ *
+ * SHOW_FORCED is documented to hold the IME open "until the user explicitly
+ * closes it", which overrides the platform's own rule that a usable hardware
+ * keyboard suppresses the soft one. On a device with a keyboard attached that
+ * puts the on-screen keyboard over the terminal on every keypress — reported
+ * against a Meta Quest 3 with a Bluetooth keyboard, where it covers the session.
+ *
+ * Passing no flags hands the decision back to the platform, which still honours
+ * the user's "show virtual keyboard" setting for anyone who wants both.
+ *
+ * [hardKeyboardHidden] is part of the test, not just [Configuration.keyboard]: a
+ * folded or undocked device reports KEYBOARD_QWERTY while the keys are
+ * physically unreachable, and there the soft keyboard is the only way to type,
+ * so SHOW_FORCED still earns its keep.
+ *
+ * Top-level and internal so the policy can be tested without a Context.
+ */
+@Suppress("DEPRECATION")
+internal fun imeShowFlags(keyboard: Int, hardKeyboardHidden: Int): Int {
+    val physicalKeyboardAttached = keyboard != Configuration.KEYBOARD_NOKEYS &&
+        hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
+    return if (physicalKeyboardAttached) 0 else InputMethodManager.SHOW_FORCED
 }
