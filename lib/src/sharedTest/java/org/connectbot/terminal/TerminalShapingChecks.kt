@@ -116,6 +116,64 @@ abstract class TerminalShapingChecks {
     }
 
     @Test
+    fun paragraphBidiReordersArabicWordsFromLogicalInput() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val value = "Aنص حكيم له سر قاطعZ"
+        val cells = cells(value)
+        val state = TerminalScreenState(
+            TerminalSnapshot.empty(1, cells.size).copy(lines = listOf(TerminalLine(0, cells))),
+        )
+        val layout = paint().layout(state, 0, 12f)!!
+        for (col in cells.indices) assertEquals(col, layout.logicalColumn(layout.visualColumn(col)))
+        // The last logical Arabic word is the leftmost one visually; Latin anchors stay put.
+        assertEquals(0, layout.visualColumn(0))
+        assertEquals(cells.lastIndex, layout.visualColumn(cells.lastIndex))
+        assertTrue(layout.visualColumn(value.indexOf('ق')) < layout.visualColumn(value.indexOf('ن')))
+        assertTrue(layout.resolvedRtl(value.indexOf('ن')))
+        assertFalse(layout.resolvedRtl(0))
+    }
+
+    @Test
+    fun paragraphBidiMirrorsPairedPunctuationWithoutChangingTheModel() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val value = "Aنص (حكيم)Z"
+        val cells = cells(value)
+        val state = TerminalScreenState(
+            TerminalSnapshot.empty(1, cells.size).copy(lines = listOf(TerminalLine(0, cells))),
+        )
+        val layout = paint().layout(state, 0, 12f)!!
+        val mirrored = value.indices.filter { layout.mirroredCodePoint(it) != 0 }
+        assertEquals(listOf(value.indexOf('('), value.indexOf(')')), mirrored)
+        assertEquals(value, state.snapshot.lines.single().text)
+    }
+
+    @Test
+    fun paragraphBidiUsesSoftWrapContextAndHardBreaks() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val terminal = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 8) as TerminalEmulatorImpl
+        terminal.writeInput("نص حكيم له سر\r\nABC".toByteArray())
+        terminal.processPendingUpdates()
+        val snapshot = terminal.snapshot.value
+        assertTrue(snapshot.lines[0].softWrapped)
+        assertFalse(snapshot.lines[1].softWrapped)
+        val state = TerminalScreenState(snapshot)
+        val paint = paint()
+        for (row in 0..1) {
+            val layout = paint.layout(state, row, 12f)!!
+            for (col in snapshot.lines[row].cells.indices) assertEquals(col, layout.logicalColumn(layout.visualColumn(col)))
+        }
+        assertNull(paint.layout(state, 2, 12f))
+    }
+
+    @Test
+    fun levelOneDropsBidiFormattingControls() {
+        val terminal = TerminalEmulatorFactory.create(initialRows = 1, initialCols = 20) as TerminalEmulatorImpl
+        terminal.writeInput("A\u200f\u202eB\u202c\u2067C\u2069Z".toByteArray())
+        terminal.processPendingUpdates()
+        assertEquals("ABCZ", terminal.snapshot.value.lines.single().text.trimEnd())
+    }
+
+    @Test
     fun cacheScalesPast64RowsAndReusesColorChanges() {
         assumeTrue(Build.VERSION.SDK_INT >= 31)
         for (count in listOf(64, 128, 256)) {

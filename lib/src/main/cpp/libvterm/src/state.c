@@ -277,6 +277,13 @@ static void set_lineinfo(VTermState *state, int row, int force, int dwl, int dhl
     state->lineinfo[row] = info;
 }
 
+static int is_bidi_control(uint32_t cp)
+{
+  return cp == 0x061c || cp == 0x200e || cp == 0x200f ||
+      (cp >= 0x202a && cp <= 0x202e) ||
+      (cp >= 0x2066 && cp <= 0x2069);
+}
+
 static int on_text(const char bytes[], size_t len, void *user)
 {
   VTermState *state = user;
@@ -316,6 +323,9 @@ static int on_text(const char bytes[], size_t len, void *user)
 
   for(int i = 0; i < npoints; i++) {
     uint32_t cp = codepoints[i];
+    /* terminal-wg implicit BiDi level 1 discards directional controls. */
+    if(is_bidi_control(cp))
+      continue;
     int count = 0;
     if(state->combine_valid)
       while(state->combine_chars[count]) count++;
@@ -365,8 +375,13 @@ static int on_text(const char bytes[], size_t len, void *user)
     /* Coalesce same-width extensions already available in this input buffer.
      * Width transitions still execute separately, preserving streaming wrap
      * semantics even when selectors arrive in the same write as their base. */
-    while(i + 1 < npoints &&
-        vterm_unicode_can_extend(state->combine_chars, count, codepoints[i + 1])) {
+    while(i + 1 < npoints) {
+      if(is_bidi_control(codepoints[i + 1])) {
+        i++;
+        continue;
+      }
+      if(!vterm_unicode_can_extend(state->combine_chars, count, codepoints[i + 1]))
+        break;
       state->combine_chars[count] = codepoints[i + 1];
       state->combine_chars[count + 1] = 0;
       int nextwidth = vterm_unicode_cluster_width(state->combine_chars, count + 1);

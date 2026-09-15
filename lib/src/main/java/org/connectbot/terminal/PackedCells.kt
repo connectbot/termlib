@@ -25,7 +25,11 @@ internal class PackedCells private constructor(
             var i = 0
             while (i < text.size) {
                 val cp = Character.codePointAt(text, i, text.size)
-                if (TerminalShaping.script(cp) != 0) {
+                val direction = Character.getDirectionality(cp)
+                if (TerminalShaping.script(cp) != 0 ||
+                    direction == Character.DIRECTIONALITY_RIGHT_TO_LEFT ||
+                    direction == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC
+                ) {
                     complex = true
                     break
                 }
@@ -57,7 +61,27 @@ internal class PackedCells private constructor(
     val shapingRetentionBytes: Int get() = 128 + text.size * 2 + offsets.size * 4 + colors.size * 4 + attributes.size * 4
 
     @androidx.annotation.RequiresApi(31)
-    fun shape(shaper: TerminalShaping): ShapedLine = shaper.shape(text, offsets, this)
+    fun shape(
+        shaper: TerminalShaping,
+        logicalToVisual: IntArray? = null,
+        visualToLogical: IntArray? = null,
+        levels: ByteArray? = null,
+        mirrors: IntArray? = null,
+        contextBefore: String = "",
+        contextAfter: String = "",
+    ): ShapedLine {
+        if (contextBefore.isEmpty() && contextAfter.isEmpty()) {
+            return shaper.shape(text, offsets, this, logicalToVisual, visualToLogical, levels, mirrors)
+        }
+        val before = contextBefore.toCharArray()
+        val after = contextAfter.toCharArray()
+        val contextual = CharArray(before.size + text.size + after.size)
+        before.copyInto(contextual)
+        text.copyInto(contextual, before.size)
+        after.copyInto(contextual, before.size + text.size)
+        val shiftedOffsets = IntArray(offsets.size) { offsets[it] + before.size }
+        return shaper.shape(contextual, shiftedOffsets, this, logicalToVisual, visualToLogical, levels, mirrors)
+    }
     fun width(col: Int): Int = attributes[col] ushr 24
     fun placeholder(col: Int): Boolean = offsets[col + 1] - offsets[col] >= 2 && Character.codePointAt(text, offsets[col], offsets[col + 1]) == 0x10EEEE
     fun placeholderPlacement(col: Int): Long = (placeholderIds[col] ?: 0).toLong() and 0xFFFFFF

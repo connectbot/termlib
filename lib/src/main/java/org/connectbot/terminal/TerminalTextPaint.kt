@@ -41,9 +41,20 @@ internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() 
         return engine.layout(cells, cellWidth)
     }
 
-    fun visualColumn(state: TerminalScreenState, row: Int, col: Int, cellWidth: Float): Int = layout(state.getVisibleLine(row).cells, cellWidth)?.visualColumn(col) ?: col
+    fun layout(state: TerminalScreenState, row: Int, cellWidth: Float): ShapedLine? {
+        if (android.os.Build.VERSION.SDK_INT < 31) return null
+        val engine = shaping ?: TerminalShaping(this).also {
+            shaping = it
+            it.viewport(state)
+        }
+        return engine.layout(state, row, cellWidth)
+    }
 
-    fun logicalColumn(state: TerminalScreenState, row: Int, col: Int, cellWidth: Float): Int = layout(state.getVisibleLine(row).cells, cellWidth)?.logicalColumn(col) ?: col
+    fun visualColumn(state: TerminalScreenState, row: Int, col: Int, cellWidth: Float): Int = layout(state, row, cellWidth)?.visualColumn(col) ?: col
+
+    fun logicalColumn(state: TerminalScreenState, row: Int, col: Int, cellWidth: Float): Int = layout(state, row, cellWidth)?.logicalColumn(col) ?: col
+
+    fun resolvedRtl(state: TerminalScreenState, row: Int, col: Int, cellWidth: Float): Boolean = layout(state, row, cellWidth)?.resolvedRtl(col) == true
 
     init {
         this.typeface = typeface

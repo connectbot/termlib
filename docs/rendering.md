@@ -78,6 +78,17 @@ avoids repeating text measurement just because row contents/colors changed.
 Regular glyphs use direct Canvas drawing; only
 oversized glyphs require a canvas transform.
 
+On API 31 and newer, right-to-left presentation follows terminal-wg's
+implicit-LTR level-1 model. Hard-newline-delimited paragraphs are passed to
+Android ICU's Unicode Bidirectional Algorithm as logical text; soft-wrapped
+rows share paragraph context. The resulting per-row mapping is display-only:
+cell contents, selection copies, and terminal coordinates remain logical while
+drawing, pointer hit testing, selection handles, and the cursor use visual
+columns. Mirrored punctuation and Arabic shaping use resolved run direction.
+Directional formatting controls are discarded, as required by level 1.
+Paragraphs over 500 rows fall back to logical LTR presentation as a safety cap.
+API 24–30 retain the legacy per-cell renderer.
+
 ## Box drawing and block elements
 
 Box drawing (U+2500–U+257F) and block elements (U+2580–U+259F) use

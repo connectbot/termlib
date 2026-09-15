@@ -120,6 +120,12 @@ internal class TerminalScreenState(
         }
     }
 
+    /** Absolute history index for a viewport row. */
+    internal fun visibleLineIndex(row: Int): Int {
+        val first = snapshot.scrollback.size - scrollbackPosition
+        return (first + row).coerceIn(0, totalLines - 1)
+    }
+
     /**
      * Get the hyperlink URL at a visible row/col.
      *

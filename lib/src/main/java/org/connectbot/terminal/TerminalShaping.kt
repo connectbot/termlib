@@ -11,6 +11,7 @@ import android.graphics.fonts.Font
 import android.graphics.fonts.FontVariationAxis
 import android.graphics.text.PositionedGlyphs
 import android.graphics.text.TextRunShaper
+import android.icu.text.Bidi
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.snapshots.Snapshot
@@ -26,7 +27,7 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
     private var sequence = -1L
     private var scrollback = -1
     private var width = Float.NaN
-    private var advanceScratch = FloatArray(0)
+    private var contextLines: List<TerminalLine> = emptyList()
 
     var retainedBytes = 0
         private set
@@ -40,7 +41,7 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
         retainedBytes = 0
         viewport = null
         sequence = -1L
-        advanceScratch = FloatArray(0)
+        contextLines = emptyList()
     }
 
     // Cache maintenance must not subscribe every retained row's display list to
@@ -49,6 +50,16 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
         viewport = state
         viewportRows = state.snapshot.rows
         if (sequence == state.snapshot.sequenceNumber && scrollback == state.scrollbackPosition) return@withoutReadObservation
+        val newContext = state.snapshot.scrollback + state.snapshot.lines
+        if (contextLines.size != newContext.size || contextLines.indices.any {
+                contextLines[it].cells !== newContext[it].cells || contextLines[it].softWrapped != newContext[it].softWrapped
+            }
+        ) {
+            cache.clear()
+            keys.clear()
+            retainedBytes = 0
+            contextLines = newContext
+        }
         sequence = state.snapshot.sequenceNumber
         scrollback = state.scrollbackPosition
         var index = keys.lastIndex
@@ -111,6 +122,123 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
         return result
     }
 
+    /** Layout one physical row using the complete hard-newline-delimited paragraph. */
+    @RequiresApi(31)
+    fun layout(state: TerminalScreenState, row: Int, cellWidth: Float): ShapedLine? = Snapshot.withoutReadObservation {
+        viewport(state)
+        if (width != cellWidth) {
+            cache.clear()
+            keys.clear()
+            retainedBytes = 0
+            width = cellWidth
+        }
+        val absolute = state.visibleLineIndex(row)
+        if (absolute !in 0 until state.totalLines) return@withoutReadObservation null
+        cache[state.getLine(absolute).cells]?.let { return@withoutReadObservation it }
+
+        var first = absolute
+        while (first > 0 && state.getLine(first - 1).softWrapped && absolute - first < MAX_PARAGRAPH_ROWS) first--
+        var last = absolute
+        while (last + 1 < state.totalLines && state.getLine(last).softWrapped && last - first + 1 < MAX_PARAGRAPH_ROWS) last++
+        // A paragraph beyond the safety cap is displayed in explicit LTR order.
+        if ((first > 0 && state.getLine(first - 1).softWrapped) || (last + 1 < state.totalLines && state.getLine(last).softWrapped)) {
+            return@withoutReadObservation null
+        }
+        val lines = (first..last).map(state::getLine)
+        if (lines.none { it.cells.needsShaping() }) return@withoutReadObservation null
+        val layouts = shapeParagraph(lines)
+        val visibleFirst = state.visibleLineIndex(0)
+        val visibleLast = state.visibleLineIndex(state.snapshot.rows - 1)
+        layouts.forEachIndexed { index, shaped ->
+            if (first + index !in visibleFirst..visibleLast) return@forEachIndexed
+            val cells = lines[index].cells
+            if (!cache.containsKey(cells)) {
+                shapeCount++
+                admit(cells, shaped)
+            }
+        }
+        layouts[absolute - first]
+    }
+
+    @RequiresApi(31)
+    private fun shapeParagraph(lines: List<TerminalLine>): List<ShapedLine> {
+        val paragraph = StringBuilder()
+        val starts = ArrayList<IntArray>(lines.size)
+        val ends = ArrayList<IntArray>(lines.size)
+        val lineStarts = IntArray(lines.size)
+        val lineEnds = IntArray(lines.size)
+        lines.forEachIndexed { row, line ->
+            lineStarts[row] = paragraph.length
+            val cellStarts = IntArray(line.cells.size) { -1 }
+            val cellEnds = IntArray(line.cells.size) { -1 }
+            for (col in line.cells.indices) {
+                if (line.cells.width(col) == 0 || line.cells.charAt(col) == '\u0000') continue
+                cellStarts[col] = paragraph.length
+                if (line.cells.placeholder(col)) paragraph.append('\uFFFC') else paragraph.append(line.cells.text(col, col + 1))
+                cellEnds[col] = paragraph.length
+            }
+            lineEnds[row] = paragraph.length
+            starts.add(cellStarts)
+            ends.add(cellEnds)
+        }
+        val bidi = Bidi(paragraph.toString(), Bidi.DIRECTION_LEFT_TO_RIGHT)
+        return lines.indices.map { row ->
+            val cells = lines[row].cells
+            val logicalToVisual = IntArray(cells.size) { it }
+            val visualToLogical = IntArray(cells.size) { it }
+            val levels = ByteArray(cells.size)
+            val mirrors = IntArray(cells.size)
+            data class UnitCell(val col: Int, val width: Int, val visual: Int)
+            val units = ArrayList<UnitCell>()
+            if (lineStarts[row] < lineEnds[row]) {
+                val lineBidi = bidi.createLineBidi(lineStarts[row], lineEnds[row])
+                for (col in cells.indices) {
+                    val start = starts[row][col]
+                    if (start < 0 || cells.width(col) == 0) continue
+                    val localStart = start - lineStarts[row]
+                    val localEnd = ends[row][col] - lineStarts[row]
+                    var visual = Int.MAX_VALUE
+                    for (index in localStart until localEnd) visual = minOf(visual, lineBidi.getVisualIndex(index))
+                    val level = lineBidi.getLevelAt(localStart)
+                    levels[col] = level
+                    if (level.toInt() and 1 != 0) {
+                        val cp = Character.codePointAt(cells.text(col, col + 1), 0)
+                        val mirror = android.icu.lang.UCharacter.getMirror(cp)
+                        if (mirror != cp) mirrors[col] = mirror
+                    }
+                    val columns = cells.width(col).coerceAtLeast(1)
+                    for (part in 1 until columns) levels[col + part] = level
+                    units.add(UnitCell(col, columns, visual))
+                }
+            }
+            units.sortBy { it.visual }
+            var visualCol = 0
+            for (unit in units) {
+                for (part in 0 until unit.width) {
+                    logicalToVisual[unit.col + part] = visualCol + part
+                    visualToLogical[visualCol + part] = unit.col + part
+                }
+                visualCol += unit.width
+            }
+            // Erased cells are excluded from UAX #9 and occupy the trailing side.
+            for (col in cells.indices) {
+                if (cells.width(col) == 0 || starts[row][col] >= 0) continue
+                logicalToVisual[col] = visualCol
+                visualToLogical[visualCol] = col
+                visualCol++
+            }
+            cells.shape(
+                this,
+                logicalToVisual,
+                visualToLogical,
+                levels,
+                mirrors,
+                contextBefore = lines.getOrNull(row - 1)?.cells?.text()?.trimEnd('\u0000') ?: "",
+                contextAfter = lines.getOrNull(row + 1)?.cells?.text()?.trimEnd('\u0000') ?: "",
+            )
+        }
+    }
+
     private fun admit(cells: PackedCells, result: ShapedLine) {
         val bytes = result.bytes.toLong() + cells.shapingRetentionBytes
         // Do not cycle through visible entries when a viewport exceeds the byte budget.
@@ -122,18 +250,20 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
     }
 
     @RequiresApi(31)
-    fun shape(text: CharArray, offsets: IntArray, cells: PackedCells): ShapedLine {
-        val logicalToVisual = IntArray(cells.size) { it }
-        val visualToLogical = IntArray(cells.size) { it }
+    fun shape(
+        text: CharArray,
+        offsets: IntArray,
+        cells: PackedCells,
+        bidiLogicalToVisual: IntArray? = null,
+        bidiVisualToLogical: IntArray? = null,
+        bidiLevels: ByteArray? = null,
+        bidiMirrors: IntArray? = null,
+    ): ShapedLine {
+        val logicalToVisual = bidiLogicalToVisual ?: IntArray(cells.size) { it }
+        val visualToLogical = bidiVisualToLogical ?: IntArray(cells.size) { it }
+        val levels = bidiLevels ?: ByteArray(cells.size)
         val clusters = arrayOfNulls<ShapedCluster>(cells.size)
         val variants = HashMap<FontVariant, Font>()
-        // At most 32 KiB of reusable scratch; exceptional rows use temporary storage.
-        val advances = if (text.size <= 8192) {
-            if (advanceScratch.size < text.size) advanceScratch = FloatArray(text.size)
-            advanceScratch
-        } else {
-            FloatArray(text.size)
-        }
         var col = 0
         while (col < cells.size) {
             val start = col
@@ -149,25 +279,20 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
                 col += cells.width(col).coerceAtLeast(1)
             }
             val end = col.coerceAtMost(cells.size)
-            val rtl = script < 0
-            var styleStart = start
-            while (styleStart < end) {
-                val style = cells.flags(styleStart) and 9
-                var styleEnd = styleStart + 1
-                while (styleEnd < end && cells.flags(styleEnd) and 9 == style) styleEnd++
-                shapingPaint.isFakeBoldText = style and 1 != 0
-                shapingPaint.textSkewX = if (style and 8 != 0) -0.25f else 0f
-                shapingPaint.getTextRunAdvances(
-                    text,
-                    offsets[styleStart],
-                    offsets[styleEnd] - offsets[styleStart],
-                    offsets[start],
-                    offsets[end] - offsets[start],
-                    rtl,
-                    advances,
-                    offsets[styleStart],
-                )
-                styleStart = styleEnd
+            val rtl = if (bidiLevels != null) levels[start].toInt() and 1 != 0 else script < 0
+            var contextStart = offsets[start]
+            var contextEnd = offsets[end]
+            if (bidiLevels != null) {
+                while (contextStart > 0) {
+                    val cp = Character.codePointBefore(text, contextStart, 0)
+                    if (script(cp) != script && !inherited(cp)) break
+                    contextStart -= Character.charCount(cp)
+                }
+                while (contextEnd < text.size) {
+                    val cp = Character.codePointAt(text, contextEnd, text.size)
+                    if (script(cp) != script && !inherited(cp)) break
+                    contextEnd += Character.charCount(cp)
+                }
             }
             var first = start
             while (first < end) {
@@ -175,34 +300,32 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
                 shapingPaint.isFakeBoldText = style and 1 != 0
                 shapingPaint.textSkewX = if (style and 8 != 0) -0.25f else 0f
                 var next = first + cells.width(first).coerceAtLeast(1)
-                while (next < end && cells.flags(next) and 9 == style &&
-                    (
-                        advances[offsets[next]] == 0f || (script == -1 && lamAlef(text, offsets[first], offsets[next])) ||
-                            shapingPaint.getTextRunCursor(
-                                text,
-                                offsets[start],
-                                offsets[end] - offsets[start],
-                                rtl,
-                                offsets[next],
-                                Paint.CURSOR_AT_OR_AFTER,
-                            ) != offsets[next]
-                        )
-                ) {
+                // Draw a same-style script run as one unit. Splitting at every
+                // cursor boundary preserves contextual forms but snaps their
+                // advances and overhangs to individual cells, leaving seams in
+                // cursive Arabic and Syriac joins.
+                while (next < end && cells.flags(next) and 9 == style) {
                     next += cells.width(next).coerceAtLeast(1)
                 }
-                val visual = if (rtl) start + end - next else first
-                var logical = first
-                while (logical < next) {
-                    val columns = cells.width(logical).coerceAtLeast(1)
-                    val position = if (rtl) visual + next - logical - columns else logical
-                    for (part in 0 until columns) {
-                        logicalToVisual[logical + part] = position + part
-                        visualToLogical[position + part] = logical + part
+                val visual = if (bidiLevels != null) {
+                    (first until next).minOf { logicalToVisual[it] }
+                } else {
+                    start + end - next
+                }
+                if (bidiLevels == null) {
+                    var logical = first
+                    while (logical < next) {
+                        val columns = cells.width(logical).coerceAtLeast(1)
+                        val position = if (rtl) visual + next - logical - columns else logical
+                        for (part in 0 until columns) {
+                            logicalToVisual[logical + part] = position + part
+                            visualToLogical[position + part] = logical + part
+                        }
+                        logical += columns
                     }
-                    logical += columns
                 }
                 val glyphs = TextRunShaper.shapeTextRun(
-                    text, offsets[first], offsets[next] - offsets[first], offsets[start], offsets[end] - offsets[start],
+                    text, offsets[first], offsets[next] - offsets[first], contextStart, contextEnd - contextStart,
                     0f, 0f, rtl, shapingPaint,
                 )
                 val targetWidth = (next - first) * width
@@ -254,25 +377,11 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
                 first = next
             }
         }
-        return ShapedLine(logicalToVisual, visualToLogical, clusters)
+        return ShapedLine(logicalToVisual, visualToLogical, levels, bidiMirrors ?: IntArray(cells.size), clusters)
     }
 
     companion object {
-        // Some Arabic fonts implement lam–alef with two advancing glyphs and expose
-        // a cursor between them. They still need one footprint to preserve joining.
-        private fun lamAlef(text: CharArray, start: Int, boundary: Int): Boolean {
-            val alef = Character.codePointAt(text, boundary, text.size)
-            if (android.icu.lang.UCharacter.getIntPropertyValue(alef, android.icu.lang.UProperty.JOINING_GROUP) != android.icu.lang.UCharacter.JoiningGroup.ALEF) return false
-            var previous = boundary
-            while (previous > start) {
-                val cp = Character.codePointBefore(text, previous, start)
-                previous -= Character.charCount(cp)
-                if (cp == 0x200C) return false
-                if (inherited(cp)) continue
-                return android.icu.lang.UCharacter.getIntPropertyValue(cp, android.icu.lang.UProperty.JOINING_GROUP) == android.icu.lang.UCharacter.JoiningGroup.LAM
-            }
-            return false
-        }
+        private const val MAX_PARAGRAPH_ROWS = 500
 
         // Signed script identifiers: negative scripts use contained RTL ordering.
         // ASCII, CJK and emoji never enter platform script classification or shaping.
@@ -303,15 +412,19 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
 internal class ShapedLine(
     private val logicalToVisual: IntArray,
     private val visualToLogical: IntArray,
+    private val levels: ByteArray,
+    private val mirrors: IntArray,
     private val clusters: Array<ShapedCluster?>,
 ) {
     private val clip = android.graphics.Rect()
-    val bytes: Int = 160 + logicalToVisual.size * 16 + clusters.indices.sumOf {
+    val bytes: Int = 160 + logicalToVisual.size * 20 + clusters.indices.sumOf {
         val cluster = clusters[it]
         if (cluster != null && (it == 0 || clusters[it - 1] !== cluster)) cluster.bytes else 0
     }
     fun visualColumn(logical: Int): Int = logicalToVisual.getOrElse(logical) { logical }
     fun logicalColumn(visual: Int): Int = visualToLogical.getOrElse(visual) { visual }
+    fun resolvedRtl(logical: Int): Boolean = levels.getOrElse(logical) { 0 }.toInt() and 1 != 0
+    internal fun mirroredCodePoint(logical: Int): Int = mirrors.getOrElse(logical) { 0 }
 
     fun prepareDraw(canvas: Canvas) {
         canvas.getClipBounds(clip)
@@ -319,12 +432,22 @@ internal class ShapedLine(
 
     @RequiresApi(31)
     fun drawCell(canvas: Canvas, col: Int, baseline: Float, paint: Paint, cellWidth: Float, columns: Int): Boolean {
-        val cluster = clusters[col] ?: return false
+        val cluster = clusters[col]
+        val mirror = mirrors.getOrElse(col) { 0 }
+        if (cluster == null && mirror == 0) return false
         val saved = canvas.save()
         try {
             val x = visualColumn(col) * cellWidth
             // Clip only horizontally: preserve marks extending above/below the row.
             canvas.clipRect(x, clip.top.toFloat(), x + cellWidth * columns, clip.bottom.toFloat())
+            if (cluster == null) {
+                val value = String(Character.toChars(mirror))
+                val advance = paint.measureText(value)
+                canvas.translate(x, baseline)
+                if (advance > cellWidth * columns && advance > 0f) canvas.scale(cellWidth * columns / advance, 1f)
+                canvas.drawText(value, 0f, 0f, paint)
+                return true
+            }
             canvas.translate(cluster.visual * cellWidth, baseline)
             if (cluster.scale != 1f) canvas.scale(cluster.scale, 1f)
             for (batch in cluster.batches) {

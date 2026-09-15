@@ -149,6 +149,7 @@ class ComplexScriptGoldenTest {
                         defaultBg = Color.Black,
                         selectionManager = null,
                         backgroundsOnly = backgrounds,
+                        shapedLine = paint.layout(state, row, width),
                     )
                 }
             }
@@ -163,7 +164,7 @@ class ComplexScriptGoldenTest {
         const val TEXT_SIZE = 20f
 
         val SPECIMENS = listOf(
-            Specimen("shaping-arabic.png", "Arabic", "سلام بِسْمِ لا"),
+            Specimen("shaping-arabic.png", "Arabic", "نص حكيم له سر قاطع"),
             Specimen("shaping-syriac.png", "Syriac", "ܫܠܡܐ ܥܠܡܐ"),
             Specimen("shaping-thaana.png", "Thaana", "ދިވެހިބަސް"),
             Specimen("shaping-nko.png", "NKo", "ߒߞߏ ߞߊ߲ߜߍ"),

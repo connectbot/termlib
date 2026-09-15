@@ -1388,6 +1388,7 @@ internal fun TerminalWithAccessibility(
                             pendingDeadChar = composeController.pendingDeadChar,
                             charBaseline = baseCharBaseline,
                             textPaint = textPaint,
+                            resolvedRtl = textPaint.resolvedRtl(screenState, snapshot.cursorRow, snapshot.cursorCol, baseCharWidth),
                         )
                     }
 
@@ -1701,6 +1702,7 @@ private fun TerminalRows(
                         selectionBackgroundColor = selectionBackgroundColor,
                         selectionForegroundColor = selectionForegroundColor,
                         backgroundsOnly = backgrounds,
+                        shapedLine = (textPaint as? TerminalTextPaint)?.layout(screenState, row, charWidth),
                     )
                 }
             }
@@ -1726,6 +1728,7 @@ internal fun DrawScope.drawLine(
     backgroundsOnly: Boolean? = null,
     aboveLine: TerminalLine? = null,
     belowLine: TerminalLine? = null,
+    shapedLine: ShapedLine? = null,
 ) {
     // A standalone line (tests/magnifier) also paints backgrounds first.
     if (backgroundsOnly == null) {
@@ -1734,13 +1737,14 @@ internal fun DrawScope.drawLine(
                 line, row, charWidth, charHeight, charBaseline, textPaint, underlinePaint,
                 defaultFg, defaultBg, selectionManager, autoDetectUrls, hyperlinkMask,
                 selectionBackgroundColor, selectionForegroundColor, backgrounds, aboveLine, belowLine,
+                shapedLine,
             )
         }
         return
     }
     val y = row * charHeight
     val cells = line.cells
-    val shaped = (textPaint as? TerminalTextPaint)?.layout(cells, charWidth)
+    val shaped = shapedLine ?: (textPaint as? TerminalTextPaint)?.layout(cells, charWidth)
     // Observe selection once per row when inactive, not once per terminal cell.
     val activeSelection = selectionManager?.takeIf { it.selectionRange != null }
     if (backgroundsOnly) {
@@ -2210,6 +2214,7 @@ private fun MagnifyingGlass(
                                 selectionBackgroundColor = selectionBackgroundColor,
                                 selectionForegroundColor = selectionForegroundColor,
                                 backgroundsOnly = backgrounds,
+                                shapedLine = (textPaint as? TerminalTextPaint)?.layout(screenState, row, baseCharWidth),
                             )
                         }
                     }
@@ -2274,6 +2279,7 @@ private fun DrawScope.drawCursor(
     pendingDeadChar: Int = 0,
     charBaseline: Float = 0f,
     textPaint: TextPaint? = null,
+    resolvedRtl: Boolean = false,
 ) {
     val x = col * charWidth
     val y = row * charHeight
@@ -2301,11 +2307,11 @@ private fun DrawScope.drawCursor(
         }
 
         CursorShape.BAR_LEFT -> {
-            // Bar cursor - vertical line at left of cell
+            // A terminal bar cursor follows the resolved direction of its cell.
             val barWidth = charWidth * CURSOR_BAR_WIDTH_RATIO
             drawRect(
                 color = foregroundColor,
-                topLeft = Offset(x, y),
+                topLeft = Offset(if (resolvedRtl) x + charWidth - barWidth else x, y),
                 size = Size(barWidth, charHeight),
                 alpha = CURSOR_LINE_ALPHA,
             )
