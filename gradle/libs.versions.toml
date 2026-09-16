@@ -22,7 +22,7 @@ coreKtx = "1.18.0"
 mockk = "1.14.11"
 
 junitClassic = "4.13.2"
-robolectric = "4.16.1"
+robolectric = "4.17"
 roborazzi = "1.74.0"
 ui = "1.11.2"
 
