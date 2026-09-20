@@ -17,6 +17,7 @@
 package org.connectbot.terminal
 
 import android.content.Context
+import android.os.Build
 import android.os.SystemClock
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
@@ -33,6 +34,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 import java.text.Normalizer
 
 @RunWith(AndroidJUnit4::class)
@@ -123,34 +125,175 @@ class ImeInputViewTest {
         assertEquals("", ic.getEditable()?.toString())
     }
 
-    // === commitText clears editable (regression guard) ===
+    // === committed context supports suggestion replacement ===
 
     @Test
-    fun testCommitTextClearsEditable() {
+    fun testCommitTextRetainsEditableContext() {
         val ic = makeView().ic(composeMode = true)
         ic.commitText("some text", 1)
 
-        assertEquals("", ic.getEditable()?.toString())
+        assertEquals("some text", ic.getEditable()?.toString())
     }
 
     @Test
-    fun testCommitTextWithActiveCompositionClearsEditable() {
+    fun testCommitTextWithActiveCompositionRetainsEditableContext() {
         val ic = makeView().ic(composeMode = true)
         ic.setComposingText("wor", 1)
         ic.commitText("word", 1)
 
+        assertEquals("word", ic.getEditable()?.toString())
+    }
+
+    @Test
+    fun testSuggestionReplacesPreviouslyCommittedWord() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText("com", 1)
+            ic.setComposingRegion(0, 3)
+            ic.commitText("cool", 1)
+        }
+        drainMainLooper()
+
+        assertEquals("cool", effectiveText(outputs))
+        assertEquals("cool", (ic as BaseInputConnection).getEditable()?.toString())
+    }
+
+    @Test
+    fun testSuggestionReplacementPreservesTrailingText() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText("com ", 1)
+            ic.setComposingRegion(0, 3)
+            ic.commitText("cool", 1)
+        }
+        drainMainLooper()
+
+        assertEquals("cool ", effectiveText(outputs))
+        assertEquals("cool ", (ic as BaseInputConnection).getEditable()?.toString())
+    }
+
+    @Test
+    @Config(sdk = [Build.VERSION_CODES.UPSIDE_DOWN_CAKE])
+    fun testGestureSuggestionReplaceTextRewritesCommittedWord() {
+        val (ic, outputs) = createKeyboardOutputCapture()
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText("we", 1)
+            ic.replaceText(0, 2, "sorry ", 1, null)
+        }
+        drainMainLooper()
+
+        assertEquals("sorry ", effectiveText(outputs))
+        assertEquals("sorry ", (ic as BaseInputConnection).getEditable()?.toString())
+    }
+
+    @Test
+    fun testTerminalShortcutDoesNotBecomeSuggestionContext() {
+        var ctrlActive = true
+        val restartRequests = mutableListOf<View>()
+        val modifierManager = object : ModifierManager {
+            override fun isCtrlActive() = ctrlActive
+            override fun isAltActive() = false
+            override fun isShiftActive() = false
+            override fun clearTransients() {
+                ctrlActive = false
+            }
+        }
+        val (ic, outputs) = createKeyboardOutputCapture(modifierManager, restartRequests)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText("a", 1)
+            assertEquals("", (ic as BaseInputConnection).getEditable()?.toString())
+            ic.commitText("1", 1)
+        }
+        drainMainLooper()
+
+        assertTrue(outputs.flatMap { it.toList() }.contains(0x01.toByte()))
+        assertEquals("1", effectiveText(outputs))
+        assertEquals("1", (ic as BaseInputConnection).getEditable()?.toString())
+        assertEquals(1, restartRequests.size)
+    }
+
+    @Test
+    fun testCursorContextAllowsPartialEchoUntilCommittedTextAppears() {
+        val view = makeView()
+        val ic = view.ic(composeMode = true)
+        ic.commitText("cool", 1)
+
+        view.validateTerminalCursorContext("$ c")
+        assertEquals("cool", ic.getEditable()?.toString())
+        view.validateTerminalCursorContext("$ co")
+        assertEquals("cool", ic.getEditable()?.toString())
+        view.validateTerminalCursorContext("$ cool")
+        assertEquals("cool", ic.getEditable()?.toString())
+    }
+
+    @Test
+    fun testCursorContextClearsAfterConfirmedTextMovesElsewhere() {
+        val view = makeView()
+        val ic = view.ic(composeMode = true)
+        ic.commitText("cool", 1)
+        view.validateTerminalCursorContext("$ cool")
+
+        view.validateTerminalCursorContext("status: co")
+
         assertEquals("", ic.getEditable()?.toString())
     }
 
-    // === finishComposingText clears editable (regression guard) ===
+    @Test
+    fun testCursorContextClearsWhenEchoSettlesAtDifferentText() {
+        val restartRequests = mutableListOf<View>()
+        val view = ImeInputView(
+            context = context,
+            keyboardHandler = keyboardHandler,
+            inputMethodManager = noOpImm,
+            onRestartInput = { restartRequests.add(it) },
+        )
+        val ic = view.ic(composeMode = true)
+        ic.commitText("cool", 1)
+
+        view.validateTerminalCursorContext("unrelated TUI cursor")
+
+        assertEquals("", ic.getEditable()?.toString())
+        assertEquals(1, restartRequests.size)
+    }
 
     @Test
-    fun testFinishComposingTextClearsEditable() {
+    fun testCursorContextDropsOldCommitButKeepsNewComposition() {
+        val updates = mutableListOf<SelectionUpdate>()
+        val view = makeView(updates)
+        val ic = view.ic(composeMode = true)
+        ic.commitText("1", 1)
+        ic.setComposingText("this", 1)
+
+        view.validateTerminalCursorContext("new tmux window")
+
+        val editable = ic.getEditable()!!
+        assertEquals("this", editable.toString())
+        assertEquals(0, BaseInputConnection.getComposingSpanStart(editable))
+        assertEquals(4, BaseInputConnection.getComposingSpanEnd(editable))
+        assertTrue(
+            updates.any {
+                it.view === view &&
+                    it.selStart == 4 &&
+                    it.selEnd == 4 &&
+                    it.candidatesStart == 0 &&
+                    it.candidatesEnd == 4
+            },
+        )
+    }
+
+    // === finishComposingText retains editable context ===
+
+    @Test
+    fun testFinishComposingTextRetainsEditableContext() {
         val ic = makeView().ic(composeMode = true)
         ic.setComposingText("partial", 1)
         ic.finishComposingText()
 
-        assertEquals("", ic.getEditable()?.toString())
+        assertEquals("partial", ic.getEditable()?.toString())
     }
 
     // === updateSelection is called after ACTION_DOWN key events (compose mode) ===
@@ -239,17 +382,24 @@ class ImeInputViewTest {
 
     // === IME duplicate character tests (connectbot/connectbot#1955) ===
 
-    private fun createKeyboardOutputCapture(): Pair<InputConnection, MutableList<ByteArray>> {
+    private fun createKeyboardOutputCapture(
+        modifierManager: ModifierManager? = null,
+        restartRequests: MutableList<View>? = null,
+    ): Pair<InputConnection, MutableList<ByteArray>> {
         val outputs = mutableListOf<ByteArray>()
         val emulator = TerminalEmulatorFactory.create(
             initialRows = 24,
             initialCols = 80,
             onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
-        val handler = KeyboardHandler(emulator)
+        val handler = KeyboardHandler(emulator, modifierManager = modifierManager)
         var ic: InputConnection? = null
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val view = ImeInputView(context, handler)
+            val view = ImeInputView(
+                context = context,
+                keyboardHandler = handler,
+                onRestartInput = { view -> restartRequests?.add(view) },
+            )
             view.isComposeModeActive = true
             view.setOnKeyListener { _, _, event ->
                 handler.onKeyEvent(

@@ -309,6 +309,116 @@ class KeyboardHandlerTest {
     // === Compose Mode Tests ===
 
     @Test
+    fun testComposeModeTerminalKeysMatchDirectInput() {
+        val events = listOf(
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_C, AndroidKeyEvent.META_CTRL_ON),
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_A, AndroidKeyEvent.META_ALT_ON),
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_DEL, AndroidKeyEvent.META_CTRL_ON),
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_ESCAPE, AndroidKeyEvent.META_ALT_ON),
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_TAB, 0),
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_DPAD_UP, 0),
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_DPAD_LEFT, 0),
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_MOVE_HOME, 0),
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_FORWARD_DEL, 0),
+            createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_F1, 0),
+        )
+        for (event in events) {
+            fun output(composing: Boolean, pending: String): String = collectCharacterOutput { handler ->
+                val compose = ComposeMode()
+                handler.composeMode = compose
+                if (composing) {
+                    compose.activate()
+                    compose.appendText(pending)
+                }
+                assertTrue(handler.onKeyEvent(event))
+                assertEquals(composing, compose.isActive)
+                assertEquals("", compose.buffer)
+            }.toString(Charsets.UTF_8)
+            val direct = output(false, "")
+            assertTrue("Expected terminal bytes for $event", direct.isNotEmpty())
+            assertEquals(direct, output(true, ""))
+            assertEquals("日本語$direct", output(true, "日本語"))
+        }
+    }
+
+    @Test
+    fun testComposeModeModifierKeyDoesNotFlushPendingText() {
+        val compose = ComposeMode()
+        compose.activate()
+        compose.appendText("pending")
+        keyboardHandler.composeMode = compose
+        keyboardHandler.onInputProcessed = { inputProcessedCallCount++ }
+
+        assertFalse(
+            keyboardHandler.onKeyEvent(
+                createKeyEventWithMeta(AndroidKeyEvent.KEYCODE_CTRL_LEFT, AndroidKeyEvent.META_CTRL_ON),
+            ),
+        )
+
+        assertEquals("pending", compose.buffer)
+        assertTrue(compose.isActive)
+        assertEquals(0, inputProcessedCallCount)
+    }
+
+    @Test
+    fun testComposeModeCharacterShortcutFlushesPendingText() {
+        val output = collectCharacterOutput { handler ->
+            val compose = ComposeMode()
+            compose.activate()
+            compose.appendText("pending")
+            handler.composeMode = compose
+            assertTrue(handler.onCharacterInput('c', ctrl = true))
+            assertEquals("", compose.buffer)
+            assertTrue(compose.isActive)
+        }
+        assertEquals("pending\u0003", output.toString(Charsets.UTF_8))
+    }
+
+    @Test
+    fun testComposeModeStickyShortcutsFlushAndClearTransientModifiers() {
+        for (ctrl in listOf(true, false)) {
+            var cleared = false
+            val output = collectCharacterOutput { handler ->
+                val compose = ComposeMode()
+                compose.activate()
+                compose.appendText("pending")
+                handler.composeMode = compose
+                handler.modifierManager = object : ModifierManager {
+                    override fun isCtrlActive() = ctrl
+                    override fun isAltActive() = !ctrl
+                    override fun isShiftActive() = false
+                    override fun clearTransients() {
+                        cleared = true
+                    }
+                }
+                handler.onKeyEvent(createKeyEvent(Key.C, KeyEventType.KeyDown))
+                assertEquals("", compose.buffer)
+                assertTrue(compose.isActive)
+            }
+            assertEquals(if (ctrl) "pending\u0003" else "pending\u001bc", output.toString(Charsets.UTF_8))
+            assertTrue(cleared)
+        }
+    }
+
+    @Test
+    fun testComposeModeAltGrStillComposesInternationalCharacters() {
+        val output = collectCharacterOutput { handler ->
+            val compose = ComposeMode()
+            compose.activate()
+            handler.composeMode = compose
+            handler.unicodeCharLookup = swissGermanKcmLookup
+            assertTrue(
+                handler.onKeyEvent(
+                    createKeyEventWithMeta(swissGermanApostropheKeycode, AndroidKeyEvent.META_ALT_RIGHT_ON),
+                ),
+            )
+            assertEquals("{", compose.buffer)
+            assertTrue(compose.isActive)
+        }
+        assertTrue(output.isEmpty())
+    }
+
+    @Test
     fun testComposeModeInterceptsKeyEvent() {
         val composeMode = ComposeMode()
         composeMode.activate()

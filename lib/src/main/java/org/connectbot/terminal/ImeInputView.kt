@@ -17,12 +17,16 @@
 package org.connectbot.terminal
 
 import android.content.Context
+import android.os.Build
+import android.text.Selection
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.TextAttribute
+import androidx.annotation.RequiresApi
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 
 /**
@@ -144,6 +148,15 @@ internal class ImeInputView(
         onUpdateSelection(this, 0, 0, -1, -1)
     }
 
+    /**
+     * Drop suggestion context when the terminal cursor settles somewhere that no longer
+     * follows the text reported to the IME. Partial echoes are accepted until the complete
+     * context has appeared, which accommodates slower remote sessions.
+     */
+    internal fun validateTerminalCursorContext(textBeforeCursor: String) {
+        activeConnection?.validateTerminalCursorContext(textBeforeCursor)
+    }
+
     private fun restartInputSoon() {
         onRestartInput(this)
     }
@@ -157,6 +170,8 @@ internal class ImeInputView(
     ) : BaseInputConnection(targetView, fullEditor) {
 
         private var composingText: String = ""
+        private var committedContext: String = ""
+        private var committedContextConfirmed: Boolean = false
         private var awaitingPostEnterCommitReplay: Boolean = false
         private var postEnterSubmittedText: String? = null
 
@@ -194,7 +209,7 @@ internal class ImeInputView(
             if (newText.isEmpty()) {
                 if (composingText.isNotEmpty()) {
                     // Composition cleared by IME; remove the projected text from the terminal.
-                    sendBackspaces(composingText.length)
+                    sendBackspaces(composingText.codePointCount(0, composingText.length))
                 }
                 composingText = ""
                 return true
@@ -209,13 +224,14 @@ internal class ImeInputView(
 
                 composingText.startsWith(newText) -> {
                     // IME removed characters from the end of the composition
-                    val deleteCount = composingText.length - newText.length
+                    val removedText = composingText.substring(newText.length)
+                    val deleteCount = removedText.codePointCount(0, removedText.length)
                     sendBackspaces(deleteCount)
                 }
 
                 else -> {
                     // IME replaced the composition; rewrite it in the terminal
-                    sendBackspaces(composingText.length)
+                    sendBackspaces(composingText.codePointCount(0, composingText.length))
                     sendTextInput(newText)
                 }
             }
@@ -229,8 +245,9 @@ internal class ImeInputView(
 
             super.finishComposingText()
             composingText = ""
-            // Clear the internal Editable to prevent unbounded accumulation
-            editable?.clear()
+            trimEditableContext()
+            committedContext = editable?.toString().orEmpty()
+            committedContextConfirmed = false
             return true
         }
 
@@ -314,10 +331,11 @@ internal class ImeInputView(
                 return true
             }
 
-            // Save composingText before super.commitText() which internally calls
-            // finishComposingText(), clearing composingText before we can use it.
+            val previousEditable = editable?.toString().orEmpty()
+            val committedEdit = committedEditableText(committedText, newCursorPosition)
+            val retainCommittedContext = !keyboardHandler.hasTerminalShortcutModifiers()
+            // Save the projected composition before committing it into the editable context.
             val previousComposingText = composingText
-            super.commitText(text, newCursorPosition)
 
             if (awaitingPostEnterCommitReplay &&
                 postEnterSubmittedText != null &&
@@ -337,15 +355,186 @@ internal class ImeInputView(
 
             awaitingPostEnterCommitReplay = false
             postEnterSubmittedText = null
-            if (committedText.isNotEmpty()) {
-                if (previousComposingText.isNotEmpty()) {
-                    sendBackspaces(previousComposingText.length)
+            if (previousComposingText.isNotEmpty()) {
+                sendBackspaces(previousComposingText.codePointCount(0, previousComposingText.length))
+                if (committedText.isNotEmpty()) {
+                    keyboardHandler.onCommittedText(committedText)
                 }
-                keyboardHandler.onCommittedText(committedText)
+            } else if (previousEditable != committedEdit.first) {
+                replaceCommittedContext(previousEditable, committedEdit.first)
             }
             composingText = ""
-            editable?.clear()
+            if (retainCommittedContext) {
+                applyCommittedEditableText(committedEdit)
+                trimEditableContext()
+                committedContext = editable?.toString().orEmpty()
+                committedContextConfirmed = false
+            } else {
+                clearEditableContext()
+                // updateSelection(0, 0) is not sufficient to make every IME forget its
+                // prediction history. Gboard can otherwise carry a terminal shortcut such
+                // as Ctrl+A into the next candidate and offer "a1" after a tmux window
+                // switch. Recreate the input connection so the next character starts with
+                // genuinely empty IME context.
+                restartInputSoon()
+            }
             return true
+        }
+
+        @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        override fun replaceText(
+            start: Int,
+            end: Int,
+            text: CharSequence,
+            newCursorPosition: Int,
+            textAttribute: TextAttribute?,
+        ): Boolean {
+            if (!fullEditor) {
+                return super.replaceText(start, end, text, newCursorPosition, textAttribute)
+            }
+
+            val previousEditable = editable?.toString().orEmpty()
+            val replacement = replacementEditableText(
+                previousEditable,
+                start,
+                end,
+                text.toString(),
+                newCursorPosition,
+            )
+            if (previousEditable != replacement.first) {
+                replaceCommittedContext(previousEditable, replacement.first)
+            }
+            composingText = ""
+            applyCommittedEditableText(replacement)
+            trimEditableContext()
+            committedContext = editable?.toString().orEmpty()
+            committedContextConfirmed = false
+            return true
+        }
+
+        private fun replaceCommittedContext(previous: String, current: String) {
+            var commonPrefixLength = 0
+            val limit = minOf(previous.length, current.length)
+            while (commonPrefixLength < limit && previous[commonPrefixLength] == current[commonPrefixLength]) {
+                commonPrefixLength++
+            }
+            if (commonPrefixLength > 0 &&
+                commonPrefixLength < previous.length &&
+                Character.isLowSurrogate(previous[commonPrefixLength])
+            ) {
+                commonPrefixLength--
+            }
+
+            val removed = previous.substring(commonPrefixLength)
+            sendBackspaces(removed.codePointCount(0, removed.length))
+            keyboardHandler.onCommittedText(current.substring(commonPrefixLength))
+        }
+
+        private fun committedEditableText(committedText: String, newCursorPosition: Int): Pair<String, Int> {
+            val buffer = editable ?: return committedText to committedText.length
+            val composingStart = BaseInputConnection.getComposingSpanStart(buffer)
+            val composingEnd = BaseInputConnection.getComposingSpanEnd(buffer)
+            val selectionStart = Selection.getSelectionStart(buffer)
+            val selectionEnd = Selection.getSelectionEnd(buffer)
+            val start: Int
+            val end: Int
+            if (composingStart >= 0 && composingEnd >= 0) {
+                start = minOf(composingStart, composingEnd)
+                end = maxOf(composingStart, composingEnd)
+            } else if (selectionStart >= 0 && selectionEnd >= 0) {
+                start = minOf(selectionStart, selectionEnd)
+                end = maxOf(selectionStart, selectionEnd)
+            } else {
+                start = buffer.length
+                end = buffer.length
+            }
+            return replacementEditableText(buffer.toString(), start, end, committedText, newCursorPosition)
+        }
+
+        private fun replacementEditableText(
+            previous: String,
+            replacementStart: Int,
+            replacementEnd: Int,
+            replacement: String,
+            newCursorPosition: Int,
+        ): Pair<String, Int> {
+            val start = minOf(replacementStart, replacementEnd).coerceIn(0, previous.length)
+            val end = maxOf(replacementStart, replacementEnd).coerceIn(start, previous.length)
+            val text = previous.replaceRange(start, end, replacement)
+            val cursor = if (newCursorPosition > 0) {
+                start + replacement.length + newCursorPosition - 1
+            } else {
+                start + newCursorPosition
+            }.coerceIn(0, text.length)
+            return text to cursor
+        }
+
+        private fun applyCommittedEditableText(edit: Pair<String, Int>) {
+            val buffer = editable ?: return
+            buffer.replace(0, buffer.length, edit.first)
+            BaseInputConnection.removeComposingSpans(buffer)
+            Selection.setSelection(buffer, edit.second)
+        }
+
+        private fun trimEditableContext() {
+            val buffer = editable ?: return
+            if (buffer.length <= MAX_EDITABLE_CONTEXT) return
+            var deleteEnd = buffer.length - MAX_EDITABLE_CONTEXT
+            if (deleteEnd < buffer.length && Character.isLowSurrogate(buffer[deleteEnd])) {
+                deleteEnd++
+            }
+            buffer.delete(0, deleteEnd)
+            Selection.setSelection(buffer, buffer.length)
+        }
+
+        private fun clearEditableContext() {
+            editable?.clear()
+            composingText = ""
+            committedContext = ""
+            committedContextConfirmed = false
+            onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
+        }
+
+        fun validateTerminalCursorContext(textBeforeCursor: String) {
+            if (committedContext.isEmpty()) return
+            if (textBeforeCursor.endsWith(committedContext)) {
+                committedContextConfirmed = true
+                return
+            }
+            if (!committedContextConfirmed && hasEchoedContextPrefix(textBeforeCursor)) return
+
+            if (composingText.isEmpty()) {
+                clearEditableContext()
+                restartInputSoon()
+            } else {
+                // Input may have started at the cursor's new location before the debounce
+                // expired. Keep that active composition, but detach it from committed text
+                // belonging to the old cursor (for example, keep "this" while dropping the
+                // tmux selector prefix from "1this").
+                val buffer = editable
+                if (buffer != null) {
+                    buffer.replace(0, buffer.length, composingText)
+                    BaseInputConnection.setComposingSpans(buffer)
+                    Selection.setSelection(buffer, buffer.length)
+                }
+                committedContext = ""
+                committedContextConfirmed = false
+                onUpdateSelection(
+                    this@ImeInputView,
+                    composingText.length,
+                    composingText.length,
+                    0,
+                    composingText.length,
+                )
+            }
+        }
+
+        private fun hasEchoedContextPrefix(textBeforeCursor: String): Boolean {
+            val maxLength = minOf(textBeforeCursor.length, committedContext.length)
+            for (length in maxLength downTo 1) {
+                if (textBeforeCursor.endsWith(committedContext.substring(0, length))) return true
+            }
+            return false
         }
 
         private fun sendBackspaces(count: Int) {
@@ -369,11 +558,14 @@ internal class ImeInputView(
          */
         fun resetComposition() {
             composingText = ""
+            committedContext = ""
+            committedContextConfirmed = false
         }
     }
 
     companion object {
         /** Upper bound on [InputConnection.deleteSurroundingText]'s `leftLength`. */
         private const val MAX_DELETE_SURROUNDING = 4096
+        private const val MAX_EDITABLE_CONTEXT = 1024
     }
 }

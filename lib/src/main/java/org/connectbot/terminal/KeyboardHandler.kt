@@ -22,7 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
@@ -87,6 +86,14 @@ internal class KeyboardHandler(
             }.get(keyCode, metaState)
         },
 ) {
+    private companion object {
+        // VTermModifier values from libvterm's vterm_keycodes.h.
+        const val MODIFIER_SHIFT = 1
+        const val MODIFIER_ALT = 2
+        const val MODIFIER_CTRL = 4
+        const val TERMINAL_SHORTCUT_MODIFIERS = MODIFIER_CTRL or MODIFIER_ALT
+    }
+
     var composeMode: ComposeMode? = null
         set(value) {
             if (field != value) {
@@ -130,18 +137,17 @@ internal class KeyboardHandler(
         val alt = modifierState.alt
         val stripAltGr = modifierState.stripAltGr
 
-        // If compose mode is active, intercept all input
+        // Buffer text while composing, but let terminal commands use the normal key path.
         val compose = composeMode
         if (compose != null && compose.isActive) {
+            if (AndroidKeyEvent.isModifierKey(nativeEvent.keyCode)) return false
+            val modifiers = buildModifierMask(ctrl, alt, shift)
+            val terminalShortcut = modifiers and TERMINAL_SHORTCUT_MODIFIERS != 0
             when (key) {
                 Key.Enter -> {
                     // Flush any IME-composed text, then dispatch a real Enter so the shell
                     // sees a newline. Compose mode stays active (sticky toggle).
-                    val text = compose.commit()
-                    text?.codePoints()?.forEach { codepoint ->
-                        terminalEmulator.dispatchCharacter(0, codepoint)
-                    }
-                    val modifiers = buildModifierMask(ctrl, alt, shift)
+                    flushComposition()
                     terminalEmulator.dispatchKey(modifiers, VTermKey.ENTER)
                     modifierManager?.clearTransients()
                     onInputProcessed?.invoke()
@@ -151,10 +157,10 @@ internal class KeyboardHandler(
                     // If a composition is in progress, Esc just cancels it (vim-like). With
                     // an empty buffer, Esc passes through to the shell. Compose mode stays
                     // active either way.
-                    if (compose.buffer.isNotEmpty()) {
+                    if (compose.buffer.isNotEmpty() && !terminalShortcut) {
                         compose.cancel()
                     } else {
-                        val modifiers = buildModifierMask(ctrl, alt, shift)
+                        flushComposition()
                         terminalEmulator.dispatchKey(modifiers, VTermKey.ESCAPE)
                         modifierManager?.clearTransients()
                         onInputProcessed?.invoke()
@@ -165,10 +171,10 @@ internal class KeyboardHandler(
                     // With a composition in progress, Backspace edits the buffer. With an
                     // empty buffer it passes through so users can still delete characters
                     // that were typed into the shell before entering compose mode.
-                    if (compose.buffer.isNotEmpty()) {
+                    if (compose.buffer.isNotEmpty() && !terminalShortcut) {
                         compose.deleteLastChar()
                     } else {
-                        val modifiers = buildModifierMask(ctrl, alt, shift)
+                        flushComposition()
                         if (delKeyMode is DelKeyMode.Backspace) {
                             terminalEmulator.dispatchCharacter(modifiers, 0x08)
                         } else {
@@ -180,8 +186,12 @@ internal class KeyboardHandler(
                 }
 
                 else -> {
-                    if (!ctrl && !event.isAltPressed) {
-                        val codepoint = getCodePointFromKeyEvent(event)
+                    if (!terminalShortcut && mapToVTermKey(key) == null) {
+                        val codepoint = getCodePointFromKeyEvent(
+                            event,
+                            extraShift = modifierManager?.isShiftActive() == true,
+                            stripAlt = stripAltGr,
+                        )
                         if (codepoint != null) {
                             dispatchCodePoint(codepoint) { cp ->
                                 if (Character.isBmpCodePoint(cp)) {
@@ -191,11 +201,16 @@ internal class KeyboardHandler(
                                     compose.appendChar(Character.lowSurrogate(cp))
                                 }
                             }
+                            return true
                         }
+                        return false
                     }
+                    // A navigation key or shortcut must see the text before acting on it.
+                    // Do not apply the shortcut's modifiers to the pending composition.
+                    flushComposition()
                 }
             }
-            return true
+            if (key == Key.Enter || key == Key.Escape || key == Key.Backspace) return true
         }
 
         // If selection is active, intercept arrow keys for selection movement
@@ -298,18 +313,24 @@ internal class KeyboardHandler(
      * This is called for printable characters.
      */
     fun onCharacterInput(char: Char, ctrl: Boolean = false, alt: Boolean = false): Boolean {
+        val modifiers = buildModifierMask(ctrl, alt, false)
         val compose = composeMode
         if (compose != null && compose.isActive) {
-            compose.appendChar(char)
-            return true
+            if (modifiers and TERMINAL_SHORTCUT_MODIFIERS == 0) {
+                compose.appendChar(char)
+                return true
+            }
+            flushComposition()
         }
-
-        val modifiers = buildModifierMask(ctrl, alt, false)
 
         dispatchCodepointOrEnter(modifiers, char.code)
         modifierManager?.clearTransients()
         onInputProcessed?.invoke()
         return true
+    }
+
+    private fun flushComposition() {
+        composeMode?.commit()?.let { sendText(0, it, false) }
     }
 
     /**
@@ -362,6 +383,9 @@ internal class KeyboardHandler(
         onInputProcessed?.invoke()
     }
 
+    /** Whether the next text commit will be interpreted as a terminal shortcut. */
+    internal fun hasTerminalShortcutModifiers(): Boolean = getModifierMask() and TERMINAL_SHORTCUT_MODIFIERS != 0
+
     /**
      * Build VTerm modifier mask.
      * Bit 0: Shift
@@ -370,9 +394,9 @@ internal class KeyboardHandler(
      */
     private fun buildModifierMask(ctrl: Boolean, alt: Boolean, shift: Boolean): Int {
         var mask = getModifierMask()
-        if (shift) mask = mask or 1
-        if (alt) mask = mask or 2
-        if (ctrl) mask = mask or 4
+        if (shift) mask = mask or MODIFIER_SHIFT
+        if (alt) mask = mask or MODIFIER_ALT
+        if (ctrl) mask = mask or MODIFIER_CTRL
         return mask
     }
 
@@ -402,9 +426,9 @@ internal class KeyboardHandler(
     fun getModifierMask(): Int {
         return modifierManager?.let {
             var mask = 0
-            if (it.isShiftActive() == true) mask = mask or 1 // Bit 0: Shift
-            if (it.isAltActive() == true) mask = mask or 2 // Bit 1: Alt
-            if (it.isCtrlActive() == true) mask = mask or 4 // Bit 2: Ctrl
+            if (it.isShiftActive() == true) mask = mask or MODIFIER_SHIFT
+            if (it.isAltActive() == true) mask = mask or MODIFIER_ALT
+            if (it.isCtrlActive() == true) mask = mask or MODIFIER_CTRL
             return mask
         } ?: 0
     }

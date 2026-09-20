@@ -168,6 +168,9 @@ private const val UI_SETTLE_DELAY_MS = 100L
  */
 private const val KEYBOARD_SHOW_DELAY_MS = 50L
 
+/** Wait for transient TUI cursor moves to return before invalidating IME suggestion context. */
+private const val IME_CONTEXT_SETTLE_DELAY_MS = 300L
+
 /**
  * Border width for the terminal display in dp.
  */
@@ -498,6 +501,19 @@ internal fun TerminalWithAccessibility(
                 Log.d("Terminal", "IME hide completed")
                 onImeVisibilityChanged(false)
             }
+        }
+    }
+
+    // The IME may retain a recently committed word so suggestion taps can replace it. Once
+    // terminal output settles, keep that context only when it still precedes the cursor.
+    // This prevents a TUI redraw or cursor movement from editing text at the old location.
+    LaunchedEffect(screenState, imeInputView) {
+        snapshotFlow {
+            val snapshot = screenState.snapshot
+            Triple(snapshot.cursorRow, snapshot.cursorCol, snapshot.textBeforeCursor())
+        }.collectLatest { (_, _, textBeforeCursor) ->
+            delay(IME_CONTEXT_SETTLE_DELAY_MS)
+            imeInputView?.validateTerminalCursorContext(textBeforeCursor)
         }
     }
 
@@ -2498,6 +2514,17 @@ private fun truncateForOverlay(buffer: String, availableCols: Int): String {
     val builder = StringBuilder("\u2026")
     codepoints.forEach { builder.appendCodePoint(it) }
     return builder.toString()
+}
+
+/** Text in the cursor's soft-wrapped logical line that precedes the cursor. */
+private fun TerminalSnapshot.textBeforeCursor(): String {
+    val cursorLine = lines.getOrNull(cursorRow) ?: return ""
+    var firstRow = cursorRow
+    while (firstRow > 0 && lines[firstRow - 1].softWrapped) firstRow--
+    return buildString {
+        for (row in firstRow until cursorRow) append(lines[row].columnText)
+        append(cursorLine.columnText.take(cursorCol.coerceIn(0, cursorLine.columnText.length)))
+    }
 }
 
 /**
