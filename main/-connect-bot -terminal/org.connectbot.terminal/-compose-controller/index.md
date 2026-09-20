@@ -23,4 +23,5 @@ Compose mode buffers typed text locally and displays it as an overlay at the cur
 | [getComposedText](get-composed-text.md) | [release]<br>abstract fun [getComposedText](get-composed-text.md)(): [String](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html)<br>Get the currently composed (buffered) text. |
 | [startComposeMode](start-compose-mode.md) | [release]<br>abstract fun [startComposeMode](start-compose-mode.md)()<br>Start compose mode. Clears any active selection first. |
 | [stopComposeMode](stop-compose-mode.md) | [release]<br>abstract fun [stopComposeMode](stop-compose-mode.md)()<br>Stop compose mode, discarding any buffered text. |
+| [syncImeShortcutInputMode](sync-ime-shortcut-input-mode.md) | [release]<br>open fun [syncImeShortcutInputMode](sync-ime-shortcut-input-mode.md)(mode: [ImeShortcutInputMode](../-ime-shortcut-input-mode/index.md))<br>Synchronize the IME's temporary shortcut input mode after an on-screen terminal modifier changes state. |
 | [toggleComposeMode](toggle-compose-mode.md) | [release]<br>abstract fun [toggleComposeMode](toggle-compose-mode.md)()<br>Toggle compose mode on/off. |
