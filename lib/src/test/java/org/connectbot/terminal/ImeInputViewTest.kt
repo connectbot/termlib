@@ -19,6 +19,7 @@ package org.connectbot.terminal
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
+import android.text.InputType
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.View
@@ -217,6 +218,51 @@ class ImeInputViewTest {
     }
 
     @Test
+    fun testTypeNullShortcutModeDispatchesRawCtrlKeyThenRestoresFullEditor() {
+        val capture = createImeShortcutCapture()
+        val shortcutAttrs = EditorInfo()
+        var initialConnection: BaseInputConnection? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            initialConnection = capture.view.ic(composeMode = true)
+            capture.view.syncShortcutInputMode(ImeShortcutInputMode.TYPE_NULL)
+            val shortcutConnection = capture.view.onCreateInputConnection(shortcutAttrs)
+            shortcutConnection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A))
+        }
+        drainMainLooper()
+
+        assertEquals(InputType.TYPE_NULL, shortcutAttrs.inputType and InputType.TYPE_MASK_CLASS)
+        assertTrue(capture.outputs.flatMap { it.toList() }.contains(0x01.toByte()))
+        assertEquals(2, capture.restartRequests.size)
+
+        val restoredAttrs = EditorInfo()
+        capture.view.onCreateInputConnection(restoredAttrs)
+        assertEquals(InputType.TYPE_CLASS_TEXT, restoredAttrs.inputType and InputType.TYPE_MASK_CLASS)
+        assertEquals("", initialConnection?.getEditable()?.toString())
+    }
+
+    @Test
+    fun testForceAsciiShortcutModeDispatchesComposingTextOnceThenRestoresEditor() {
+        val capture = createImeShortcutCapture()
+        val shortcutAttrs = EditorInfo()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            capture.view.ic(composeMode = true)
+            capture.view.syncShortcutInputMode(ImeShortcutInputMode.FORCE_ASCII)
+            val shortcutConnection = capture.view.onCreateInputConnection(shortcutAttrs)
+            shortcutConnection.setComposingText("a", 1)
+            shortcutConnection.commitText("a", 1)
+        }
+        drainMainLooper()
+
+        assertTrue(shortcutAttrs.imeOptions and EditorInfo.IME_FLAG_FORCE_ASCII != 0)
+        assertEquals(1, capture.outputs.flatMap { it.toList() }.count { it == 0x01.toByte() })
+        assertEquals(2, capture.restartRequests.size)
+
+        val restoredAttrs = EditorInfo()
+        capture.view.onCreateInputConnection(restoredAttrs)
+        assertEquals(0, restoredAttrs.imeOptions and EditorInfo.IME_FLAG_FORCE_ASCII)
+    }
+
+    @Test
     fun testCursorContextAllowsPartialEchoUntilCommittedTextAppears() {
         val view = makeView()
         val ic = view.ic(composeMode = true)
@@ -392,7 +438,9 @@ class ImeInputViewTest {
             initialCols = 80,
             onKeyboardInput = { data -> outputs.add(data.copyOf()) },
         )
-        val handler = KeyboardHandler(emulator, modifierManager = modifierManager)
+        val handler = KeyboardHandler(emulator, modifierManager = modifierManager).also {
+            it.unicodeCharLookup = { _, keyCode, _ -> if (keyCode == KeyEvent.KEYCODE_A) 'a'.code else 0 }
+        }
         var ic: InputConnection? = null
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = ImeInputView(
@@ -409,6 +457,39 @@ class ImeInputViewTest {
             ic = view.onCreateInputConnection(EditorInfo())
         }
         return ic!! to outputs
+    }
+
+    private data class ImeShortcutCapture(
+        val view: ImeInputView,
+        val outputs: MutableList<ByteArray>,
+        val restartRequests: MutableList<View>,
+    )
+
+    private fun createImeShortcutCapture(): ImeShortcutCapture {
+        var ctrlActive = true
+        val modifierManager = object : ModifierManager {
+            override fun isCtrlActive() = ctrlActive
+            override fun isAltActive() = false
+            override fun isShiftActive() = false
+            override fun clearTransients() {
+                ctrlActive = false
+            }
+        }
+        val outputs = mutableListOf<ByteArray>()
+        val restartRequests = mutableListOf<View>()
+        val emulator = TerminalEmulatorFactory.create(
+            initialRows = 24,
+            initialCols = 80,
+            onKeyboardInput = { data -> outputs.add(data.copyOf()) },
+        )
+        val handler = KeyboardHandler(emulator, modifierManager = modifierManager)
+        val view = ImeInputView(
+            context = context,
+            keyboardHandler = handler,
+            inputMethodManager = noOpImm,
+            onRestartInput = { restartRequests.add(it) },
+        )
+        return ImeShortcutCapture(view, outputs, restartRequests)
     }
 
     private data class ComposeReplayCapture(

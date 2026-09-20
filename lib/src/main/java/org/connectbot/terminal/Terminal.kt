@@ -741,6 +741,10 @@ internal fun TerminalWithAccessibility(
                 }
             }
 
+            override fun syncImeShortcutInputMode(mode: ImeShortcutInputMode) {
+                imeInputView?.syncShortcutInputMode(mode)
+            }
+
             override fun getComposedText(): String = composeMode.buffer
 
             override val pendingDeadChar: Int
@@ -1644,12 +1648,7 @@ internal fun TerminalWithAccessibility(
                     ImeInputView(context, keyboardHandler).apply {
                         // Set up key event handling
                         setOnKeyListener { _, _, event ->
-                            if (event.action == KeyEvent.ACTION_DOWN) {
-                                resetImeBuffer()
-                            }
-                            keyboardHandler.onKeyEvent(
-                                androidx.compose.ui.input.key.KeyEvent(event),
-                            )
+                            handleRawKeyEvent(event)
                         }
                         // Store reference for IME control
                         imeInputView = this

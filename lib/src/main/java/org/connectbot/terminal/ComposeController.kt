@@ -44,6 +44,12 @@ interface ComposeController {
     fun toggleComposeMode()
 
     /**
+     * Synchronize the IME's temporary shortcut input mode after an on-screen terminal
+     * modifier changes state.
+     */
+    fun syncImeShortcutInputMode(mode: ImeShortcutInputMode) {}
+
+    /**
      * Get the currently composed (buffered) text.
      */
     fun getComposedText(): String

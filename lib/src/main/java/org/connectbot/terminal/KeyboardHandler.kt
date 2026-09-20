@@ -376,6 +376,9 @@ internal class KeyboardHandler(
             Normalizer.normalize(text, Normalizer.Form.NFC)
         }
         val modifiers = getModifierMask()
+        if (composeMode?.isActive == true && modifiers and TERMINAL_SHORTCUT_MODIFIERS != 0) {
+            flushComposition()
+        }
 
         sendText(modifiers, normalized, true)
 

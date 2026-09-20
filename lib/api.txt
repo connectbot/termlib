@@ -7,6 +7,7 @@ package org.connectbot.terminal {
     method @InaccessibleFromKotlin public boolean isComposeModeActive();
     method public void startComposeMode();
     method public void stopComposeMode();
+    method public default void syncImeShortcutInputMode(org.connectbot.terminal.ImeShortcutInputMode mode);
     method public void toggleComposeMode();
     property public abstract boolean isComposeModeActive;
     property public default int pendingDeadChar;
@@ -21,6 +22,12 @@ package org.connectbot.terminal {
 
   public static final class DelKeyMode.Delete extends org.connectbot.terminal.DelKeyMode {
     field public static final org.connectbot.terminal.DelKeyMode.Delete INSTANCE;
+  }
+
+  public enum ImeShortcutInputMode {
+    enum_constant public static final org.connectbot.terminal.ImeShortcutInputMode DISABLED;
+    enum_constant public static final org.connectbot.terminal.ImeShortcutInputMode FORCE_ASCII;
+    enum_constant public static final org.connectbot.terminal.ImeShortcutInputMode TYPE_NULL;
   }
 
   public final class InlineImageLimits {

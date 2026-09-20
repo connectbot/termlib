@@ -63,6 +63,7 @@ internal class ImeInputView(
         set(value) {
             if (field == value) return
             field = value
+            if (!value) shortcutInputMode = ImeShortcutInputMode.DISABLED
             if (windowToken != null) {
                 onRestartInput(this)
             }
@@ -99,13 +100,17 @@ internal class ImeInputView(
             EditorInfo.IME_FLAG_NO_ENTER_ACTION or
             EditorInfo.IME_ACTION_NONE
 
-        if (isComposeModeActive) {
+        val useFullEditor = isComposeModeActive && shortcutInputMode != ImeShortcutInputMode.TYPE_NULL
+        if (useFullEditor) {
             // Compose mode: allow voice input and IME suggestions.
             // TYPE_CLASS_TEXT without NO_SUGGESTIONS keeps the suggestion strip (and its
             // microphone button) visible. fullEditor=true makes BaseInputConnection provide
             // a real Editable so getExtractedText() returns non-null (required by Gboard
             // for voice input).
             outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT
+            if (shortcutInputMode == ImeShortcutInputMode.FORCE_ASCII) {
+                outAttrs.imeOptions = outAttrs.imeOptions or EditorInfo.IME_FLAG_FORCE_ASCII
+            }
             outAttrs.initialSelStart = 0
             outAttrs.initialSelEnd = 0
         } else {
@@ -120,12 +125,40 @@ internal class ImeInputView(
                 EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
 
-        return TerminalInputConnection(this, isComposeModeActive).also { activeConnection = it }
+        return TerminalInputConnection(this, useFullEditor).also { activeConnection = it }
     }
 
     override fun onCheckIsTextEditor(): Boolean = true
 
     private var activeConnection: TerminalInputConnection? = null
+    private var shortcutInputMode: ImeShortcutInputMode = ImeShortcutInputMode.DISABLED
+
+    /** Apply or clear the temporary editor mode used for terminal modifier shortcuts. */
+    fun syncShortcutInputMode(preferredMode: ImeShortcutInputMode) {
+        val nextMode = if (
+            isComposeModeActive &&
+            keyboardHandler.hasTerminalShortcutModifiers()
+        ) {
+            preferredMode
+        } else {
+            ImeShortcutInputMode.DISABLED
+        }
+        if (shortcutInputMode == nextMode) return
+
+        resetImeBuffer()
+        shortcutInputMode = nextMode
+        restartInputSoon()
+    }
+
+    /** Process a raw view key event and restore full IME input after a one-shot shortcut. */
+    fun handleRawKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) resetImeBuffer()
+        val handled = keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
+        if (handled && event.action == KeyEvent.ACTION_DOWN) {
+            finishShortcutInput(restartWhenStillActive = false)
+        }
+        return handled
+    }
 
     /**
      * Clears the IME's internal text buffer and resets its selection state to (0, 0).
@@ -161,6 +194,21 @@ internal class ImeInputView(
         onRestartInput(this)
     }
 
+    private fun finishShortcutInput(restartWhenStillActive: Boolean) {
+        if (shortcutInputMode == ImeShortcutInputMode.DISABLED) {
+            if (restartWhenStillActive) restartInputSoon()
+            return
+        }
+        val nextMode = if (keyboardHandler.hasTerminalShortcutModifiers()) {
+            shortcutInputMode
+        } else {
+            ImeShortcutInputMode.DISABLED
+        }
+        val changed = nextMode != shortcutInputMode
+        shortcutInputMode = nextMode
+        if (changed || restartWhenStillActive) restartInputSoon()
+    }
+
     /**
      * Custom InputConnection that handles backspace and other special keys for terminal input.
      */
@@ -174,11 +222,23 @@ internal class ImeInputView(
         private var committedContextConfirmed: Boolean = false
         private var awaitingPostEnterCommitReplay: Boolean = false
         private var postEnterSubmittedText: String? = null
+        private var shortcutSubmittedText: String? = null
 
         override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
             if (!fullEditor) return super.setComposingText(text, newCursorPosition)
 
             val newText = text?.toString() ?: ""
+            if (shortcutInputMode == ImeShortcutInputMode.FORCE_ASCII &&
+                keyboardHandler.hasTerminalShortcutModifiers() &&
+                newText.isNotEmpty()
+            ) {
+                super.setComposingText(text, newCursorPosition)
+                keyboardHandler.onCommittedText(newText)
+                shortcutSubmittedText = newText
+                clearEditableContext()
+                finishShortcutInput(restartWhenStillActive = true)
+                return true
+            }
             if (awaitingPostEnterCommitReplay &&
                 newText.isNotEmpty() &&
                 postEnterSubmittedText != null &&
@@ -308,6 +368,7 @@ internal class ImeInputView(
                 // view event, so forwarding here is the only way their keys reach the terminal.
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
+                    finishShortcutInput(restartWhenStillActive = false)
                 }
                 return true
             }
@@ -315,6 +376,11 @@ internal class ImeInputView(
 
         override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
             val committedText = text?.toString() ?: ""
+            if (shortcutSubmittedText == committedText) {
+                shortcutSubmittedText = null
+                clearEditableContext()
+                return true
+            }
             if (!fullEditor) {
                 if (committedText.isNotEmpty()) {
                     // When in TYPE_NULL mode, Gboard sends regular characters (a-z, etc.) via BOTH
@@ -326,7 +392,12 @@ internal class ImeInputView(
                     //
                     // Deliver the text directly; this covers accented chars and any regular
                     // chars sent via commitText rather than the sendKeyEvent/raw-view paths.
-                    sendTextInput(committedText)
+                    if (keyboardHandler.hasTerminalShortcutModifiers()) {
+                        keyboardHandler.onCommittedText(committedText)
+                        finishShortcutInput(restartWhenStillActive = true)
+                    } else {
+                        sendTextInput(committedText)
+                    }
                 }
                 return true
             }
@@ -376,7 +447,7 @@ internal class ImeInputView(
                 // as Ctrl+A into the next candidate and offer "a1" after a tmux window
                 // switch. Recreate the input connection so the next character starts with
                 // genuinely empty IME context.
-                restartInputSoon()
+                finishShortcutInput(restartWhenStillActive = true)
             }
             return true
         }
