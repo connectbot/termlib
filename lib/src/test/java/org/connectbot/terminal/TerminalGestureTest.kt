@@ -184,13 +184,7 @@ class TerminalGestureTest {
 
         composeTestRule.waitForIdle()
         (emulator as TerminalEmulatorImpl).commands.call { Unit }
-        composeTestRule.waitUntil {
-            viewport?.let {
-                it.widthPixels == 320 * 2 &&
-                    it.heightPixels == 200 * 2 &&
-                    it == emulator.dimensions
-            } == true
-        }
+        composeTestRule.waitForIdle()
         composeTestRule.runOnIdle {
             val measured = checkNotNull(viewport)
             assertEquals(320 * 2, measured.widthPixels)
@@ -216,9 +210,13 @@ class TerminalGestureTest {
             )
         }
 
-        composeTestRule.waitUntil { viewport?.let { it.rows == 12 && it.columns == 44 } == true }
+        composeTestRule.waitForIdle()
+        (emulator as TerminalEmulatorImpl).commands.call { Unit }
+        composeTestRule.waitForIdle()
         composeTestRule.runOnIdle {
             val measured = checkNotNull(viewport)
+            assertEquals(12, measured.rows)
+            assertEquals(44, measured.columns)
             assertTrue(measured.widthPixels in 1 until 1200)
             assertTrue(measured.heightPixels in 1 until 800)
         }
