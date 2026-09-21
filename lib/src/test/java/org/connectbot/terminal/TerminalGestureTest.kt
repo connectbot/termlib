@@ -18,6 +18,7 @@ package org.connectbot.terminal
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
@@ -28,6 +29,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -37,11 +39,102 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLog
+import java.util.concurrent.CopyOnWriteArrayList
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w1000dp-h1200dp-xhdpi")
 class TerminalGestureTest {
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun suspensionIncludesPixelOnlyAndForcedSizeChanges() {
+        val paused = mutableStateOf(false)
+        val width = mutableStateOf(320.dp)
+        val forced = mutableStateOf<Pair<Int, Int>?>(null)
+        val sizes = CopyOnWriteArrayList<TerminalDimensions>()
+        val emulator = TerminalEmulatorFactory.create(onResize = { sizes.add(it) }) as TerminalEmulatorImpl
+        composeTestRule.setContent {
+            Terminal(emulator, Modifier.size(width.value, 200.dp), forcedSize = forced.value, resizeSuspended = paused.value)
+        }
+        fun settle() {
+            composeTestRule.waitForIdle()
+            emulator.commands.call { Unit }
+            composeTestRule.waitForIdle()
+        }
+        settle()
+        val original = emulator.dimensions
+        sizes.clear()
+        composeTestRule.runOnIdle { paused.value = true }
+        settle()
+        composeTestRule.runOnIdle { width.value = 320.5.dp }
+        settle()
+        assertEquals(original, emulator.dimensions)
+        composeTestRule.runOnIdle { paused.value = false }
+        settle()
+        assertEquals(1, sizes.size)
+        assertEquals(original.columns, sizes.single().columns)
+        assertEquals(original.widthPixels + 1, sizes.single().widthPixels)
+        sizes.clear()
+        composeTestRule.runOnIdle { paused.value = true }
+        settle()
+        composeTestRule.runOnIdle { forced.value = 30 to 80 }
+        settle()
+        composeTestRule.runOnIdle { forced.value = 20 to 60 }
+        settle()
+        assertTrue(sizes.isEmpty())
+        composeTestRule.runOnIdle { paused.value = false }
+        settle()
+        assertEquals(1, sizes.size)
+        assertEquals(20, sizes.single().rows)
+        assertEquals(60, sizes.single().columns)
+    }
+
+    @Test
+    fun suspendedResizeDiscardsIntermediateLayoutsAndCoalescesFinalSize() {
+        val paused = mutableStateOf(false)
+        val height = mutableStateOf(200.dp)
+        val font = mutableStateOf(11.sp)
+        val sizes = CopyOnWriteArrayList<TerminalDimensions>()
+        val emulator = TerminalEmulatorFactory.create(onResize = { sizes.add(it) }) as TerminalEmulatorImpl
+        composeTestRule.setContent {
+            Terminal(emulator, Modifier.size(320.dp, height.value), initialFontSize = font.value, resizeSuspended = paused.value)
+        }
+        fun settle() {
+            composeTestRule.waitForIdle()
+            emulator.commands.call { Unit }
+            composeTestRule.waitForIdle()
+        }
+        settle()
+        val original = emulator.dimensions
+        sizes.clear()
+        composeTestRule.runOnIdle { paused.value = true }
+        settle()
+        composeTestRule.runOnIdle { height.value = 400.dp }
+        settle()
+        composeTestRule.runOnIdle { height.value = 300.dp }
+        settle()
+        assertEquals(original, emulator.dimensions)
+        assertTrue(sizes.isEmpty())
+        composeTestRule.runOnIdle { height.value = 200.dp }
+        settle()
+        composeTestRule.runOnIdle { paused.value = false }
+        settle()
+        assertTrue("Menu restoration must not resize the PTY", sizes.isEmpty())
+        composeTestRule.runOnIdle { paused.value = true }
+        settle()
+        composeTestRule.runOnIdle {
+            height.value = 250.dp
+            font.value = 12.sp
+        }
+        settle()
+        assertTrue(sizes.isEmpty())
+        composeTestRule.runOnIdle { paused.value = false }
+        settle()
+        assertEquals("Apply only the final viewport and font", 1, sizes.size)
+        assertEquals(500, sizes.single().heightPixels)
+    }
+
     @get:Rule
     val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 

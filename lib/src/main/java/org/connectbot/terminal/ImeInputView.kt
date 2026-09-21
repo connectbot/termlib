@@ -17,16 +17,19 @@
 package org.connectbot.terminal
 
 import android.content.Context
+import android.graphics.Rect
 import android.os.Build
 import android.text.Selection
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowInsets
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.TextAttribute
 import androidx.annotation.RequiresApi
+import androidx.core.view.SoftwareKeyboardControllerCompat
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 
 /**
@@ -52,6 +55,20 @@ internal class ImeInputView(
         },
     internal val onRestartInput: (view: View) -> Unit =
         { view -> inputMethodManager.restartInput(view) },
+    private val onShowKeyboard: (View) -> Unit = { view ->
+        // This runs in our cancellable posted request. Compat.show() posts another
+        // IMM request internally, which could outlive a subsequent hide/disposal.
+        if (Build.VERSION.SDK_INT >= 30 && view.windowInsetsController != null) {
+            if (Build.VERSION.SDK_INT < 33) {
+                // Flush IMM's focus bookkeeping before requesting IME insets.
+                inputMethodManager.isActive
+            }
+            view.windowInsetsController?.show(WindowInsets.Type.ime())
+        } else {
+            inputMethodManager.showSoftInput(view, 0)
+        }
+    },
+    private val onHideKeyboard: (View) -> Unit = { SoftwareKeyboardControllerCompat(it).hide() },
 ) : View(context) {
 
     init {
@@ -69,13 +86,67 @@ internal class ImeInputView(
             }
         }
 
-    /**
-     * Show the IME forcefully. This is more reliable than SoftwareKeyboardController.
-     */
-    @Suppress("DEPRECATION")
+    internal var imeAllowed = true
+        set(value) {
+            if (field == value) return
+            field = value
+            if (!value) hideIme()
+        }
+    private var pendingShow = false
+    private var restoreOnWindowFocus = false
+    private var lastImeVisible = false
+    private val showRequest = Runnable {
+        if (imeAllowed && pendingShow && isAttachedToWindow && hasWindowFocus() && hasFocus()) {
+            pendingShow = false
+            onShowKeyboard(this)
+        }
+    }
+
+    internal fun observeImeVisibility(visible: Boolean) {
+        if (hasWindowFocus()) lastImeVisible = visible
+    }
+
+    /** An explicit request also works when this editor already has focus. */
     fun showIme() {
-        if (requestFocus()) {
-            inputMethodManager.showSoftInput(this, InputMethodManager.SHOW_FORCED)
+        if (!imeAllowed) return
+        pendingShow = true
+        dispatchShowRequest()
+    }
+
+    private fun dispatchShowRequest() {
+        removeCallbacks(showRequest)
+        if (pendingShow && isAttachedToWindow && width > 0 && height > 0 && hasWindowFocus() && requestFocus()) post(showRequest)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        dispatchShowRequest()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        dispatchShowRequest()
+    }
+
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        if (!gainFocus) {
+            // A different editor now owns input; never reclaim it on window return.
+            pendingShow = false
+            restoreOnWindowFocus = false
+            removeCallbacks(showRequest)
+        }
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus) {
+            restoreOnWindowFocus = hasFocus() && lastImeVisible && imeAllowed
+            removeCallbacks(showRequest)
+        } else {
+            if (restoreOnWindowFocus && hasFocus() && imeAllowed) pendingShow = true
+            restoreOnWindowFocus = false
+            dispatchShowRequest()
         }
     }
 
@@ -83,14 +154,15 @@ internal class ImeInputView(
      * Hide the IME.
      */
     fun hideIme() {
-        inputMethodManager.hideSoftInputFromWindow(windowToken, 0)
+        pendingShow = false
+        restoreOnWindowFocus = false
+        removeCallbacks(showRequest)
+        if (isAttachedToWindow && hasFocus()) onHideKeyboard(this)
     }
 
     override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        // Always hide IME when view is detached to prevent SHOW_FORCED from keeping keyboard
-        // open after the app/activity is destroyed
         hideIme()
+        super.onDetachedFromWindow()
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {

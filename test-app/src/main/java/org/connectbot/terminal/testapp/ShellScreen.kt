@@ -22,9 +22,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
@@ -53,8 +55,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.connectbot.terminal.InlineImageRequest
@@ -134,6 +139,17 @@ fun ShellScreen() {
     var customCols by remember { mutableStateOf(80) }
     var showSizeDialog by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
+    var resizeSuspended by remember { mutableStateOf(false) }
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    // Keep the last PTY size until the popup has released focus and the IME layout
+    // has settled. This is a layout debounce, not a delay before showing the IME.
+    LaunchedEffect(showSettingsMenu, windowFocused, imeBottom) {
+        if (!showSettingsMenu && windowFocused && resizeSuspended) {
+            delay(250)
+            resizeSuspended = false
+        }
+    }
     var inlineImageMode by remember { mutableStateOf(InlineImageMode.OFF) }
     var inlineImagePrompt by remember { mutableStateOf<InlineImagePrompt?>(null) }
 
@@ -353,7 +369,10 @@ fun ShellScreen() {
         ) {
             Box {
                 Button(
-                    onClick = { showSettingsMenu = true },
+                    onClick = {
+                        resizeSuspended = true
+                        showSettingsMenu = true
+                    },
                 ) {
                     Text("⚙ Settings")
                 }
@@ -555,6 +574,7 @@ fun ShellScreen() {
                     foregroundColor = colorSchemes[selectedColorScheme].foreground,
                     keyboardEnabled = keyboardEnabled,
                     showSoftKeyboard = showSoftKeyboard,
+                    resizeSuspended = resizeSuspended,
                     forcedSize = if (useForcedSize) Pair(customRows, customCols) else null,
                 )
             }

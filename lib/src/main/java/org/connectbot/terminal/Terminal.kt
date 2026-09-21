@@ -41,10 +41,13 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -99,7 +102,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -117,6 +119,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.ceil
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 
@@ -154,19 +158,9 @@ private const val MAGNIFIER_SIZE_DP = 100
 private const val MAGNIFIER_SCALE = 2.5f
 
 /**
- * Delay in milliseconds before showing the IME (Input Method Editor).
- */
-private const val IME_SHOW_DELAY_MS = 100L
-
-/**
  * Delay in milliseconds to allow UI to settle before requesting focus.
  */
 private const val UI_SETTLE_DELAY_MS = 100L
-
-/**
- * Delay in milliseconds before showing the soft keyboard.
- */
-private const val KEYBOARD_SHOW_DELAY_MS = 50L
 
 /** Wait for transient TUI cursor moves to return before invalidating IME suggestion context. */
 private const val IME_CONTEXT_SETTLE_DELAY_MS = 300L
@@ -297,6 +291,9 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
  *                        When false, no keyboard input (hardware or soft) is accepted.
  * @param showSoftKeyboard Whether to show the soft keyboard/IME (default: true when keyboardEnabled=true).
  *                         Only applies when keyboardEnabled=true. Hardware keyboard always works when keyboardEnabled=true.
+ *                         Allows explicit show requests; dismissing the IME leaves it hidden until another request.
+ * @param resizeSuspended Retain terminal dimensions during temporary host layouts (for example a menu).
+ *                        Release after the final layout is restored to apply only the latest dimensions.
  * @param focusRequester Focus requester for keyboard input (if enabled)
  * @param onTerminalTap Callback for a simple tap event on the terminal (when no selection is active)
  * @param onImeVisibilityChanged Callback invoked when IME visibility changes (true = shown, false = hidden)
@@ -337,6 +334,7 @@ fun Terminal(
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
     onInterceptKey: ((ComposeKeyEvent) -> Boolean)? = null,
+    resizeSuspended: Boolean = false,
 ) {
     if (LocalInspectionMode.current) {
         TerminalPreview(modifier, backgroundColor, foregroundColor)
@@ -369,6 +367,7 @@ fun Terminal(
         selectionBackgroundColor = selectionBackgroundColor,
         selectionForegroundColor = selectionForegroundColor,
         delKeyMode = delKeyMode,
+        resizeSuspended = resizeSuspended,
     )
 }
 
@@ -378,6 +377,7 @@ fun Terminal(
  * @see Terminal
  */
 @VisibleForTesting
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TerminalWithAccessibility(
     terminalEmulator: TerminalEmulator,
@@ -406,6 +406,7 @@ internal fun TerminalWithAccessibility(
     selectionBackgroundColor: Color = Color(0xFFB3D7FF),
     selectionForegroundColor: Color = Color.Black,
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
+    resizeSuspended: Boolean = false,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -422,11 +423,11 @@ internal fun TerminalWithAccessibility(
     val currentOnTerminalTap by rememberUpdatedState(onTerminalTap)
     val currentOnHyperlinkClick by rememberUpdatedState(onHyperlinkClick)
     val currentOnInterceptKey by rememberUpdatedState(onInterceptKey)
+    val currentKeyboardEnabled by rememberUpdatedState(keyboardEnabled)
 
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
     val clipboardManager = LocalClipboardManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
 
     // Track accessibility state - only enable accessibility features when needed
@@ -451,7 +452,12 @@ internal fun TerminalWithAccessibility(
     var isZooming by remember(terminalEmulator) { mutableStateOf(false) }
     var isUserScrolling by remember(terminalEmulator) { mutableStateOf(false) }
     var isDraggingHandle by remember(terminalEmulator) { mutableStateOf(false) }
-    var calculatedFontSize by remember(terminalEmulator) { mutableStateOf(initialFontSize) }
+    var measuredWidth by remember { mutableStateOf(0) }
+    var measuredHeight by remember { mutableStateOf(0) }
+    var retainedWidth by remember { mutableStateOf(0) }
+    var retainedHeight by remember { mutableStateOf(0) }
+    val availableWidth = if (resizeSuspended) retainedWidth else measuredWidth
+    val availableHeight = if (resizeSuspended) retainedHeight else measuredHeight
 
     // Magnifying glass state
     var showMagnifier by remember(terminalEmulator) { mutableStateOf(false) }
@@ -459,9 +465,6 @@ internal fun TerminalWithAccessibility(
 
     // Cursor blink state
     var cursorBlinkVisible by remember(terminalEmulator) { mutableStateOf(true) }
-
-    // IME text field state (hidden BasicTextField for capturing IME input)
-    val imeFocusRequester = remember { FocusRequester() }
 
     // Review Mode state for accessibility
     var isReviewMode by remember(terminalEmulator) { mutableStateOf(false) }
@@ -475,31 +478,38 @@ internal fun TerminalWithAccessibility(
 
     // Keep reference to ImeInputView for controlling IME
     var imeInputView by remember { mutableStateOf<ImeInputView?>(null) }
+    val currentInputView = imeInputView
+    val imeVisible = WindowInsets.isImeVisible
+    val currentVisibilityCallback by rememberUpdatedState(onImeVisibilityChanged)
+    val currentShouldShowIme by rememberUpdatedState(shouldShowIme)
+    var restoreAfterReview by remember { mutableStateOf(false) }
+    var reviewExitedByKey by remember { mutableStateOf(false) }
+    SideEffect {
+        currentInputView?.imeAllowed = shouldShowIme && !isReviewMode
+        currentInputView?.observeImeVisibility(imeVisible)
+    }
+    LaunchedEffect(imeVisible) { currentVisibilityCallback(imeVisible) }
 
     // Cleanup IME when component is disposed
-    DisposableEffect(imeInputView) {
+    DisposableEffect(currentInputView) {
         onDispose {
             Log.d("Terminal", "Disposing Terminal - hiding IME")
-            imeInputView?.hideIme()
+            currentInputView?.hideIme()
         }
     }
 
     // React to IME state changes
-    LaunchedEffect(shouldShowIme, imeInputView) {
+    LaunchedEffect(shouldShowIme, currentInputView) {
         Log.d("Terminal", "IME state changed: shouldShowIme=$shouldShowIme (imeInputView=$imeInputView)")
 
-        imeInputView?.let { view ->
+        currentInputView?.let { view ->
             if (shouldShowIme) {
-                Log.d("Terminal", "Showing IME via InputMethodManager")
-                delay(IME_SHOW_DELAY_MS)
-                view.showIme()
-                Log.d("Terminal", "IME show completed")
-                onImeVisibilityChanged(true)
+                Log.d("Terminal", "Requesting IME for terminal editor")
+                if (!isReviewMode) view.showIme()
             } else {
                 Log.d("Terminal", "Hiding IME via InputMethodManager")
                 view.hideIme()
                 Log.d("Terminal", "IME hide completed")
-                onImeVisibilityChanged(false)
             }
         }
     }
@@ -521,7 +531,8 @@ internal fun TerminalWithAccessibility(
     LaunchedEffect(isReviewMode) {
         if (isReviewMode) {
             // Entering Review Mode: hide keyboard, focus on accessibility overlay
-            keyboardController?.hide()
+            restoreAfterReview = imeVisible
+            imeInputView?.hideIme()
             delay(UI_SETTLE_DELAY_MS)
             try {
                 reviewFocusRequester.requestFocus()
@@ -530,12 +541,12 @@ internal fun TerminalWithAccessibility(
             }
         } else {
             // Exiting Review Mode: return focus to input field if keyboard enabled
-            if (keyboardEnabled && shouldShowIme) {
-                delay(UI_SETTLE_DELAY_MS)
-                imeFocusRequester.requestFocus()
-                delay(KEYBOARD_SHOW_DELAY_MS)
-                keyboardController?.show()
+            if (keyboardEnabled && (restoreAfterReview || reviewExitedByKey)) {
+                imeInputView?.requestFocus()
+                if (shouldShowIme && restoreAfterReview && !reviewExitedByKey) imeInputView?.showIme()
             }
+            restoreAfterReview = false
+            reviewExitedByKey = false
         }
     }
 
@@ -561,9 +572,28 @@ internal fun TerminalWithAccessibility(
     }
 
     // Create TextPaint for measuring and drawing (base size)
-    val textPaint = remember(typeface, calculatedFontSize) {
+    val calculatedFontSize = remember(forcedSize, availableWidth, availableHeight, initialFontSize, minFontSize, maxFontSize, typeface, density) {
+        if (forcedSize != null && availableWidth > 0 && availableHeight > 0) {
+            findOptimalFontSize(
+                targetRows = forcedSize.first,
+                targetCols = forcedSize.second,
+                availableWidth = availableWidth,
+                availableHeight = availableHeight,
+                minSize = minFontSize.value,
+                maxSize = maxFontSize.value,
+                typeface = typeface,
+                density = density.density,
+            ).sp
+        } else {
+            initialFontSize
+        }
+    }
+    val requestedPaint = remember(typeface, calculatedFontSize, density) {
         TerminalTextPaint(typeface, with(density) { calculatedFontSize.toPx() })
     }
+    var retainedPaint by remember(terminalEmulator) { mutableStateOf<TerminalTextPaint?>(null) }
+    val textPaint = if (resizeSuspended) retainedPaint ?: requestedPaint else requestedPaint
+    SideEffect { if (!resizeSuspended) retainedPaint = textPaint }
 
     textPaint.viewport(screenState)
     DisposableEffect(textPaint) {
@@ -842,15 +872,25 @@ internal fun TerminalWithAccessibility(
     }
     val viewConfiguration = LocalViewConfiguration.current
 
-    var availableWidth by remember { mutableStateOf(0) }
-    var availableHeight by remember { mutableStateOf(0) }
+    val resizePaused = remember(terminalEmulator) { AtomicBoolean(resizeSuspended) }
+    val resizeGeneration = remember(terminalEmulator) { AtomicLong() }
+    SideEffect {
+        if (resizePaused.getAndSet(resizeSuspended) != resizeSuspended) resizeGeneration.incrementAndGet()
+        if (!resizeSuspended) {
+            retainedWidth = measuredWidth
+            retainedHeight = measuredHeight
+        }
+    }
+    DisposableEffect(resizeGeneration) {
+        onDispose { resizeGeneration.incrementAndGet() }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged {
-                availableWidth = it.width
-                availableHeight = it.height
+                measuredWidth = it.width
+                measuredHeight = it.height
             }
             .then(
                 if (keyboardEnabled) {
@@ -872,6 +912,7 @@ internal fun TerminalWithAccessibility(
                                     // Don't consume - let system handle
                                     else -> {
                                         // Any other key exits Review Mode and goes to shell
+                                        reviewExitedByKey = true
                                         isReviewMode = false
                                         keyboardHandler.onKeyEvent(event)
                                     }
@@ -886,35 +927,6 @@ internal fun TerminalWithAccessibility(
                 },
             ),
     ) {
-        // Calculate font size if forcedSize is specified
-        if (forcedSize != null) {
-            val (forcedRows, forcedCols) = forcedSize
-            LaunchedEffect(availableWidth, availableHeight, forcedRows, forcedCols) {
-                if (availableWidth == 0 || availableHeight == 0) {
-                    return@LaunchedEffect
-                }
-
-                val optimalSize = findOptimalFontSize(
-                    targetRows = forcedRows,
-                    targetCols = forcedCols,
-                    availableWidth = availableWidth,
-                    availableHeight = availableHeight,
-                    minSize = minFontSize.value,
-                    maxSize = maxFontSize.value,
-                    typeface = typeface,
-                    density = density.density,
-                )
-                calculatedFontSize = optimalSize.sp
-            }
-        } else {
-            // When not forcing size, reset the font size to the initial value.
-            LaunchedEffect(initialFontSize) {
-                if (calculatedFontSize != initialFontSize) {
-                    calculatedFontSize = initialFontSize
-                }
-            }
-        }
-
         // Resize terminal when dimensions change
         LaunchedEffect(
             terminalEmulator,
@@ -923,7 +935,10 @@ internal fun TerminalWithAccessibility(
             forcedSize,
             baseCharWidth,
             baseCharHeight,
+            resizeSuspended,
         ) {
+            val generation = resizeGeneration.incrementAndGet()
+            if (resizeSuspended) return@LaunchedEffect
             if (availableWidth == 0 || availableHeight == 0 || baseCharWidth <= 0f || baseCharHeight <= 0f) {
                 return@LaunchedEffect
             }
@@ -946,23 +961,30 @@ internal fun TerminalWithAccessibility(
                 heightPixels != dimensions.heightPixels
             ) {
                 terminalEmulator.commands.execute {
-                    terminalEmulator.resize(newRows, newCols, widthPixels, heightPixels)
+                    if (!resizePaused.get() && resizeGeneration.get() == generation) {
+                        val current = terminalEmulator.dimensions
+                        if (current.rows != newRows || current.columns != newCols ||
+                            current.widthPixels != widthPixels || current.heightPixels != heightPixels
+                        ) {
+                            terminalEmulator.resize(newRows, newCols, widthPixels, heightPixels)
+                        }
+                    }
                 }
+            }
+        }
 
-                // If selection is active, ensure it stays within the new visible bounds.
-                // This ensures the Copy button resets to the last visible line when the screen
-                // shrinks (e.g. keyboard up) without forcing a scroll to the bottom.
-                if (selectionManager.mode != SelectionMode.NONE) {
-                    selectionManager.clampToDimensions(newRows, newCols)
-                }
+        // Clamp only against dimensions actually committed by the terminal queue.
+        LaunchedEffect(screenState.snapshot.rows, screenState.snapshot.cols) {
+            if (selectionManager.mode != SelectionMode.NONE) {
+                selectionManager.clampToDimensions(screenState.snapshot.rows, screenState.snapshot.cols)
             }
         }
 
         // Use base dimensions for terminal sizing (not zoomed dimensions)
         val newCols =
-            forcedSize?.second ?: charsPerDimension(availableWidth, baseCharWidth)
+            if (resizeSuspended) screenState.snapshot.cols else forcedSize?.second ?: charsPerDimension(availableWidth, baseCharWidth)
         val newRows =
-            forcedSize?.first ?: charsPerDimension(availableHeight, baseCharHeight)
+            if (resizeSuspended) screenState.snapshot.rows else forcedSize?.first ?: charsPerDimension(availableHeight, baseCharHeight)
 
         // Auto-scroll to bottom when new content arrives (if not manually scrolled)
         LaunchedEffect(screenState) {
@@ -1344,8 +1366,9 @@ internal fun TerminalWithAccessibility(
                                         currentOnHyperlinkClick(hyperlinkUrl)
                                     } else {
                                         // Request focus when terminal is tapped to show keyboard
-                                        if (keyboardEnabled) {
+                                        if (currentKeyboardEnabled) {
                                             focusRequester.requestFocus()
+                                            if (currentShouldShowIme) imeInputView?.showIme()
                                         }
                                         currentOnTerminalTap()
                                     }
@@ -1548,12 +1571,6 @@ internal fun TerminalWithAccessibility(
                             FloatingActionButton(
                                 onClick = {
                                     overflowMenuExpanded = true
-                                    if (shouldShowIme) {
-                                        scope.launch {
-                                            delay(IME_SHOW_DELAY_MS)
-                                            imeInputView?.showIme()
-                                        }
-                                    }
                                 },
                                 modifier = Modifier
                                     .size(COPY_BUTTON_SIZE)
@@ -1571,12 +1588,6 @@ internal fun TerminalWithAccessibility(
                                 expanded = overflowMenuExpanded,
                                 onDismissRequest = {
                                     overflowMenuExpanded = false
-                                    if (shouldShowIme) {
-                                        scope.launch {
-                                            delay(IME_SHOW_DELAY_MS)
-                                            imeInputView?.showIme()
-                                        }
-                                    }
                                 },
                             ) {
                                 DropdownMenuItem(
