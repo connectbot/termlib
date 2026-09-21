@@ -20,6 +20,7 @@ import android.graphics.Typeface
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -27,6 +28,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imeAnimationSource
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
@@ -49,6 +52,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,7 +63,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.connectbot.terminal.InlineImageRequest
@@ -116,6 +119,7 @@ private data class InlineImagePrompt(
  * multiple SSH/Telnet connections in ConnectBot.
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun ShellScreen() {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -141,12 +145,16 @@ fun ShellScreen() {
     var showSettingsMenu by remember { mutableStateOf(false) }
     var resizeSuspended by remember { mutableStateOf(false) }
     val windowFocused = LocalWindowInfo.current.isWindowFocused
-    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
-    // Keep the last PTY size until the popup has released focus and the IME layout
-    // has settled. This is a layout debounce, not a delay before showing the IME.
-    LaunchedEffect(showSettingsMenu, windowFocused, imeBottom) {
-        if (!showSettingsMenu && windowFocused && resizeSuspended) {
-            delay(250)
+    val density = LocalDensity.current
+    val imeAnimationSource = WindowInsets.imeAnimationSource.getBottom(density)
+    val imeAnimationTarget = WindowInsets.imeAnimationTarget.getBottom(density)
+    val imeAnimating = imeAnimationSource != imeAnimationTarget
+    // Keep the last PTY size until the popup has released focus and any IME
+    // animation has completed. The extra frame commits the final layout before
+    // terminal resizing resumes; a new animation cancels and restarts this effect.
+    LaunchedEffect(showSettingsMenu, windowFocused, imeAnimating) {
+        if (!showSettingsMenu && windowFocused && !imeAnimating && resizeSuspended) {
+            withFrameNanos { }
             resizeSuspended = false
         }
     }
