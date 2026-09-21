@@ -386,6 +386,22 @@ internal class KeyboardHandler(
         onInputProcessed?.invoke()
     }
 
+    /**
+     * Delete terminal text while applying an IME edit to previously projected or committed text.
+     *
+     * This deliberately bypasses [onKeyEvent]: an IME rewrite is not a user Backspace key and
+     * must not be consumed by the local compose buffer or by a key interceptor. The emitted byte
+     * still follows [delKeyMode] so it matches the erase character expected by the connection.
+     */
+    fun onImeDeleteBackward() {
+        if (delKeyMode is DelKeyMode.Backspace) {
+            terminalEmulator.dispatchCharacter(0, 0x08)
+        } else {
+            terminalEmulator.dispatchKey(0, VTermKey.BACKSPACE)
+        }
+        onInputProcessed?.invoke()
+    }
+
     /** Whether the next text commit will be interpreted as a terminal shortcut. */
     internal fun hasTerminalShortcutModifiers(): Boolean = getModifierMask() and TERMINAL_SHORTCUT_MODIFIERS != 0
 

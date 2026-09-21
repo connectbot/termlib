@@ -163,6 +163,25 @@ class ImeInputViewTest {
     }
 
     @Test
+    fun testSuggestionReplacementUsesConfiguredBackspaceByte() {
+        val (ic, outputs) = createKeyboardOutputCapture(delKeyMode = DelKeyMode.Backspace)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.commitText("autocorrect", 1)
+            ic.setComposingRegion(0, "autocorrect".length)
+            ic.commitText("auto-correct", 1)
+        }
+        drainMainLooper()
+
+        val received = outputs.flatMap { it.toList() }.toByteArray()
+        val expected = "autocorrect".toByteArray() +
+            ByteArray("correct".length) { 0x08 } +
+            "-correct".toByteArray()
+        assertTrue("IME rewrite did not use ^H for Backspace mode", expected.contentEquals(received))
+        assertEquals("auto-correct", effectiveText(outputs))
+    }
+
+    @Test
     fun testSuggestionReplacementPreservesTrailingText() {
         val (ic, outputs) = createKeyboardOutputCapture()
 
@@ -491,6 +510,7 @@ class ImeInputViewTest {
     private fun createKeyboardOutputCapture(
         modifierManager: ModifierManager? = null,
         restartRequests: MutableList<View>? = null,
+        delKeyMode: DelKeyMode = DelKeyMode.Delete,
     ): Pair<InputConnection, MutableList<ByteArray>> {
         val outputs = mutableListOf<ByteArray>()
         val emulator = TerminalEmulatorFactory.create(
@@ -500,6 +520,7 @@ class ImeInputViewTest {
         )
         val handler = KeyboardHandler(emulator, modifierManager = modifierManager).also {
             it.unicodeCharLookup = { _, keyCode, _ -> if (keyCode == KeyEvent.KEYCODE_A) 'a'.code else 0 }
+            it.delKeyMode = delKeyMode
         }
         var ic: InputConnection? = null
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

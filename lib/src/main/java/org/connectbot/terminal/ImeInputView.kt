@@ -618,7 +618,7 @@ internal class ImeInputView(
             }
 
             val removed = previous.substring(commonPrefixLength)
-            sendBackspaces(removed.codePointCount(0, removed.length))
+            sendTerminalBackspaces(removed.codePointCount(0, removed.length))
             keyboardHandler.onCommittedText(current.substring(commonPrefixLength))
         }
 
@@ -758,6 +758,12 @@ internal class ImeInputView(
                 keyboardHandler.onKeyEvent(
                     ComposeKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)),
                 )
+            }
+        }
+
+        private fun sendTerminalBackspaces(count: Int) {
+            repeat(count.coerceAtLeast(0)) {
+                keyboardHandler.onImeDeleteBackward()
             }
         }
 
