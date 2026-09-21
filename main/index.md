@@ -51,6 +51,14 @@ Terminal(
 )
 ```
 
+## Keyboard visibility and temporary layouts
+
+Set `keyboardEnabled = true` to accept input. With `showSoftKeyboard = true` (the default), entering the terminal and tapping its text area explicitly request the software keyboard, including when the editor already has focus. Android and the selected IME retain control over hardware-keyboard policy. Back dismissal is respected until the next explicit request; output and hardware keypresses do not reopen the keyboard. Setting `showSoftKeyboard = false` also disables tap-to-show. `onImeVisibilityChanged` reports observed window IME visibility, not request success.
+
+Hosts such as ConnectBot's ConsoleScreen can pass `resizeSuspended = true` before opening a menu or temporarily moving interaction elsewhere. The terminal keeps its existing grid and pixel dimensions while still processing output. Intermediate container sizes are discarded. After suspension ends, only the latest size is applied, and an unchanged final size sends no resize callback.
+
+Keep suspension active through popup dismissal and any keyboard restoration and layout animation, not just while the menu's `expanded` flag is true. The demo's settings menu illustrates retaining the pause until window focus returns and IME insets settle. Suspension does not hide the keyboard or change input eligibility.  The option defaults to false, so existing hosts retain automatic resizing.
+
 ## Architecture
 
 ```kotlin
