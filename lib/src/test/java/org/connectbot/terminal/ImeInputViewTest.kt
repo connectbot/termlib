@@ -25,6 +25,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedText
+import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -343,6 +345,64 @@ class ImeInputViewTest {
     }
 
     // === updateSelection is called after ACTION_DOWN key events (compose mode) ===
+
+    @Test
+    fun testComposingTextReportsSelectionAndCandidateRange() {
+        val updates = mutableListOf<SelectionUpdate>()
+        val view = makeView(updates)
+        val ic = view.ic(composeMode = true)
+
+        ic.setComposingText("ㅂ", 1)
+
+        assertEquals(SelectionUpdate(view, 1, 1, 0, 1), updates.last())
+    }
+
+    @Test
+    fun testHangulCompositionReplacementKeepsEditableInSync() {
+        val capture = createComposeReplayCapture()
+        val ic = capture.ic as BaseInputConnection
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            ic.setComposingText("ㅂ", 1)
+            ic.setComposingText("바", 1)
+            ic.setComposingText("밭", 1)
+        }
+
+        val editable = ic.getEditable()!!
+        assertEquals("밭", editable.toString())
+        assertEquals(0, BaseInputConnection.getComposingSpanStart(editable))
+        assertEquals(1, BaseInputConnection.getComposingSpanEnd(editable))
+        assertEquals("밭", capture.composeMode.buffer)
+        assertTrue(capture.outputs.isEmpty())
+    }
+
+    @Test
+    fun testComposingSelectionUpdateWaitsForBatchEnd() {
+        val updates = mutableListOf<SelectionUpdate>()
+        val view = makeView(updates)
+        val ic = view.ic(composeMode = true)
+
+        ic.beginBatchEdit()
+        ic.setComposingText("ㅂ", 1)
+        ic.setComposingText("바", 1)
+        assertTrue(updates.isEmpty())
+
+        assertFalse(ic.endBatchEdit())
+        assertEquals(SelectionUpdate(view, 1, 1, 0, 1), updates.single())
+    }
+
+    @Test
+    fun testFullEditorExposesComposingTextToIme() {
+        val ic = makeView().ic(composeMode = true)
+        ic.setComposingText("바", 1)
+
+        val extracted = ic.getExtractedText(ExtractedTextRequest(), InputConnection.GET_TEXT_WITH_STYLES)
+
+        assertEquals("바", extracted?.text.toString())
+        assertEquals(1, extracted?.selectionStart)
+        assertEquals(1, extracted?.selectionEnd)
+        assertEquals(ExtractedText.FLAG_SINGLE_LINE, extracted?.flags)
+    }
 
     @Test
     fun testUpdateSelectionCalledAfterEnterKeyDown() {

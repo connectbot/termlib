@@ -25,6 +25,8 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedText
+import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.TextAttribute
@@ -295,6 +297,48 @@ internal class ImeInputView(
         private var awaitingPostEnterCommitReplay: Boolean = false
         private var postEnterSubmittedText: String? = null
         private var shortcutSubmittedText: String? = null
+        private var batchEditDepth: Int = 0
+        private var selectionUpdatePending: Boolean = false
+
+        override fun beginBatchEdit(): Boolean {
+            if (!fullEditor) return super.beginBatchEdit()
+            batchEditDepth++
+            return true
+        }
+
+        override fun endBatchEdit(): Boolean {
+            if (!fullEditor) return super.endBatchEdit()
+            if (batchEditDepth > 0) batchEditDepth--
+            if (batchEditDepth == 0 && selectionUpdatePending) {
+                selectionUpdatePending = false
+                reportSelectionToIme()
+            }
+            return batchEditDepth > 0
+        }
+
+        override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? {
+            if (!fullEditor) return super.getExtractedText(request, flags)
+            val buffer = editable ?: return null
+            return ExtractedText().apply {
+                text = if (flags and InputConnection.GET_TEXT_WITH_STYLES != 0) {
+                    buffer.subSequence(0, buffer.length)
+                } else {
+                    buffer.toString()
+                }
+                startOffset = 0
+                partialStartOffset = -1
+                partialEndOffset = -1
+                selectionStart = Selection.getSelectionStart(buffer).coerceAtLeast(0)
+                selectionEnd = Selection.getSelectionEnd(buffer).coerceAtLeast(0)
+                this.flags = if ('\n' in buffer) 0 else ExtractedText.FLAG_SINGLE_LINE
+            }
+        }
+
+        override fun setSelection(start: Int, end: Int): Boolean {
+            val result = super.setSelection(start, end)
+            if (fullEditor && result) scheduleSelectionUpdate()
+            return result
+        }
 
         override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
             if (!fullEditor) return super.setComposingText(text, newCursorPosition)
@@ -333,6 +377,7 @@ internal class ImeInputView(
                 postEnterSubmittedText = null
             }
             super.setComposingText(text, newCursorPosition)
+            scheduleSelectionUpdate()
 
             if (newText == composingText) {
                 return true
@@ -380,6 +425,7 @@ internal class ImeInputView(
             trimEditableContext()
             committedContext = editable?.toString().orEmpty()
             committedContextConfirmed = false
+            scheduleSelectionUpdate()
             return true
         }
 
@@ -406,6 +452,7 @@ internal class ImeInputView(
             }
 
             super.deleteSurroundingText(leftLength, rightLength)
+            scheduleSelectionUpdate()
             return true
         }
 
@@ -512,6 +559,7 @@ internal class ImeInputView(
                 trimEditableContext()
                 committedContext = editable?.toString().orEmpty()
                 committedContextConfirmed = false
+                scheduleSelectionUpdate()
             } else {
                 clearEditableContext()
                 // updateSelection(0, 0) is not sufficient to make every IME forget its
@@ -552,6 +600,7 @@ internal class ImeInputView(
             trimEditableContext()
             committedContext = editable?.toString().orEmpty()
             committedContextConfirmed = false
+            scheduleSelectionUpdate()
             return true
         }
 
@@ -638,6 +687,25 @@ internal class ImeInputView(
             onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
         }
 
+        private fun scheduleSelectionUpdate() {
+            if (batchEditDepth > 0) {
+                selectionUpdatePending = true
+            } else {
+                reportSelectionToIme()
+            }
+        }
+
+        private fun reportSelectionToIme() {
+            val buffer = editable ?: return
+            onUpdateSelection(
+                this@ImeInputView,
+                Selection.getSelectionStart(buffer).coerceAtLeast(0),
+                Selection.getSelectionEnd(buffer).coerceAtLeast(0),
+                BaseInputConnection.getComposingSpanStart(buffer),
+                BaseInputConnection.getComposingSpanEnd(buffer),
+            )
+        }
+
         fun validateTerminalCursorContext(textBeforeCursor: String) {
             if (committedContext.isEmpty()) return
             if (textBeforeCursor.endsWith(committedContext)) {
@@ -682,7 +750,14 @@ internal class ImeInputView(
 
         private fun sendBackspaces(count: Int) {
             repeat(count.coerceAtLeast(0)) {
-                sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+                // This edits the projected terminal/compose buffer, not the IME's Editable.
+                // Routing through InputConnection.sendKeyEvent() would clear that Editable as
+                // though the user had pressed a standalone terminal key. In particular, an IME
+                // replacing the Korean composition "ㅂ" with "바" would then observe an empty
+                // editor and abandon its in-progress Hangul composition.
+                keyboardHandler.onKeyEvent(
+                    ComposeKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)),
+                )
             }
         }
 
