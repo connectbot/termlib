@@ -433,6 +433,7 @@ class TerminalGestureTest {
         composeTestRule.waitUntil { scrollController != null }
         val controller = scrollController!!
         val initialPosition = controller.scrollbackPosition
+        assertTrue("Test requires scrollback content", controller.maxScrollback > initialPosition)
 
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.onRoot().performTouchInput {
@@ -442,11 +443,20 @@ class TerminalGestureTest {
         composeTestRule.mainClock.advanceTimeBy(16)
 
         composeTestRule.onRoot().performTouchInput {
-            // 2. Move finger DOWN to scroll BACK into history
+            // Touch-event time controls the multi-touch grace period independently
+            // of the Compose animation clock. Establish a scroll before adding a finger.
+            advanceEventTime(100)
+            moveTo(0, center + Offset(0f, 100f))
+            // The first move crosses slop; a subsequent move scrolls the content.
             moveTo(0, center + Offset(0f, 500f))
         }
         composeTestRule.mainClock.advanceTimeBy(100) // Give it time to process
         composeTestRule.waitForIdle()
+        val positionBeforeSecondPointer = controller.scrollbackPosition
+        assertTrue(
+            "Scroll should start before the second pointer arrives",
+            positionBeforeSecondPointer > initialPosition,
+        )
 
         composeTestRule.onRoot().performTouchInput {
             // 3. Second pointer down
@@ -461,6 +471,10 @@ class TerminalGestureTest {
         }
         composeTestRule.mainClock.advanceTimeBy(100)
         composeTestRule.waitForIdle()
+        assertTrue(
+            "Scroll should continue after the second pointer arrives",
+            controller.scrollbackPosition > positionBeforeSecondPointer,
+        )
 
         composeTestRule.onRoot().performTouchInput {
             // 5. Up
