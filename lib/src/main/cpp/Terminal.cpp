@@ -319,6 +319,21 @@ int Terminal::resize(int rows, int cols) {
     return 0;
 }
 
+int Terminal::placeImage(jlong movement) {
+    std::scoped_lock lock(mLock);
+    if (!mVt || movement <= 0) return -1;
+    const int rows = (movement >> 32) & 0xffff;
+    const int cols = (movement >> 1) & 0xffff;
+    if (rows <= 0 || cols <= 0) return -1;
+    beginCursorBatch();
+    mReservingImage = true;
+    vterm_state_place_image(vterm_obtain_state(mVt), rows, cols, movement & 1);
+    mReservingImage = false;
+    vterm_screen_flush_damage(mVts);
+    finishCursorBatch();
+    return 0;
+}
+
 // Color configuration
 int Terminal::setPaletteColors(const uint32_t* colors, int count) {
     std::scoped_lock lock(mLock);
@@ -1104,6 +1119,12 @@ Java_org_connectbot_terminal_TerminalNative_nativeResize(JNIEnv* env, jobject /*
         return -1;
     }
     return term->resize(rows, cols);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativePlaceImage(JNIEnv* /* env */, jobject /* thiz */,
+                                                             jlong ptr, jlong movement) {
+    return reinterpret_cast<Terminal*>(ptr)->placeImage(movement);
 }
 
 JNIEXPORT jboolean JNICALL

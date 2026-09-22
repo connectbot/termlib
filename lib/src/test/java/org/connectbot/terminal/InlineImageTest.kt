@@ -101,9 +101,36 @@ class InlineImageTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(2, requests.size)
         assertTrue(responses.any { "EPERM:user denied inline image" in it })
+        assertEquals(0, terminal.flush().cursorRow)
+        assertEquals(0, terminal.flush().cursorCol)
         answers[1].resume(true)
         terminal.commands.call { Unit }
         assertEquals(setOf(8L), terminal.imageStore.assets.keys)
+    }
+
+    @Test
+    fun askApprovalAppliesKittyCursorReservation() {
+        lateinit var answer: Continuation<Boolean>
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            inlineImages = InlineImages.Ask {
+                suspendCoroutine { continuation -> answer = continuation }
+            },
+        ) as TerminalEmulatorImpl
+
+        terminal.write(kitty("a=T,f=100", png))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, terminal.flush().cursorRow)
+        assertEquals(0, terminal.flush().cursorCol)
+
+        answer.resume(true)
+        terminal.commands.call { Unit }
+
+        val snapshot = terminal.flush()
+        assertEquals(1, snapshot.cursorRow)
+        assertEquals(1, snapshot.cursorCol)
+        assertEquals(1, terminal.imageStore.assets.size)
     }
 
     @Test

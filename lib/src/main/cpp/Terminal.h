@@ -55,6 +55,7 @@ public:
 
     // Terminal control
     int resize(int rows, int cols);
+    int placeImage(jlong movement);
 
     // Keyboard input - generates escape sequences
     bool dispatchKey(int modifiers, int key);

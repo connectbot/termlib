@@ -15,6 +15,7 @@ internal class InlineImageConsentGate(
     private val output: (ByteArray) -> Unit,
     private val ask: (InlineImageRequest, (Boolean) -> Unit) -> Unit,
     private val limits: InlineImageLimits,
+    private val place: (Long) -> Unit,
 ) {
     private data class Sequence(val kitty: Boolean, val bytes: ByteArray, val row: Int, val col: Int)
     private class Group(val request: InlineImageRequest?, val kittyOptions: Map<String, String>) {
@@ -163,7 +164,8 @@ internal class InlineImageConsentGate(
             pendingBytes -= group.bytes
             if (group.decision == true) {
                 for (sequence in group.sequences) {
-                    protocol.accept(sequence.kitty, sequence.bytes, true, true, sequence.row, sequence.col)
+                    val movement = protocol.accept(sequence.kitty, sequence.bytes, true, true, sequence.row, sequence.col)
+                    if (movement > 0) place(movement)
                 }
             } else if (group.request?.protocol == InlineImageProtocolType.KITTY) {
                 denyKitty(group.kittyOptions)

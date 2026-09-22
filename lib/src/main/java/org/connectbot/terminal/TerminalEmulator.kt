@@ -390,7 +390,7 @@ internal class TerminalEmulatorImpl(
                     },
                 )
             }
-        }, policy.limits)
+        }, policy.limits, { movement -> terminalNative.placeImage(movement) })
     }
 
     override fun setCellPixelSize(width: Int, height: Int): Unit = synchronized(damageLock) {
