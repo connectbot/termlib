@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html class="no-js" lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>org.connectbot.terminal</title>
+    <link href="../../images/logo-icon.svg" rel="icon" type="image/svg">
+        <script>var pathToRoot = "../../";</script>
+    <script>document.documentElement.classList.replace("no-js", "js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+      if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      } else {
+        const savedDarkMode = JSON.parse(storage)
+        if (savedDarkMode === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      }
+    </script>
+<script type="text/javascript" src="../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../styles/style.css" rel="Stylesheet">
+<link href="../../styles/main.css" rel="Stylesheet">
+<link href="../../styles/prism.css" rel="Stylesheet">
+<link href="../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../scripts/safe-local-storage_blocking.js"></script>
+<script type="text/javascript" src="../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../ui-kit/ui-kit.min.js" defer="defer"></script>
+</head>
+<body>
+<div class="root">
+    <header class="navigation theme-dark" id="navigation-wrapper" role="banner">
+            <a class="library-name--link" href="../../index.html" tabindex="1">
+                    ConnectBot Terminal
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+0.3.4        </div>
+        <div class="navigation-controls">
+        <ul class="filter-section filter-section_loading" id="filter-section" aria-label="Target filter">
+                <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true"
+                        data-filter=":lib/release">release</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox" aria-label="Target filter">
+                    <div class="dropdown--header"><span>Target filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close target filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id=":lib/release"
+                                       data-filter=":lib/release"/>
+                                <span class="checkbox--icon"></span>
+                                release
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </ul>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </header>
+    <div id="container">
+        <nav id="leftColumn" class="sidebar" data-item-type="SECTION" data-item-config='{"defaultSize": 280, "minSize": 200, "maxSize": 400}'>
+            <a class="toc--skip-link" href="#main">Skip to content</a>
+            <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                    data-role="dropdown-listbox" aria-label="Table of contents">
+                    <div class="dropdown--header">
+                            <span>
+                                    ConnectBot Terminal
+                            </span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                    <div class="sidebar--inner" id="sideMenu"></div>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </nav>
+        <div id="resizer" class="resizer" data-item-type="BAR"></div>
+        <div id="main" data-item-type="SECTION" role="main">
+<div class="main-content" data-page-type="package" id="content" pageIds="ConnectBot Terminal::org.connectbot.terminal////PointingToDeclaration//-2117867675">
+  <div class="breadcrumbs"><a href="../../index.html">ConnectBot Terminal</a><span class="delimiter">/</span><span class="current">org.connectbot.terminal</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span><span>Package-level</span></span> <span><span>declarations</span></span></h1>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="TYPE">Types</button><button class="section-tab" data-togglable="FUNCTION,EXTENSION_FUNCTION">Functions</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="TYPE">
+        <h2 class="tableheader">Types</h2>
+        <div class="table"><a data-name="-1261910481%2FClasslikes%2F-2117867675" anchor-label="ComposeController" id="-1261910481%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-compose-controller/index.html"><span>Compose</span><wbr></wbr><span><span>Controller</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1261910481%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-compose-controller/index.html">ComposeController</a></div><div class="brief "><p class="paragraph">Public API interface for controlling compose mode in the terminal.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-2125730194%2FClasslikes%2F-2117867675" anchor-label="DelKeyMode" id="-2125730194%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-del-key-mode/index.html"><span>Del</span><wbr></wbr><span>Key</span><wbr></wbr><span><span>Mode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2125730194%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">class </span><a href="-del-key-mode/index.html">DelKeyMode</a></div><div class="brief "><p class="paragraph">Controls what byte sequence the backspace key sends.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1189286593%2FClasslikes%2F-2117867675" anchor-label="ImeShortcutInputMode" id="-1189286593%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-ime-shortcut-input-mode/index.html"><span>Ime</span><wbr></wbr><span>Shortcut</span><wbr></wbr><span>Input</span><wbr></wbr><span><span>Mode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1189286593%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-ime-shortcut-input-mode/index.html">ImeShortcutInputMode</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-ime-shortcut-input-mode/index.html">ImeShortcutInputMode</a><span class="token operator">&gt; </span></div><div class="brief "><p class="paragraph">How a full IME editor should request terminal shortcut characters.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="82707843%2FClasslikes%2F-2117867675" anchor-label="InlineImageLimits" id="82707843%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-inline-image-limits/index.html"><span>Inline</span><wbr></wbr><span>Image</span><wbr></wbr><span><span>Limits</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="82707843%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="-inline-image-limits/index.html">InlineImageLimits</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter "><span class="token keyword">val </span>encodedBytes<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span>16 * 1024 * 1024<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>decodedBytes<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span>32 * 1024 * 1024<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>transferBytes<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span>4 * 1024 * 1024<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>uploadBytes<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span>16 * 1024 * 1024<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>maxDimension<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>maxPixels<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span>16 * 1024 * 1024<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>maxImages<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span><span class="token constant">1024</span><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>maxPlacements<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span><span class="token constant">4096</span><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>maxFrames<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator"> = </span><span class="token constant">4096</span></span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Per-terminal limits. Budgets include retained data and reservations for pending work.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="781852009%2FClasslikes%2F-2117867675" anchor-label="InlineImageProtocolType" id="781852009%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-inline-image-protocol-type/index.html"><span>Inline</span><wbr></wbr><span>Image</span><wbr></wbr><span>Protocol</span><wbr></wbr><span><span>Type</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="781852009%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-inline-image-protocol-type/index.html">InlineImageProtocolType</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-inline-image-protocol-type/index.html">InlineImageProtocolType</a><span class="token operator">&gt; </span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1233555288%2FClasslikes%2F-2117867675" anchor-label="InlineImageRequest" id="1233555288%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-inline-image-request/index.html"><span>Inline</span><wbr></wbr><span>Image</span><wbr></wbr><span><span>Request</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1233555288%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="-inline-image-request/index.html">InlineImageRequest</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter "><span class="token keyword">val </span>protocol<span class="token operator">: </span><a href="-inline-image-protocol-type/index.html">InlineImageProtocolType</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>action<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>imageId<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>imageNumber<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>name<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>declaredSizeBytes<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>pixelWidth<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>pixelHeight<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null</span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Header metadata available before any image payload is decoded.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="480405076%2FClasslikes%2F-2117867675" anchor-label="InlineImages" id="480405076%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-inline-images/index.html"><span>Inline</span><wbr></wbr><span><span>Images</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="480405076%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">class </span><a href="-inline-images/index.html">InlineImages</a></div><div class="brief "><p class="paragraph">Controls whether inline-image protocol payloads are accepted.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1033650215%2FClasslikes%2F-2117867675" anchor-label="ModifierManager" id="1033650215%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-modifier-manager/index.html"><span>Modifier</span><wbr></wbr><span><span>Manager</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1033650215%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-modifier-manager/index.html">ModifierManager</a></div><div class="brief "><p class="paragraph">Manages modifier key state for terminal keyboard input. This can be used to combine some external state about the Ctrl, Alt, and Shift keys. For instance, combining a keyboard with an on-screen button.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="795360601%2FClasslikes%2F-2117867675" anchor-label="ProgressState" id="795360601%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-progress-state/index.html"><span>Progress</span><wbr></wbr><span><span>State</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="795360601%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-progress-state/index.html">ProgressState</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-progress-state/index.html">ProgressState</a><span class="token operator">&gt; </span></div><div class="brief "><p class="paragraph">Progress state for OSC 9;4 progress reporting. Used by Windows Terminal and other terminals to display progress in tab headers.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-287736715%2FClasslikes%2F-2117867675" anchor-label="RightAltMode" id="-287736715%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-right-alt-mode/index.html"><span>Right</span><wbr></wbr><span>Alt</span><wbr></wbr><span><span>Mode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-287736715%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">class </span><a href="-right-alt-mode/index.html">RightAltMode</a></div><div class="brief "><p class="paragraph">Controls how the right-alt key (AltGr) is interpreted by the terminal keyboard handler.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1768743157%2FClasslikes%2F-2117867675" anchor-label="SelectionController" id="1768743157%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-selection-controller/index.html"><span>Selection</span><wbr></wbr><span><span>Controller</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1768743157%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-selection-controller/index.html">SelectionController</a></div><div class="brief "><p class="paragraph">Interface for controlling text selection in the terminal. This allows external components (UI chrome, keyboard handlers, accessibility) to control selection.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1407928114%2FClasslikes%2F-2117867675" anchor-label="SelectionMode" id="-1407928114%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-selection-mode/index.html"><span>Selection</span><wbr></wbr><span><span>Mode</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1407928114%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">class </span><a href="-selection-mode/index.html">SelectionMode</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1592343900%2FClasslikes%2F-2117867675" anchor-label="TerminalDimensions" id="1592343900%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-terminal-dimensions/index.html"><span>Terminal</span><wbr></wbr><span><span>Dimensions</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1592343900%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="-terminal-dimensions/index.html">TerminalDimensions</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter "><span class="token keyword">val </span>rows<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>columns<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>widthPixels<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>heightPixels<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Represents the terminal's character grid and physical viewport.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1603748116%2FClasslikes%2F-2117867675" anchor-label="TerminalEmulator" id="1603748116%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-terminal-emulator/index.html"><span>Terminal</span><wbr></wbr><span><span>Emulator</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1603748116%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">interface </span><a href="-terminal-emulator/index.html">TerminalEmulator</a></div><div class="brief "><p class="paragraph">Terminal emulator interface. This has no dependency on any UI framework so it may be run in a Service on Android. It handles the management of the terminal emulation state.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1866475588%2FClasslikes%2F-2117867675" anchor-label="TerminalEmulatorFactory" id="1866475588%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-terminal-emulator-factory/index.html"><span>Terminal</span><wbr></wbr><span>Emulator</span><wbr></wbr><span><span>Factory</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1866475588%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">class </span><a href="-terminal-emulator-factory/index.html">TerminalEmulatorFactory</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1729071030%2FClasslikes%2F-2117867675" anchor-label="TerminalUrl" id="-1729071030%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-terminal-url/index.html"><span>Terminal</span><wbr></wbr><span><span>Url</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1729071030%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">data </span><span class="token keyword">class </span><a href="-terminal-url/index.html">TerminalUrl</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter "><span class="token keyword">val </span>url<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter "><span class="token keyword">val </span>source<span class="token operator">: </span><a href="-terminal-url-source/index.html">TerminalUrlSource</a></span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">URL discovered in terminal output.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1865280081%2FClasslikes%2F-2117867675" anchor-label="TerminalUrlSource" id="-1865280081%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-terminal-url-source/index.html"><span>Terminal</span><wbr></wbr><span>Url</span><wbr></wbr><span><span>Source</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1865280081%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">class </span><a href="-terminal-url-source/index.html">TerminalUrlSource</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="966326141%2FClasslikes%2F-2117867675" anchor-label="UrlScanScope" id="966326141%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-url-scan-scope/index.html"><span>Url</span><wbr></wbr><span>Scan</span><wbr></wbr><span><span>Scope</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="966326141%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">class </span><a href="-url-scan-scope/index.html">UrlScanScope</a></div><div class="brief "><p class="paragraph">Line range to scan for URLs.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="164736840%2FClasslikes%2F-2117867675" anchor-label="VTermKey" id="164736840%2FClasslikes%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-v-term-key/index.html"><span>VTerm</span><wbr></wbr><span><span>Key</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="164736840%2FClasslikes%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><span class="token keyword">object </span><a href="-v-term-key/index.html">VTermKey</a></div><div class="brief "><p class="paragraph">VTerm key codes from libvterm. These correspond to VTermKey enum in vterm.h</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="FUNCTION">
+        <h2 class="tableheader">Functions</h2>
+        <div class="table"><a data-name="484146305%2FFunctions%2F-2117867675" anchor-label="Terminal" id="484146305%2FFunctions%2F-2117867675" data-filterable-set=":lib/release"></a>
+          <div class="table-row table-row_content" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-terminal.html"><span><span>Terminal</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="484146305%2FFunctions%2F-2117867675"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><div class="symbol monospace"><div class="block"><div class="block"><span class="token annotation builtin">@</span><a href="https://developer.android.com/reference/kotlin/androidx/compose/runtime/Composable.html"><span class="token annotation builtin">Composable</span></a></div></div><span class="token keyword">fun </span><a href="-terminal.html"><span class="token function">Terminal</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">terminalEmulator<span class="token operator">: </span><a href="-terminal-emulator/index.html">TerminalEmulator</a><span class="token punctuation">, </span></span><span class="parameter ">modifier<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/Modifier.html">Modifier</a><span class="token operator"> = </span>Modifier<span class="token punctuation">, </span></span><span class="parameter ">typeface<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/android/graphics/Typeface.html">Typeface</a><span class="token operator"> = </span>Typeface.MONOSPACE<span class="token punctuation">, </span></span><span class="parameter ">initialFontSize<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/unit/TextUnit.html">TextUnit</a><span class="token operator"> = </span>11.sp<span class="token punctuation">, </span></span><span class="parameter ">minFontSize<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/unit/TextUnit.html">TextUnit</a><span class="token operator"> = </span>6.sp<span class="token punctuation">, </span></span><span class="parameter ">maxFontSize<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/unit/TextUnit.html">TextUnit</a><span class="token operator"> = </span>30.sp<span class="token punctuation">, </span></span><span class="parameter ">backgroundColor<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/graphics/Color.html">Color</a><span class="token operator"> = </span>Color.Black<span class="token punctuation">, </span></span><span class="parameter ">foregroundColor<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/graphics/Color.html">Color</a><span class="token operator"> = </span>Color.White<span class="token punctuation">, </span></span><span class="parameter ">selectionBackgroundColor<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/graphics/Color.html">Color</a><span class="token operator"> = </span>Color(0xFFB3D7FF)<span class="token punctuation">, </span></span><span class="parameter ">selectionForegroundColor<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/graphics/Color.html">Color</a><span class="token operator"> = </span>Color.Black<span class="token punctuation">, </span></span><span class="parameter ">keyboardEnabled<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span><span class="token punctuation">, </span></span><span class="parameter ">showSoftKeyboard<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">true</span><span class="token punctuation">, </span></span><span class="parameter ">focusRequester<span class="token operator">: </span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/focus/FocusRequester.html">FocusRequester</a><span class="token operator"> = </span>remember { FocusRequester() }<span class="token punctuation">, </span></span><span class="parameter ">onTerminalTap<span class="token operator">: </span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html">Unit</a><span class="token operator"> = </span>{}<span class="token punctuation">, </span></span><span class="parameter ">onImeVisibilityChanged<span class="token operator">: </span><span class="token punctuation">(</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html">Unit</a><span class="token operator"> = </span>{}<span class="token punctuation">, </span></span><span class="parameter ">forcedSize<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-pair/index.html">Pair</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token punctuation">, </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">&gt;</span><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">modifierManager<span class="token operator">: </span><a href="-modifier-manager/index.html">ModifierManager</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">onSelectionControllerAvailable<span class="token operator">: </span><span class="token punctuation">(</span><a href="-selection-controller/index.html">SelectionController</a><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html">Unit</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">onHyperlinkClick<span class="token operator">: </span><span class="token punctuation">(</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html">Unit</a><span class="token operator"> = </span>{}<span class="token punctuation">, </span></span><span class="parameter ">onComposeControllerAvailable<span class="token operator">: </span><span class="token punctuation">(</span><a href="-compose-controller/index.html">ComposeController</a><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html">Unit</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">onPasteRequest<span class="token operator">: </span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html">Unit</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">rightAltMode<span class="token operator">: </span><a href="-right-alt-mode/index.html">RightAltMode</a><span class="token operator"> = </span>RightAltMode.CharacterModifier<span class="token punctuation">, </span></span><span class="parameter ">delKeyMode<span class="token operator">: </span><a href="-del-key-mode/index.html">DelKeyMode</a><span class="token operator"> = </span>DelKeyMode.Delete<span class="token punctuation">, </span></span><span class="parameter ">onInterceptKey<span class="token operator">: </span><span class="token punctuation">(</span><a href="https://developer.android.com/reference/kotlin/androidx/compose/ui/input/key/KeyEvent.html">KeyEvent</a><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">resizeSuspended<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator"> = </span><span class="token boolean">false</span></span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Terminal - A Jetpack Compose terminal screen component.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <div class="footer--container">
+            <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+            <div class="footer--content">
+                <div>
+                    <span>Generated by </span>
+                    <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                        Dokka
+                    </a>
+                    <div>Copyright Kenny Root</div>
+                    <div>
+                        <a class="footer--link" id="markdown-link" href="index.md">View as Markdown</a>
+                        <script>
+                            document.getElementById("markdown-link").href =
+                                location.pathname.split("/").pop().replace(/\.html$/, ".md") || "index.md";
+                        </script>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
