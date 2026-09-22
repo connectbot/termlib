@@ -1665,6 +1665,9 @@ internal fun TerminalWithAccessibility(
                         imeInputView = this
                     }
                 },
+                update = { view ->
+                    view.onPasteRequest = onPasteRequest
+                },
                 modifier = Modifier
                     .size(1.dp)
                     .focusable()

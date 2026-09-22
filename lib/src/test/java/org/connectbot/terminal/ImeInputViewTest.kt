@@ -82,6 +82,44 @@ class ImeInputViewTest {
         return onCreateInputConnection(EditorInfo()) as BaseInputConnection
     }
 
+    @Test
+    fun testImePasteActionsInvokeTerminalPasteHandler() {
+        for (composeMode in listOf(false, true)) {
+            val view = makeView()
+            var pasteCount = 0
+            view.onPasteRequest = { pasteCount++ }
+            val ic = view.ic(composeMode)
+
+            assertTrue(ic.performContextMenuAction(android.R.id.paste))
+            assertEquals(1, pasteCount)
+            assertTrue(ic.performContextMenuAction(android.R.id.pasteAsPlainText))
+            assertEquals(2, pasteCount)
+            assertFalse(ic.performContextMenuAction(android.R.id.copy))
+            assertEquals(2, pasteCount)
+        }
+    }
+
+    @Test
+    fun testImePasteUsesUpdatedHandlerWithoutRecreatingConnection() {
+        val view = makeView()
+        val ic = view.ic()
+        assertFalse(ic.performContextMenuAction(android.R.id.paste))
+        assertFalse(ic.performContextMenuAction(android.R.id.pasteAsPlainText))
+
+        var firstCount = 0
+        var secondCount = 0
+        view.onPasteRequest = { firstCount++ }
+        assertTrue(ic.performContextMenuAction(android.R.id.paste))
+        view.onPasteRequest = { secondCount++ }
+        assertTrue(ic.performContextMenuAction(android.R.id.paste))
+        assertEquals(1, firstCount)
+        assertEquals(1, secondCount)
+
+        view.onPasteRequest = null
+        assertFalse(ic.performContextMenuAction(android.R.id.paste))
+        assertEquals(1, secondCount)
+    }
+
     // === IME editable buffer reset on key events (compose mode — has a real Editable) ===
 
     @Test

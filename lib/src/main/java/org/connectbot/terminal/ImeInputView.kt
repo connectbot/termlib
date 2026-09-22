@@ -204,6 +204,9 @@ internal class ImeInputView(
 
     override fun onCheckIsTextEditor(): Boolean = true
 
+    /** Delegate IME paste actions to the same clipboard handler as the terminal context menu. */
+    var onPasteRequest: (() -> Unit)? = null
+
     private var activeConnection: TerminalInputConnection? = null
     private var shortcutInputMode: ImeShortcutInputMode = ImeShortcutInputMode.DISABLED
 
@@ -299,6 +302,15 @@ internal class ImeInputView(
         private var shortcutSubmittedText: String? = null
         private var batchEditDepth: Int = 0
         private var selectionUpdatePending: Boolean = false
+
+        override fun performContextMenuAction(id: Int): Boolean {
+            if (id == android.R.id.paste || id == android.R.id.pasteAsPlainText) {
+                val paste = onPasteRequest ?: return false
+                paste()
+                return true
+            }
+            return super.performContextMenuAction(id)
+        }
 
         override fun beginBatchEdit(): Boolean {
             if (!fullEditor) return super.beginBatchEdit()
