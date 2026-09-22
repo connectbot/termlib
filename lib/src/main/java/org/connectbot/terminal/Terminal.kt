@@ -2527,13 +2527,13 @@ private fun truncateForOverlay(buffer: String, availableCols: Int): String {
 }
 
 /** Text in the cursor's soft-wrapped logical line that precedes the cursor. */
-private fun TerminalSnapshot.textBeforeCursor(): String {
+internal fun TerminalSnapshot.textBeforeCursor(): String {
     val cursorLine = lines.getOrNull(cursorRow) ?: return ""
     var firstRow = cursorRow
     while (firstRow > 0 && lines[firstRow - 1].softWrapped) firstRow--
     return buildString {
-        for (row in firstRow until cursorRow) append(lines[row].columnText)
-        append(cursorLine.columnText.take(cursorCol.coerceIn(0, cursorLine.columnText.length)))
+        for (row in firstRow until cursorRow) append(lines[row].text)
+        append(cursorLine.cells.text(0, cursorCol.coerceIn(0, cursorLine.cells.size)))
     }
 }
 
