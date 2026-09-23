@@ -5,6 +5,8 @@
 [release]\
 data class [Ask](index.md)(val limits: [InlineImageLimits](../../-inline-image-limits/index.md) = InlineImageLimits(), val confirm: suspend ([InlineImageRequest](../../-inline-image-request/index.md)) -&gt; [Boolean](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html)) : [InlineImages](../index.md)
 
+Inspect bounded image metadata and reserve layout as data arrives. Pixel decoding and display require approval; denial leaves the reserved space.
+
 ## Constructors
 
 | | |
