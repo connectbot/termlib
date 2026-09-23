@@ -5,7 +5,6 @@
  */
 package org.connectbot.terminal
 
-import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.util.Log
 import java.io.BufferedOutputStream
@@ -209,12 +208,10 @@ internal class InlineImageProtocol(
         }
         var mime: String? = null
         val dimensions = if (format == 100) {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            bytes.input().use { BitmapFactory.decodeStream(it, null, bounds) }
-            require(bounds.outMimeType in listOf("image/png", "image/jpeg", "image/gif", "image/webp")) { "ENOTSUP:unsupported image file" }
-            mime = bounds.outMimeType
-            if (!transfer.iterm) require(bounds.outMimeType == "image/png") { "EINVAL:Kitty f=100 requires PNG" }
-            bounds.outWidth to bounds.outHeight
+            val bounds = ImageDimensions.read(bytes, store.limits)
+            mime = bounds.mime
+            if (!transfer.iterm) require(mime == "image/png") { "EINVAL:Kitty f=100 requires PNG" }
+            bounds.width to bounds.height
         } else {
             integer(transfer.options, "s", 0) to integer(transfer.options, "v", 0)
         }

@@ -5,7 +5,11 @@
  */
 package org.connectbot.terminal
 
-/** Controls whether inline-image protocol payloads are accepted. */
+/**
+ * Controls whether inline-image protocol payloads are accepted.
+ * File dimensions must be available within the first 32 KiB; malformed or
+ * unsupported images are ignored. This header limit does not cap payload size.
+ */
 sealed class InlineImages {
     data object Off : InlineImages()
 
