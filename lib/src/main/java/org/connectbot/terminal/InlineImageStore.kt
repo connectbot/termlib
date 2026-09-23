@@ -20,6 +20,7 @@ import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Handler
 import android.os.SystemClock
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -505,12 +506,16 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
                     drawable = AnimatedImage.decode(animatedSource, w, h)
                     null
                 } else if (animatedSource != null) {
-                    movie = asset.movie ?: AnimatedImage.movie(animatedSource)
-                    movie?.let { AnimatedImage.frame(it, w, h, SystemClock.uptimeMillis() - asset.created) }
+                    movie = requireNotNull(asset.movie ?: AnimatedImage.movie(animatedSource)) { "Invalid animated image" }
+                    AnimatedImage.frame(movie, w, h, SystemClock.uptimeMillis() - asset.created)
                 } else {
                     frame.decode(w, h)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w("InlineImageStore", "Ignoring image ${asset.id}: pixel decoding failed", e)
+                null
+            } catch (e: OutOfMemoryError) {
+                Log.w("InlineImageStore", "Ignoring image ${asset.id}: pixel decoding exhausted memory", e)
                 null
             }
             maintenance.execute {
@@ -520,6 +525,10 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
                     // Even a stale decoder result owns native memory until GC.
                     (drawable ?: movie)?.let { retainResource(it, nativeBytes) }
                     if (assets[asset.id] === asset && generation == asset.generation) {
+                        if (decoded == null && drawable == null) {
+                            remove(asset.id)
+                            return@synchronized
+                        }
                         retain(decoded)
                         asset.bitmap = decoded
                         asset.drawable = drawable

@@ -636,6 +636,38 @@ class InlineImageTest {
     }
 
     @Test
+    fun invalidImageHeadersAreLoggedAndFollowingOutputAndImagesSurvive() {
+        val valid = Base64.getDecoder().decode(png)
+        val invalid = listOf(
+            byteArrayOf(),
+            "not an image".toByteArray(),
+            valid.copyOf(24),
+            valid.copyOf().apply { this[16] = 0x7f },
+            byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xe1.toByte(), 0x80.toByte(), 0) + ByteArray(32768),
+        )
+        for (policy in listOf(InlineImages.On(), InlineImages.Ask { true })) {
+            for (data in invalid) {
+                for (kitty in listOf(false, true)) {
+                    val terminal = TerminalEmulatorFactory.create(initialRows = 6, initialCols = 12, inlineImages = policy) as TerminalEmulatorImpl
+                    val payload = Base64.getEncoder().encodeToString(data)
+                    val sequence = if (kitty) kitty("a=T,f=100,i=1", payload) else iterm(payload)
+                    terminal.write(sequence + "SAFE")
+                    shadowOf(Looper.getMainLooper()).idle()
+                    terminal.commands.call { Unit }
+                    assertTrue(terminal.flush().lines[0].text.startsWith("SAFE"))
+                    assertTrue(terminal.imageStore.assets.isEmpty())
+                    assertEquals(0, terminal.imageStore.uploadBytes)
+                    terminal.write(iterm())
+                    shadowOf(Looper.getMainLooper()).idle()
+                    terminal.commands.call { Unit }
+                    assertEquals(1, terminal.imageStore.assets.size)
+                }
+            }
+        }
+        assertTrue(ShadowLog.getLogsForTag("InlineImageProtocol").any { "Rejected" in it.msg })
+    }
+
+    @Test
     fun placeholdersUseRawPaletteIdsAndUnderlinePlacementIds() {
         val terminal = emulator()
         terminal.write(kitty("a=T,f=100,i=42,p=5,c=2,r=2,U=1,q=2", png))
