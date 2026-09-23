@@ -351,28 +351,29 @@ internal class TerminalEmulatorImpl(
     }
     private val imageProtocol = InlineImageProtocol(imageStore, { onKeyboardInput(it) }, { payload, row, col -> onOscSequence(1337, payload, row, col) }).apply {
         enabled = inlineImages !is InlineImages.Off
+        consentGate = createConsentGate(inlineImages)
     }
 
     @Volatile private var imagePolicy: InlineImages = inlineImages
-    private var imageConsentGate: InlineImageConsentGate? = consentGate(inlineImages)
 
     override val inlineImages: InlineImages get() = imagePolicy
 
     override fun setInlineImages(inlineImages: InlineImages): Unit = synchronized(damageLock) {
         val oldLimits = imageStore.limits
-        imageConsentGate?.reset() ?: imageProtocol.reset()
+        imageProtocol.consentGate?.reset()
+        imageProtocol.reset()
         imagePolicy = inlineImages
         imageProtocol.enabled = inlineImages !is InlineImages.Off
         imageStore.limits = limits(inlineImages)
-        imageConsentGate = consentGate(inlineImages)
+        imageProtocol.consentGate = createConsentGate(inlineImages)
         if (inlineImages is InlineImages.Off || oldLimits != imageStore.limits) imageStore.clear()
         propertyChanged = true
         requestProcessPendingUpdatesLocked()
     }
 
-    private fun consentGate(policy: InlineImages): InlineImageConsentGate? {
+    private fun createConsentGate(policy: InlineImages): InlineImageConsentGate? {
         if (policy !is InlineImages.Ask) return null
-        return InlineImageConsentGate(imageProtocol, { onKeyboardInput(it) }, { request, completion ->
+        return InlineImageConsentGate(policy.limits.maxImages) { request, completion ->
             handler.post {
                 policy.confirm.startCoroutine(
                     request,
@@ -390,7 +391,7 @@ internal class TerminalEmulatorImpl(
                     },
                 )
             }
-        }, policy.limits, { movement, row, col -> terminalNative.placeImage(movement, row, col) })
+        }
     }
 
     override fun setCellPixelSize(width: Int, height: Int): Unit = synchronized(damageLock) {
@@ -402,8 +403,7 @@ internal class TerminalEmulatorImpl(
 
     override fun onImageFragment(kitty: Boolean, data: ByteArray, initial: Boolean, final: Boolean, row: Int, col: Int): Long = synchronized(damageLock) {
         val result = synchronized(imageStore) {
-            imageConsentGate?.accept(kitty, data, initial, final, row, col)
-                ?: imageProtocol.accept(kitty, data, initial, final, row, col)
+            imageProtocol.accept(kitty, data, initial, final, row, col)
         }
         propertyChanged = true
         requestProcessPendingUpdatesLocked()
@@ -414,18 +414,9 @@ internal class TerminalEmulatorImpl(
         synchronized(damageLock) {
             when (kind) {
                 0 -> imageStore.edit(TermRect(top, bottom, left, right))
-
-                1 -> {
-                    val rect = TermRect(top, bottom, left, right)
-                    val history = !imageStore.alternate && top == 0 && left == 0 && right == imageStore.cols && downward > 0 && rightward == 0
-                    imageConsentGate?.scroll(rect, downward, rightward, history)
-                    imageStore.scroll(rect, downward, rightward)
-                }
-
+                1 -> imageStore.scroll(TermRect(top, bottom, left, right), downward, rightward)
                 2 -> imageStore.clearScreen()
-
                 3 -> imageStore.resizeImages(top != 0, downward, bottom, left)
-
                 4 -> imageProtocol.reset()
             }
         }

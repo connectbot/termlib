@@ -35,10 +35,12 @@ import java.util.zip.InflaterInputStream
 import kotlin.math.ceil
 import kotlin.math.max
 
-internal data class ImageSource(val bytes: ImageBytes, val width: Int, val height: Int, val format: Int = 100, val mime: String? = null, val frameCount: Int = 1) {
+internal data class ImageSource(val bytes: ImageBytes, val width: Int, val height: Int, val format: Int = 100, val mime: String? = null, val frameCount: Int = 1, val consent: ImageConsent? = null) {
+    val displayAllowed: Boolean get() = consent == null || consent.decision == true
     fun stream(): InputStream = if (format == 100) bytes.input() else InflaterInputStream(bytes.input())
 
     fun decode(targetWidth: Int, targetHeight: Int): Bitmap {
+        check(displayAllowed) { "Inline image consent is required before decoding" }
         var sample = 1
         while (width / (sample * 2) >= targetWidth && height / (sample * 2) >= targetHeight) sample *= 2
         if (format == 100) {
@@ -86,6 +88,12 @@ internal data class ImageFrame(
 ) {
     val depth: Int = 1 + max(background?.depth ?: 0, foreground?.depth ?: 0)
     val operations: Int = (1L + (background?.operations ?: 0) + (foreground?.operations ?: 0)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    private val consents: Set<ImageConsent> = buildSet {
+        source?.consent?.let(::add)
+        background?.let { addAll(it.consents) }
+        foreground?.let { addAll(it.consents) }
+    }
+    val displayAllowed: Boolean get() = consents.all { it.decision == true }
 
     fun sources(result: MutableSet<ImageSource>, visited: MutableSet<ImageFrame> = Collections.newSetFromMap(IdentityHashMap())) {
         if (!visited.add(this)) return
@@ -108,6 +116,7 @@ internal data class ImageFrame(
     }
 
     fun decode(w: Int, h: Int): Bitmap {
+        check(displayAllowed) { "Inline image consent is required before decoding" }
         source?.let { return it.decode(w, h) }
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(color)
@@ -204,6 +213,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
         }
     }
     val assets = linkedMapOf<Long, ImageAsset>()
+    val pendingSources = mutableSetOf<ImageSource>()
     val placements = mutableListOf<ImagePlacement>()
     var alternate = false
     var rows = 24
@@ -236,12 +246,13 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
     @Synchronized
     fun encodedUsage(): Long {
         val sources = mutableSetOf<ImageSource>()
+        sources.addAll(pendingSources)
         assets.values.forEach { asset -> asset.frames.forEach { it.sources(sources) } }
         return sources.sumOf { it.bytes.chunks.sumOf { chunk -> chunk.size.toLong() } }
     }
 
     @Synchronized
-    fun frameCount(): Int = assets.values.sumOf { asset -> asset.frames.sumOf { it.source?.frameCount ?: 1 } }
+    fun frameCount(): Int = pendingSources.sumOf { it.frameCount } + assets.values.sumOf { asset -> asset.frames.sumOf { it.source?.frameCount ?: 1 } }
 
     @Synchronized
     fun reserveUpload(bytes: Int) {
@@ -383,7 +394,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
 
     @Synchronized
     fun slices(row: Int, screen: Boolean = alternate): List<ImageSlice> = placements.flatMap { p ->
-        if (p.alternate != screen || p.virtual) return@flatMap emptyList()
+        if (p.alternate != screen || p.virtual || !p.asset.displayAllowed) return@flatMap emptyList()
         origins(p).flatMap origins@{ origin ->
             val y = row - origin.first
             if (y !in maxOf(0, p.clipTop) until minOf(p.height, p.clipBottom)) return@origins emptyList()
@@ -445,6 +456,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
                 if (screenRow != null && placeholderAnchors.values.sumOf { it.size } < limits.maxPlacements) {
                     placeholderAnchors.getOrPut(p.asset.id to p.id) { mutableSetOf() }.add(screenRow - row to col - column)
                 }
+                if (!p.asset.displayAllowed) continue
                 add(
                     ImageSlice(
                         p.asset, col, col + 1, row, p.height, column, p.width, p.crop, p.z,
@@ -457,7 +469,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
 
     @Synchronized
     fun request(asset: ImageAsset, width: Int, height: Int) {
-        if (assets[asset.id] !== asset || asset.frames.isEmpty()) return
+        if (assets[asset.id] !== asset || asset.frames.isEmpty() || !asset.displayAllowed) return
         val frame = asset.frames[asset.frameIndex.coerceIn(asset.frames.indices)]
         val w = maxOf(width, if (asset.bitmap != null || asset.drawable != null) asset.targetWidth else 0).coerceIn(1, frame.width)
         val h = maxOf(height, if (asset.bitmap != null || asset.drawable != null) asset.targetHeight else 0).coerceIn(1, frame.height)
@@ -526,7 +538,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
     @Synchronized
     fun advanceAnimations(now: Long) {
         assets.values.forEach { asset ->
-            if (!visibleAsset(asset)) {
+            if (!asset.displayAllowed || !visibleAsset(asset)) {
                 asset.clearDecoded()
                 return@forEach
             }
@@ -564,6 +576,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
 }
 
 internal class ImageAsset(val id: Long, val number: Long?, private val store: InlineImageStore, frame: ImageFrame) {
+    val displayAllowed: Boolean get() = frames.all { it.displayAllowed }
     val presentation = ImagePresentation(Handler(android.os.Looper.getMainLooper()))
     val created = SystemClock.uptimeMillis()
     val width = frame.width

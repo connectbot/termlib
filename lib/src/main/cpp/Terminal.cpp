@@ -319,46 +319,6 @@ int Terminal::resize(int rows, int cols) {
     return 0;
 }
 
-int Terminal::placeImage(jlong movement, int row, int col) {
-    std::scoped_lock lock(mLock);
-    if (!mVt || movement <= 0) return -1;
-    VTermPos pos{};
-    vterm_state_get_cursorpos(vterm_obtain_state(mVt), &pos);
-    // Output may have advanced to a shell prompt while consent was pending.
-    // Reserving there would erase that prompt and move its cursor a second time.
-    if (!(movement & 1) && (pos.row != row || pos.col != col)) return 0;
-    const int rows = (movement >> 32) & 0xffff;
-    const int cols = (movement >> 1) & 0xffff;
-    if (rows <= 0 || cols <= 0) return -1;
-    beginCursorBatch();
-    mReservingImage = true;
-    int anchor = row;
-    if (movement & 1) {
-        auto* state = vterm_obtain_state(mVt);
-        if (pos.row == row && pos.col == col) {
-            vterm_state_place_image(state, rows, cols, 1);
-            vterm_state_get_cursorpos(state, &pos);
-            anchor = pos.row - rows + 1;
-        } else {
-            // imgcat already emitted its newline. Insert the remaining image
-            // rows ahead of that output, retaining the prompt's cursor column.
-            // Text on the anchor line itself needs the entire image inserted.
-            const int first = pos.row == row ? 0 : 1;
-            const int insert = std::max(0, row + first);
-            const int count = rows - first + std::min(0, row + first);
-            if (count > 0 && insert < mRows) {
-                anchor -= vterm_state_insert_lines_at(state, insert, count);
-            }
-        }
-    } else {
-        vterm_state_place_image(vterm_obtain_state(mVt), rows, cols, 0);
-    }
-    mReservingImage = false;
-    vterm_screen_flush_damage(mVts);
-    finishCursorBatch();
-    return anchor;
-}
-
 // Color configuration
 int Terminal::setPaletteColors(const uint32_t* colors, int count) {
     std::scoped_lock lock(mLock);
@@ -1144,12 +1104,6 @@ Java_org_connectbot_terminal_TerminalNative_nativeResize(JNIEnv* env, jobject /*
         return -1;
     }
     return term->resize(rows, cols);
-}
-
-JNIEXPORT jint JNICALL
-Java_org_connectbot_terminal_TerminalNative_nativePlaceImage(JNIEnv* /* env */, jobject /* thiz */,
-                                                             jlong ptr, jlong movement, jint row, jint col) {
-    return reinterpret_cast<Terminal*>(ptr)->placeImage(movement, row, col);
 }
 
 JNIEXPORT jboolean JNICALL

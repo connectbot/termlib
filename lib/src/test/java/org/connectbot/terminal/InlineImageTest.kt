@@ -37,6 +37,143 @@ class InlineImageTest {
         return snapshot.value
     }
 
+    private fun assertSameTextAndCursor(expected: TerminalSnapshot, actual: TerminalSnapshot) {
+        assertEquals(expected.cursorRow, actual.cursorRow)
+        assertEquals(expected.cursorCol, actual.cursorCol)
+        assertEquals(expected.lines.map { it.cells }, actual.lines.map { it.cells })
+        assertEquals(expected.scrollback.map { it.cells }, actual.scrollback.map { it.cells })
+    }
+
+    @Test
+    fun liveAndPendingImagesHaveIdenticalLayout() {
+        val multipart = "\u001b]1337;MultipartFile=inline=1;width=3;height=2;preserveAspectRatio=0\u0007" +
+            png.chunked(7).joinToString("") { "\u001b]1337;FilePart=$it\u0007" } + "\u001b]1337;FileEnd\u0007"
+        val sequences = listOf(
+            iterm(),
+            iterm(options = "preserveAspectRatio=1"),
+            multipart,
+            kitty("a=T,f=100,c=3,r=2", png),
+            kitty("a=T,f=100,C=1,c=3,r=2", png),
+            kitty("a=T,f=100", png),
+            kitty("a=T,f=32,s=1,v=1", "/wAA/w=="),
+            kitty("a=t,f=100,i=7", png) + kitty("a=p,i=7,c=3,r=2"),
+        )
+        for (sequence in sequences) {
+            for (position in listOf("\u001b[2;2H", "\u001b[6;1H", "\u001b[2;5r\u001b[4;2H", "\u001b[?1049h\u001b[6;1H")) {
+                val answers = mutableListOf<Continuation<Boolean>>()
+                val live = emulator()
+                val ask = TerminalEmulatorFactory.create(
+                    initialRows = 6,
+                    initialCols = 12,
+                    inlineImages = InlineImages.Ask { suspendCoroutine { answers.add(it) } },
+                ) as TerminalEmulatorImpl
+                val stream = "one\r\ntwo\r\nthree\r\nfour\r\nfive" + position + sequence + "\r\n$ "
+                stream.chunked(17).forEach {
+                    live.write(it)
+                    ask.write(it)
+                }
+                val expected = live.flush()
+                val pending = ask.flush()
+                assertSameTextAndCursor(expected, pending)
+                assertTrue((pending.lines + pending.scrollback).all { it.images.isEmpty() })
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue("Missing consent for sequence=$sequence position=$position", answers.isNotEmpty())
+                while (answers.isNotEmpty()) {
+                    answers.removeAt(0).resume(true)
+                    ask.commands.call { Unit }
+                    shadowOf(Looper.getMainLooper()).idle()
+                }
+                val approved = ask.flush()
+                assertSameTextAndCursor(expected, approved)
+                // Asset identities differ between terminals; compare the actual image cells.
+                fun cells(snapshot: TerminalSnapshot) = (snapshot.scrollback + snapshot.lines).map { line ->
+                    line.images.map { listOf(it.left, it.right, it.sourceRow, it.rows, it.sourceCol, it.columns, it.crop) }
+                }
+                assertEquals(cells(expected), cells(approved))
+            }
+        }
+    }
+
+    @Test
+    fun pendingImageTracksEditsResizeAndScreenSwitchBeforeApproval() {
+        lateinit var answer: Continuation<Boolean>
+        val live = emulator()
+        val ask = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            inlineImages = InlineImages.Ask { suspendCoroutine { answer = it } },
+        ) as TerminalEmulatorImpl
+        val stream = iterm() + "\u001b[1;2HX\u001b[6;1H\r\n\u001b[?1049hOTHER"
+        live.write(stream)
+        ask.write(stream)
+        live.resize(8, 10)
+        ask.resize(8, 10)
+        shadowOf(Looper.getMainLooper()).idle()
+        answer.resume(true)
+        ask.commands.call { Unit }
+        live.write("\u001b[?1049l")
+        ask.write("\u001b[?1049l")
+        val expected = live.flush()
+        val actual = ask.flush()
+        assertSameTextAndCursor(expected, actual)
+        assertEquals(
+            (expected.scrollback + expected.lines).map { it.images.map { slice -> slice.left to slice.right } },
+            (actual.scrollback + actual.lines).map { it.images.map { slice -> slice.left to slice.right } },
+        )
+    }
+
+    @Test
+    fun denyingPendingFramePreservesOriginalImageAndReleasesBytes() {
+        lateinit var answer: Continuation<Boolean>
+        var first = true
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            inlineImages = InlineImages.Ask {
+                if (first) {
+                    first = false
+                    true
+                } else {
+                    suspendCoroutine { answer = it }
+                }
+            },
+        ) as TerminalEmulatorImpl
+        terminal.write(kitty("a=T,f=32,s=1,v=1,i=7,C=1", "/wAA/w=="))
+        shadowOf(Looper.getMainLooper()).idle()
+        terminal.commands.call { Unit }
+        val original = terminal.imageStore.assets[7]!!.frames.single()
+        val usage = terminal.imageStore.encodedUsage()
+        terminal.write(kitty("a=f,f=32,s=1,v=1,i=7", "AAD/gA==") + kitty("a=a,i=7,s=3"))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf(original), terminal.imageStore.assets[7]!!.frames)
+        assertTrue(terminal.imageStore.pendingSources.isNotEmpty())
+        answer.resume(false)
+        terminal.commands.call { Unit }
+        assertEquals(listOf(original), terminal.imageStore.assets[7]!!.frames)
+        assertTrue(terminal.imageStore.assets[7]!!.displayAllowed)
+        assertTrue(terminal.imageStore.pendingSources.isEmpty())
+        assertEquals(usage, terminal.imageStore.encodedUsage())
+    }
+
+    @Test
+    fun disablingImagesCancelsPendingConsentAndLateAnswers() {
+        lateinit var answer: Continuation<Boolean>
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            inlineImages = InlineImages.Ask { suspendCoroutine { answer = it } },
+        ) as TerminalEmulatorImpl
+        terminal.write(iterm() + "\r\n$ ")
+        shadowOf(Looper.getMainLooper()).idle()
+        val before = terminal.flush()
+        terminal.setInlineImages(InlineImages.Off)
+        answer.resume(true)
+        terminal.commands.call { Unit }
+        assertSameTextAndCursor(before, terminal.flush())
+        assertTrue(terminal.imageStore.assets.isEmpty())
+        assertEquals(0L, terminal.imageStore.encodedUsage())
+    }
+
     @Test
     fun inlineImagesDefaultToOff() {
         val terminal = TerminalEmulatorFactory.create(initialRows = 6, initialCols = 12) as TerminalEmulatorImpl
@@ -70,12 +207,25 @@ class InlineImageTest {
         assertEquals(68L, request.declaredSizeBytes)
         assertTrue(terminal.imageStore.assets.isEmpty())
         terminal.write(png + "\u0007X")
-        assertEquals('X', terminal.flush().lines[0].cells.charAt(0))
+        val before = terminal.flush()
+        assertEquals('X', before.lines[1].cells.charAt(3))
+        assertTrue(before.lines.all { it.images.isEmpty() })
+        val asset = terminal.imageStore.assets.values.single()
+        assertTrue(!asset.displayAllowed)
+        asset.request(1, 1)
+        assertTrue(!asset.pending)
+        assertNull(asset.bitmap)
+        try {
+            asset.frames.single().decode(1, 1)
+            fail("Pixel decoding must require consent")
+        } catch (_: IllegalStateException) { }
 
         answer.resume(true)
         terminal.commands.call { Unit }
         assertEquals(1, terminal.imageStore.assets.size)
-        assertEquals('X', terminal.flush().lines[2].cells.charAt(0))
+        assertEquals('X', terminal.flush().lines[1].cells.charAt(3))
+        assertEquals(before.cursorRow, terminal.flush().cursorRow)
+        assertEquals(before.cursorCol, terminal.flush().cursorCol)
     }
 
     @Test
@@ -101,8 +251,8 @@ class InlineImageTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(2, requests.size)
         assertTrue(responses.any { "EPERM:user denied inline image" in it })
-        assertEquals(0, terminal.flush().cursorRow)
-        assertEquals(0, terminal.flush().cursorCol)
+        assertEquals(2, terminal.flush().cursorRow)
+        assertEquals(2, terminal.flush().cursorCol)
         answers[1].resume(true)
         terminal.commands.call { Unit }
         assertEquals(setOf(8L), terminal.imageStore.assets.keys)
@@ -131,7 +281,7 @@ class InlineImageTest {
     }
 
     @Test
-    fun imgcatDelayedApprovalInsertsSpaceBeforePrompt() {
+    fun imgcatReservesSpaceBeforePromptWhileApprovalIsPending() {
         for (startRow in listOf(0, 4, 5)) {
             for (height in listOf(2, 10)) {
                 lateinit var answer: Continuation<Boolean>
@@ -145,13 +295,18 @@ class InlineImageTest {
                 png.chunked(7).forEach { terminal.write("\u001b]1337;FilePart=$it\u0007") }
                 terminal.write("\u001b]1337;FileEnd\u0007\r\n$ ")
                 shadowOf(Looper.getMainLooper()).idle()
-                assertTrue(terminal.imageStore.assets.isEmpty())
-                assertTrue(terminal.flush().lines.any { it.text.startsWith("$ ") })
+                assertTrue(terminal.imageStore.assets.values.none { it.displayAllowed })
+                val before = terminal.flush()
+                assertTrue(before.lines.any { it.text.startsWith("$ ") })
+                assertTrue(before.lines.all { it.images.isEmpty() })
 
                 answer.resume(true)
                 terminal.commands.call { Unit }
 
                 val snapshot = terminal.flush()
+                assertEquals(before.cursorRow, snapshot.cursorRow)
+                assertEquals(before.cursorCol, snapshot.cursorCol)
+                assertEquals(before.lines.map { it.text }, snapshot.lines.map { it.text })
                 val placement = terminal.imageStore.placements.single()
                 assertEquals(height, placement.height)
                 assertEquals(placement.top + height, snapshot.cursorRow)
@@ -245,7 +400,7 @@ class InlineImageTest {
     }
 
     @Test
-    fun askApprovalAppliesKittyCursorReservation() {
+    fun askApprovalDoesNotRepeatKittyCursorReservation() {
         lateinit var answer: Continuation<Boolean>
         val terminal = TerminalEmulatorFactory.create(
             initialRows = 6,
@@ -257,8 +412,9 @@ class InlineImageTest {
 
         terminal.write(kitty("a=T,f=100", png))
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(0, terminal.flush().cursorRow)
-        assertEquals(0, terminal.flush().cursorCol)
+        assertEquals(1, terminal.flush().cursorRow)
+        assertEquals(1, terminal.flush().cursorCol)
+        assertTrue(terminal.flush().lines.all { it.images.isEmpty() })
 
         answer.resume(true)
         terminal.commands.call { Unit }

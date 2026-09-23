@@ -21,6 +21,7 @@ import java.nio.ByteBuffer
 internal object AnimatedImage {
     @RequiresApi(28)
     fun decode(source: ImageSource, width: Int, height: Int): Drawable {
+        check(source.displayAllowed) { "Inline image consent is required before decoding" }
         val bytes = ByteArray(source.bytes.size)
         source.bytes.input().use { input ->
             var offset = 0
@@ -55,7 +56,10 @@ internal object AnimatedImage {
         drawable?.callback = null
     }
 
-    fun movie(source: ImageSource): Movie? = source.bytes.input().use(Movie::decodeStream)
+    fun movie(source: ImageSource): Movie? {
+        check(source.displayAllowed) { "Inline image consent is required before decoding" }
+        return source.bytes.input().use(Movie::decodeStream)
+    }
 
     fun frame(movie: Movie, width: Int, height: Int, elapsed: Long): Bitmap {
         movie.setTime((elapsed % movie.duration().coerceAtLeast(1)).toInt())

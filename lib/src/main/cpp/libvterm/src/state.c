@@ -192,35 +192,6 @@ void vterm_state_place_image(VTermState *state, int rows, int cols, int reserve)
   updatecursor(state, &oldpos, 1);
 }
 
-int vterm_state_insert_lines_at(VTermState *state, int row, int count)
-{
-  if(row < 0 || row >= state->rows || count < 0)
-    return -1;
-  if(count == 0)
-    return 0;
-  VTermPos oldpos = state->pos;
-  int scrolled = 0;
-  int insert = row;
-  for(int i = 0; i < count && insert < state->rows; i++) {
-    if(insert <= state->pos.row && state->pos.row == state->rows - 1) {
-      scroll(state, (VTermRect){0, state->rows, 0, state->cols}, 1, 0);
-      if(state->pos.row > 0)
-        state->pos.row--;
-      scrolled++;
-      insert--;
-    }
-    if(insert < 0)
-      insert = 0;
-    scroll(state, (VTermRect){insert, state->rows, 0, state->cols}, -1, 0);
-    if(insert <= state->pos.row && state->pos.row < state->rows - 1)
-      state->pos.row++;
-    insert++;
-  }
-  state->combine_valid = 0;
-  updatecursor(state, &oldpos, 1);
-  return scrolled;
-}
-
 static void set_col_tabstop(VTermState *state, int col)
 {
   unsigned char mask = 1 << (col & 7);

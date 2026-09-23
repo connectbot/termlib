@@ -6,6 +6,7 @@
 package org.connectbot.terminal
 
 import android.graphics.Rect
+import android.util.Base64
 import android.util.Log
 import java.io.BufferedOutputStream
 import java.io.OutputStream
@@ -23,6 +24,7 @@ internal class InlineImageProtocol(
     private val otherOsc: (String, Int, Int) -> Unit,
 ) {
     @Volatile var enabled = true
+    var consentGate: InlineImageConsentGate? = null
     private var header = StringBuilder()
     private var payload = false
     private var discarded = false
@@ -33,9 +35,22 @@ internal class InlineImageProtocol(
     private var keys = emptyMap<String, String>()
     private var upload: Upload? = null
     private var reserved = 0
-    private var reserveIterm: ((Long, Int, Int) -> Int)? = null
+    private data class PendingCommand(val consent: ImageConsent?, val source: ImageSource?, val options: Map<String, String>, val action: () -> Unit)
+    private val pendingCommands = ArrayDeque<PendingCommand>()
 
-    private inner class Upload(val iterm: Boolean, val options: Map<String, String>) {
+    private inner class Upload(val iterm: Boolean, val options: Map<String, String>, action: String = if (iterm) "File" else options["a"] ?: "t") {
+        val consent = consentGate?.request(
+            InlineImageRequest(
+                protocol = if (iterm) InlineImageProtocolType.ITERM2 else InlineImageProtocolType.KITTY,
+                action = action,
+                imageId = identifier(options, "i"),
+                imageNumber = identifier(options, "I"),
+                name = if (iterm) options["name"]?.let { runCatching { Base64.decode(it, Base64.DEFAULT).toString(Charsets.UTF_8) }.getOrNull() } else null,
+                declaredSizeBytes = options["size"]?.toLongOrNull(),
+                pixelWidth = options["s"]?.toIntOrNull(),
+                pixelHeight = options["v"]?.toIntOrNull(),
+            ),
+        )
         val builder = ImageBytes.Builder(store.limits.uploadBytes) { bytes ->
             store.reserveUpload(bytes)
             reserved += bytes
@@ -79,8 +94,7 @@ internal class InlineImageProtocol(
         discarded = true
     }
 
-    fun accept(isKitty: Boolean, data: ByteArray, initial: Boolean, final: Boolean, cursorRow: Int, cursorCol: Int, reserveIterm: ((Long, Int, Int) -> Int)? = null): Long {
-        this.reserveIterm = reserveIterm
+    fun accept(isKitty: Boolean, data: ByteArray, initial: Boolean, final: Boolean, cursorRow: Int, cursorCol: Int): Long {
         if (initial) {
             kitty = isKitty
             header = StringBuilder()
@@ -139,7 +153,7 @@ internal class InlineImageProtocol(
                 header.startsWith("MultipartFile=") -> {
                     abortUpload()
                     val options = parse(header.toString().substringAfter('='), ';')
-                    if (options["inline"] == "1") upload = Upload(true, options)
+                    if (options["inline"] == "1") upload = Upload(true, options, "MultipartFile")
                 }
 
                 header.toString() == "FileEnd" -> return finishIterm()
@@ -238,7 +252,7 @@ internal class InlineImageProtocol(
         }
         val frames = ImageAnimationBounds.count(bytes, mime, store.limits.maxFrames - store.frameCount())
         require(store.frameCount() + frames <= store.limits.maxFrames) { "ENOSPC:too many frames" }
-        return ImageSource(bytes, width, height, format, mime, frames)
+        return ImageSource(bytes, width, height, format, mime, frames, transfer.consent)
     }
 
     private fun finishIterm(): Long {
@@ -268,9 +282,6 @@ internal class InlineImageProtocol(
         val rows = ceil(height / store.cellHeight).toInt().coerceIn(1, store.limits.maxDimension)
         require(store.placements.size < store.limits.maxPlacements) { "ENOSPC:too many placements" }
         val movement = (rows.toLong() shl 32) or (columns.toLong() shl 1) or 1
-        // Delayed consent must make space before the placement is registered,
-        // so scrolling moves existing images without moving the new image twice.
-        reserveIterm?.let { row = it(movement, row, col) }
         store.edit(TermRect(row, row + rows, col, col + columns))
         val frame = ImageFrame(source, width = source.width, height = source.height)
         val asset = store.add(store.allocateId(), null, frame)
@@ -281,8 +292,9 @@ internal class InlineImageProtocol(
                 renderWidth = (width / store.cellWidth).toFloat(), renderHeight = (height / store.cellHeight).toFloat(),
             ),
         )
+        watchConsent(asset, source)
         abortUpload()
-        return if (reserveIterm == null) movement else 0
+        return movement
     }
 
     private fun kittyCommand(): Long {
@@ -295,24 +307,44 @@ internal class InlineImageProtocol(
                     val transfer = requireNotNull(upload) { "EINVAL:missing image payload" }
                     val source = source(transfer)
                     if (options["a"] == "q") {
-                        reply(options, "OK")
+                        replyAfterConsent(source.consent, options)
                         return 0
                     }
                     val id = identifier(options, "i") ?: generateKittyId()
                     val asset = store.add(id, identifier(options, "I"), ImageFrame(source, width = source.width, height = source.height))
                     options = options + ("i" to id.toString())
                     if (options["a"] == "T") movement = place(asset, options)
+                    watchConsent(asset, source)
+                    replyAfterConsent(source.consent, options)
+                    return movement
                 }
 
                 "p" -> movement = place(find(options), options)
 
-                "d" -> delete(options)
+                "d" -> {
+                    enqueue(null, null, options) { delete(options) }
+                    return 0
+                }
 
-                "f" -> frame(options)
+                "f" -> {
+                    val source = source(requireNotNull(upload) { "EINVAL:missing frame data" })
+                    val asset = find(options)
+                    enqueue(source.consent, source, options) {
+                        require(store.assets[asset.id] === asset) { "ENOENT:image was removed" }
+                        frame(options, source)
+                    }
+                    return 0
+                }
 
-                "a" -> animate(options)
+                "a" -> {
+                    enqueue(null, null, options) { animate(options) }
+                    return 0
+                }
 
-                "c" -> compose(options)
+                "c" -> {
+                    enqueue(null, null, options) { compose(options) }
+                    return 0
+                }
 
                 else -> throw IllegalArgumentException("ENOTSUP:unsupported graphics action")
             }
@@ -321,6 +353,50 @@ internal class InlineImageProtocol(
             if ((options["a"] ?: "t") in listOf("t", "T", "q", "f", "d")) abortUpload()
         }
         return movement
+    }
+
+    private fun watchConsent(asset: ImageAsset, source: ImageSource) {
+        source.consent?.whenDecided { allowed ->
+            if (!allowed && store.assets[asset.id] === asset) store.remove(asset.id)
+        }
+    }
+
+    private fun replyAfterConsent(consent: ImageConsent?, options: Map<String, String>) {
+        if (consent == null) {
+            reply(options, "OK")
+        } else {
+            consent.whenDecided { allowed ->
+                if (!consent.cancelled) reply(options, if (allowed) "OK" else "EPERM:user denied inline image")
+            }
+        }
+    }
+
+    private fun enqueue(consent: ImageConsent?, source: ImageSource?, options: Map<String, String>, action: () -> Unit) {
+        require(pendingCommands.size < store.limits.maxPlacements) { "ENOSPC:too many pending image commands" }
+        source?.let(store.pendingSources::add)
+        pendingCommands.addLast(PendingCommand(consent, source, options, action))
+        consent?.whenDecided { drainCommands() }
+        drainCommands()
+    }
+
+    private fun drainCommands() {
+        while (pendingCommands.isNotEmpty()) {
+            val command = pendingCommands.first()
+            val consent = command.consent
+            if (consent != null && consent.decision == null) return
+            pendingCommands.removeFirst()
+            command.source?.let(store.pendingSources::remove)
+            if (consent?.cancelled == true) continue
+            val status = if (consent?.decision == false) {
+                "EPERM:user denied inline image"
+            } else {
+                runCatching {
+                    command.action()
+                    "OK"
+                }.getOrElse { it.message?.takeIf { message -> ':' in message } ?: "EINVAL:invalid image command" }
+            }
+            reply(command.options, status)
+        }
     }
 
     private fun generateKittyId(): Long = (1L..0xffff_ffffL).first { !store.assets.containsKey(it) }
@@ -443,10 +519,9 @@ internal class InlineImageProtocol(
         }
     }
 
-    private fun frame(options: Map<String, String>) {
+    private fun frame(options: Map<String, String>, source: ImageSource) {
         val asset = find(options)
         require(store.frameCount() < store.limits.maxFrames) { "ENOSPC:too many frames" }
-        val source = source(requireNotNull(upload) { "EINVAL:missing frame data" })
         val target = integer(options, "r", 0) - 1
         val baseIndex = integer(options, "c", 0) - 1
         require(target == -1 || target in asset.frames.indices) { "EINVAL:invalid frame number" }

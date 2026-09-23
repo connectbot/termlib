@@ -5,245 +5,68 @@
  */
 package org.connectbot.terminal
 
-import android.util.Base64
-import java.io.ByteArrayOutputStream
 import java.util.ArrayDeque
 
-/** Keeps encoded graphics commands away from the decoder until consent is granted. */
+/** Consent controls decoding and display, never terminal layout. */
+internal class ImageConsent {
+    @Volatile var decision: Boolean? = null
+        private set
+    var cancelled = false
+        private set
+    private val listeners = mutableListOf<(Boolean) -> Unit>()
+
+    fun whenDecided(action: (Boolean) -> Unit) {
+        val value = decision
+        if (value == null) listeners.add(action) else action(value)
+    }
+
+    fun decide(allowed: Boolean) {
+        if (decision != null) return
+        decision = allowed
+        val actions = listeners.toList()
+        listeners.clear()
+        actions.forEach { it(allowed) }
+    }
+
+    fun cancel() {
+        cancelled = true
+        decide(false)
+    }
+}
+
+/** Serializes bounded consent prompts while the ordinary protocol parser keeps running. */
 internal class InlineImageConsentGate(
-    private val protocol: InlineImageProtocol,
-    private val output: (ByteArray) -> Unit,
+    private val limit: Int,
     private val ask: (InlineImageRequest, (Boolean) -> Unit) -> Unit,
-    private val limits: InlineImageLimits,
-    private val place: (Long, Int, Int) -> Int,
 ) {
-    private data class Sequence(val kitty: Boolean, val bytes: ByteArray, var row: Int, var col: Int)
-    private class Group(val request: InlineImageRequest?, val kittyOptions: Map<String, String>) {
-        val sequences = mutableListOf<Sequence>()
-        var complete = request == null
-        var decision: Boolean? = if (request == null) true else null
-        var bytes = 0
-    }
+    private data class Prompt(val request: InlineImageRequest, val consent: ImageConsent)
+    private val prompts = ArrayDeque<Prompt>()
+    private var active: Prompt? = null
 
-    private val groups = ArrayDeque<Group>()
-    private var current = ByteArrayOutputStream()
-    private var currentRow = 0
-    private var currentCol = 0
-    private var currentOverflow = false
-    private var currentHeader = StringBuilder()
-    private var currentGroup: Group? = null
-    private var headerComplete = false
-    private var continuingKitty: Group? = null
-    private var continuingIterm: Group? = null
-    private var pendingBytes = 0
-    private var promptActive = false
-    private val prompts = ArrayDeque<Group>()
-    private val pendingLimit = ((limits.uploadBytes.toLong() + 2) / 3 * 4 + 8192).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-
-    fun accept(kitty: Boolean, data: ByteArray, initial: Boolean, final: Boolean, row: Int, col: Int): Long {
-        if (initial) {
-            current = ByteArrayOutputStream(data.size.coerceAtLeast(64))
-            currentRow = row
-            currentCol = col
-            currentOverflow = false
-            currentHeader = StringBuilder()
-            currentGroup = if (kitty) continuingKitty else continuingIterm
-            headerComplete = false
-        }
-        if (!headerComplete) scanHeader(kitty, data)
-        if (!currentOverflow) {
-            if (pendingBytes.toLong() + current.size() + data.size <= pendingLimit) {
-                current.write(data)
-            } else {
-                currentOverflow = true
-                current.reset()
-            }
-        }
-        if (!final) return 0
-
-        val bytes = current.toByteArray()
-        val header = header(bytes, kitty)
-        val options = options(header, kitty)
-        val hasPayload = if (kitty) {
-            bytes.indexOf(';'.code.toByte()) >= 0
-        } else {
-            (header.startsWith("File=") && bytes.indexOf(':'.code.toByte()) >= 0) || header.startsWith("FilePart=")
-        }
-        val sequence = Sequence(kitty, bytes, currentRow, currentCol)
-
-        val group = currentGroup ?: when {
-            kitty && continuingKitty != null -> continuingKitty!!
-
-            !kitty && continuingIterm != null && (header.startsWith("FilePart=") || header == "FileEnd") -> continuingIterm!!
-
-            hasPayload || (!kitty && header.startsWith("MultipartFile=")) -> {
-                val created = Group(request(header, options, kitty), options)
-                groups.add(created)
-                prompts.add(created)
-                startNextPrompt()
-                created
-            }
-
-            else -> Group(null, emptyMap()).also(groups::add)
-        }
-        if (currentOverflow) {
-            group.decision = false
-        } else {
-            group.sequences.add(sequence)
-            group.bytes += bytes.size
-            pendingBytes += bytes.size
-        }
-
-        if (kitty && hasPayload) {
-            if (options["m"] == "1") {
-                continuingKitty = group
-            } else {
-                continuingKitty = null
-                group.complete = true
-            }
-        } else if (!kitty && header.startsWith("MultipartFile=")) {
-            continuingIterm = group
-        } else if (!kitty && header == "FileEnd") {
-            continuingIterm = null
-            group.complete = true
-        } else if (group.request != null && continuingKitty !== group && continuingIterm !== group) {
-            group.complete = true
-        }
-        // accept runs inside libvterm's callback. Let the caller apply movement
-        // after the callback returns; calling place here would reenter JNI.
-        var movement = 0L
-        drain(inCallback = true) { value, _, _ -> movement = value }
-        return movement
-    }
-
-    private fun scanHeader(kitty: Boolean, data: ByteArray) {
-        val delimiter = if (kitty) ';'.code else ':'.code
-        for (byte in data) {
-            val value = byte.toInt() and 255
-            if (value == delimiter) {
-                headerComplete = true
-                val header = currentHeader.toString()
-                if (currentGroup == null && ((kitty && header.startsWith("G")) || (!kitty && header.startsWith("File=")))) {
-                    val parsed = options(header, kitty)
-                    currentGroup = Group(request(header, parsed, kitty), parsed).also { group ->
-                        groups.add(group)
-                        prompts.add(group)
-                        startNextPrompt()
-                    }
-                }
-                return
-            }
-            if (currentHeader.length < 4096) currentHeader.append(value.toChar())
-        }
+    fun request(request: InlineImageRequest): ImageConsent {
+        require(prompts.size + (if (active == null) 0 else 1) < limit) { "ENOSPC:too many pending image requests" }
+        val consent = ImageConsent()
+        prompts.add(Prompt(request, consent))
+        startNextPrompt()
+        return consent
     }
 
     fun reset() {
-        groups.clear()
+        val pending = prompts.toList() + listOfNotNull(active)
         prompts.clear()
-        continuingKitty = null
-        continuingIterm = null
-        pendingBytes = 0
-        promptActive = false
-        protocol.reset()
+        active = null
+        pending.forEach { it.consent.cancel() }
     }
 
     private fun startNextPrompt() {
-        if (promptActive) return
-        val group = if (prompts.isEmpty()) return else prompts.removeFirst()
-        promptActive = true
-        ask(requireNotNull(group.request)) { allowed ->
-            group.decision = allowed
-            promptActive = false
-            drain()
+        if (active != null || prompts.isEmpty()) return
+        val prompt = prompts.removeFirst()
+        active = prompt
+        ask(prompt.request) { allowed ->
+            if (active !== prompt) return@ask
+            active = null
+            prompt.consent.decide(allowed)
             startNextPrompt()
         }
-    }
-
-    private fun drain(inCallback: Boolean = false, move: (Long, Int, Int) -> Unit = { value, row, col -> place(value, row, col) }) {
-        while (groups.isNotEmpty()) {
-            val group = groups.first()
-            if (!group.complete || group.decision == null) return
-            groups.removeFirst()
-            pendingBytes -= group.bytes
-            if (group.decision == true) {
-                for (sequence in group.sequences) {
-                    val movement = protocol.accept(
-                        sequence.kitty,
-                        sequence.bytes,
-                        true,
-                        true,
-                        sequence.row,
-                        sequence.col,
-                        reserveIterm = if (inCallback) null else place,
-                    )
-                    if (movement > 0) move(movement, sequence.row, sequence.col)
-                }
-            } else if (group.request?.protocol == InlineImageProtocolType.KITTY) {
-                denyKitty(group.kittyOptions)
-            }
-        }
-    }
-
-    fun scroll(rect: TermRect, down: Int, right: Int, history: Boolean) {
-        fun moved(row: Int, col: Int) = (row in rect.startRow until rect.endRow || (history && row < 0)) && col in rect.startCol until rect.endCol
-        for (group in groups) {
-            for (sequence in group.sequences) {
-                if (moved(sequence.row, sequence.col)) {
-                    sequence.row -= down
-                    sequence.col -= right
-                }
-            }
-        }
-        if (moved(currentRow, currentCol)) {
-            currentRow -= down
-            currentCol -= right
-        }
-    }
-
-    private fun denyKitty(options: Map<String, String>) {
-        val quiet = options["q"]?.toIntOrNull() ?: 0
-        if (quiet == 2) return
-        val ids = listOf("i", "I", "p").mapNotNull { key -> options[key]?.let { "$key=$it" } }.joinToString(",")
-        output("\u001b_G$ids;EPERM:user denied inline image\u001b\\".toByteArray(Charsets.US_ASCII))
-    }
-
-    private fun header(bytes: ByteArray, kitty: Boolean): String {
-        val delimiter = if (kitty) ';'.code else ':'.code
-        val end = bytes.indexOf(delimiter.toByte()).let { if (it < 0) bytes.size else it }
-        return bytes.copyOfRange(0, end.coerceAtMost(4096)).toString(Charsets.US_ASCII)
-    }
-
-    private fun options(header: String, kitty: Boolean): Map<String, String> {
-        val body = when {
-            kitty -> header.removePrefix("G")
-            '=' in header -> header.substringAfter('=')
-            else -> ""
-        }
-        val separator = if (kitty) ',' else ';'
-        return body.split(separator).mapNotNull { field ->
-            val index = field.indexOf('=')
-            if (index <= 0) null else field.substring(0, index) to field.substring(index + 1)
-        }.toMap()
-    }
-
-    private fun request(header: String, options: Map<String, String>, kitty: Boolean): InlineImageRequest {
-        fun id(key: String) = options[key]?.toLongOrNull()?.takeIf { it in 1..0xffff_ffffL }
-        val name = if (kitty) {
-            null
-        } else {
-            options["name"]?.let {
-                runCatching { Base64.decode(it, Base64.DEFAULT).toString(Charsets.UTF_8) }.getOrNull()
-            }
-        }
-        return InlineImageRequest(
-            protocol = if (kitty) InlineImageProtocolType.KITTY else InlineImageProtocolType.ITERM2,
-            action = if (kitty) options["a"] ?: "t" else header.substringBefore('='),
-            imageId = id("i"),
-            imageNumber = id("I"),
-            name = name,
-            declaredSizeBytes = options["size"]?.toLongOrNull(),
-            pixelWidth = options["s"]?.toIntOrNull(),
-            pixelHeight = options["v"]?.toIntOrNull(),
-        )
     }
 }

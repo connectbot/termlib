@@ -17,6 +17,10 @@ sealed class InlineImages {
         val limits: InlineImageLimits = InlineImageLimits(),
     ) : InlineImages()
 
+    /**
+     * Inspect bounded image metadata and reserve layout as data arrives.
+     * Pixel decoding and display require approval; denial leaves the reserved space.
+     */
     data class Ask(
         val limits: InlineImageLimits = InlineImageLimits(),
         val confirm: suspend (InlineImageRequest) -> Boolean,
