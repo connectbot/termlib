@@ -75,7 +75,7 @@ class InlineImageTest {
         answer.resume(true)
         terminal.commands.call { Unit }
         assertEquals(1, terminal.imageStore.assets.size)
-        assertEquals('X', terminal.flush().lines[0].cells.charAt(0))
+        assertEquals('X', terminal.flush().lines[2].cells.charAt(0))
     }
 
     @Test
@@ -106,6 +106,142 @@ class InlineImageTest {
         answers[1].resume(true)
         terminal.commands.call { Unit }
         assertEquals(setOf(8L), terminal.imageStore.assets.keys)
+    }
+
+    @Test
+    fun askKittyApprovalPreservesFollowingPromptAndCursor() {
+        lateinit var answer: Continuation<Boolean>
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            inlineImages = InlineImages.Ask { suspendCoroutine { answer = it } },
+        ) as TerminalEmulatorImpl
+
+        terminal.write(kitty("a=T,f=100,c=3,r=2", png) + "\r\n\r\nPROMPT\r")
+        shadowOf(Looper.getMainLooper()).idle()
+        val before = terminal.flush()
+        answer.resume(true)
+        terminal.commands.call { Unit }
+
+        val after = terminal.flush()
+        assertEquals(before.cursorRow, after.cursorRow)
+        assertEquals(before.cursorCol, after.cursorCol)
+        assertEquals(before.lines.map { it.text }, after.lines.map { it.text })
+        assertEquals(1, terminal.imageStore.assets.size)
+    }
+
+    @Test
+    fun imgcatDelayedApprovalInsertsSpaceBeforePrompt() {
+        for (startRow in listOf(0, 4, 5)) {
+            for (height in listOf(2, 10)) {
+                lateinit var answer: Continuation<Boolean>
+                val terminal = TerminalEmulatorFactory.create(
+                    initialRows = 6,
+                    initialCols = 12,
+                    inlineImages = InlineImages.Ask { suspendCoroutine { answer = it } },
+                ) as TerminalEmulatorImpl
+                terminal.write("\u001b[${startRow + 1};1H")
+                terminal.write("\u001b]1337;MultipartFile=inline=1;width=3;height=$height;preserveAspectRatio=0\u0007")
+                png.chunked(7).forEach { terminal.write("\u001b]1337;FilePart=$it\u0007") }
+                terminal.write("\u001b]1337;FileEnd\u0007\r\n$ ")
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(terminal.imageStore.assets.isEmpty())
+                assertTrue(terminal.flush().lines.any { it.text.startsWith("$ ") })
+
+                answer.resume(true)
+                terminal.commands.call { Unit }
+
+                val snapshot = terminal.flush()
+                val placement = terminal.imageStore.placements.single()
+                assertEquals(height, placement.height)
+                assertEquals(placement.top + height, snapshot.cursorRow)
+                assertEquals(2, snapshot.cursorCol)
+                assertTrue(snapshot.lines[snapshot.cursorRow].text.startsWith("$ "))
+                assertTrue(snapshot.lines[snapshot.cursorRow].images.isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun imgcatMultipartWithRememberedApprovalDoesNotReenterNative() {
+        lateinit var answer: Continuation<Boolean>
+        var approved = false
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            inlineImages = InlineImages.Ask {
+                if (approved) true else suspendCoroutine { answer = it }
+            },
+        ) as TerminalEmulatorImpl
+        repeat(2) {
+            terminal.write("\u001b]1337;MultipartFile=inline=1;width=3;height=2;preserveAspectRatio=0\u0007")
+            shadowOf(Looper.getMainLooper()).idle()
+            if (!approved) {
+                approved = true
+                answer.resume(true)
+            }
+            terminal.commands.call { Unit }
+            png.chunked(7).forEach { terminal.write("\u001b]1337;FilePart=$it\u0007") }
+            terminal.write("\u001b]1337;FileEnd\u0007\r\n$ ")
+            val snapshot = terminal.flush()
+            assertEquals(2, snapshot.cursorCol)
+            assertTrue(snapshot.lines[snapshot.cursorRow].text.startsWith("$ "))
+            terminal.write("\r\n")
+        }
+        assertEquals(2, terminal.imageStore.assets.size)
+    }
+
+    @Test
+    fun recordedImgcatMultipartWithDelayedApproval() {
+        val path = System.getenv("TERMLIB_IMGCAT_TRANSCRIPT")
+        assumeTrue(path != null)
+        val stream = File(path!!).readText().replace("\n", "\r\n")
+        for (startRow in listOf(0, 38, 39)) {
+            lateinit var answer: Continuation<Boolean>
+            val terminal = TerminalEmulatorFactory.create(
+                initialRows = 40,
+                initialCols = 80,
+                inlineImages = InlineImages.Ask { suspendCoroutine { answer = it } },
+            ) as TerminalEmulatorImpl
+            terminal.write("\u001b[${startRow + 1};1H")
+            stream.chunked(113).forEach { terminal.write(it) }
+            terminal.write("$ ")
+            shadowOf(Looper.getMainLooper()).idle()
+            answer.resume(true)
+            terminal.commands.call { Unit }
+            val snapshot = terminal.flush()
+            val placement = terminal.imageStore.placements.single()
+            assertEquals(placement.top + placement.height, snapshot.cursorRow)
+            assertEquals(2, snapshot.cursorCol)
+            assertTrue(snapshot.lines[snapshot.cursorRow].text.startsWith("$ "))
+            assertTrue(snapshot.lines[snapshot.cursorRow].images.isEmpty())
+        }
+    }
+
+    @Test
+    fun askApprovalBeforePayloadCompletesDoesNotReenterNative() {
+        lateinit var answer: Continuation<Boolean>
+        var approved = false
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            inlineImages = InlineImages.Ask {
+                if (approved) true else suspendCoroutine { answer = it }
+            },
+        ) as TerminalEmulatorImpl
+
+        repeat(2) {
+            terminal.write("\u001b_Ga=T,f=100;")
+            shadowOf(Looper.getMainLooper()).idle()
+            if (!approved) {
+                approved = true
+                answer.resume(true)
+            }
+            terminal.commands.call { Unit }
+            terminal.write(png + "\u001b\\\r\nPROMPT")
+        }
+        assertEquals(2, terminal.imageStore.assets.size)
+        assertTrue(terminal.flush().lines.any { it.text.startsWith("PROMPT") })
     }
 
     @Test

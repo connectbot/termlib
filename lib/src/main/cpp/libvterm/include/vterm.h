@@ -465,6 +465,18 @@ void *vterm_state_get_unrecognised_fbdata(VTermState *state);
 
 void vterm_state_reset(VTermState *state, int hard);
 void vterm_state_get_cursorpos(const VTermState *state, VTermPos *cursorpos);
+
+/* Insert count blank full-width lines at the zero-based screen row. This edits
+ * the whole screen, independent of scrolling margins. The cursor follows its
+ * existing line (its column is unchanged). If insertion would push that line
+ * offscreen, first scroll the whole screen upward; normal scrollback callbacks
+ * apply. Other lines displaced below the screen are discarded, as with IL.
+ * On a single-row screen the cursor's text scrolls out, leaving a blank line.
+ * Returns the number of lines scrolled upward, or -1 for invalid arguments.
+ * A zero count is a no-op. Emits ordinary scroll/damage/cursor callbacks; the
+ * caller must flush screen damage as usual. Does not enter the input parser.
+ */
+int vterm_state_insert_lines_at(VTermState *state, int row, int count);
 void vterm_state_get_default_colors(const VTermState *state, VTermColor *default_fg, VTermColor *default_bg);
 void vterm_state_get_palette_color(const VTermState *state, int index, VTermColor *col);
 void vterm_state_set_default_colors(VTermState *state, const VTermColor *default_fg, const VTermColor *default_bg);

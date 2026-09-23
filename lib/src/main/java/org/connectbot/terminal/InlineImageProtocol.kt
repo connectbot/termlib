@@ -34,6 +34,7 @@ internal class InlineImageProtocol(
     private var keys = emptyMap<String, String>()
     private var upload: Upload? = null
     private var reserved = 0
+    private var reserveIterm: ((Long, Int, Int) -> Int)? = null
 
     private inner class Upload(val iterm: Boolean, val options: Map<String, String>) {
         val builder = ImageBytes.Builder(store.limits.uploadBytes) { bytes ->
@@ -79,7 +80,8 @@ internal class InlineImageProtocol(
         discarded = true
     }
 
-    fun accept(isKitty: Boolean, data: ByteArray, initial: Boolean, final: Boolean, cursorRow: Int, cursorCol: Int): Long {
+    fun accept(isKitty: Boolean, data: ByteArray, initial: Boolean, final: Boolean, cursorRow: Int, cursorCol: Int, reserveIterm: ((Long, Int, Int) -> Int)? = null): Long {
+        this.reserveIterm = reserveIterm
         if (initial) {
             kitty = isKitty
             header = StringBuilder()
@@ -268,6 +270,10 @@ internal class InlineImageProtocol(
         val columns = ceil(width / store.cellWidth).toInt().coerceAtLeast(1)
         val rows = ceil(height / store.cellHeight).toInt().coerceIn(1, store.limits.maxDimension)
         require(store.placements.size < store.limits.maxPlacements) { "ENOSPC:too many placements" }
+        val movement = (rows.toLong() shl 32) or (columns.toLong() shl 1) or 1
+        // Delayed consent must make space before the placement is registered,
+        // so scrolling moves existing images without moving the new image twice.
+        reserveIterm?.let { row = it(movement, row, col) }
         store.edit(TermRect(row, row + rows, col, col + columns))
         val frame = ImageFrame(source, width = source.width, height = source.height)
         val asset = store.add(store.allocateId(), null, frame)
@@ -279,7 +285,7 @@ internal class InlineImageProtocol(
             ),
         )
         abortUpload()
-        return (rows.toLong() shl 32) or (columns.toLong() shl 1) or 1
+        return if (reserveIterm == null) movement else 0
     }
 
     private fun kittyCommand(): Long {

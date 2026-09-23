@@ -15,9 +15,9 @@ internal class InlineImageConsentGate(
     private val output: (ByteArray) -> Unit,
     private val ask: (InlineImageRequest, (Boolean) -> Unit) -> Unit,
     private val limits: InlineImageLimits,
-    private val place: (Long) -> Unit,
+    private val place: (Long, Int, Int) -> Int,
 ) {
-    private data class Sequence(val kitty: Boolean, val bytes: ByteArray, val row: Int, val col: Int)
+    private data class Sequence(val kitty: Boolean, val bytes: ByteArray, var row: Int, var col: Int)
     private class Group(val request: InlineImageRequest?, val kittyOptions: Map<String, String>) {
         val sequences = mutableListOf<Sequence>()
         var complete = request == null
@@ -109,8 +109,11 @@ internal class InlineImageConsentGate(
         } else if (group.request != null && continuingKitty !== group && continuingIterm !== group) {
             group.complete = true
         }
-        drain()
-        return 0
+        // accept runs inside libvterm's callback. Let the caller apply movement
+        // after the callback returns; calling place here would reenter JNI.
+        var movement = 0L
+        drain(inCallback = true) { value, _, _ -> movement = value }
+        return movement
     }
 
     private fun scanHeader(kitty: Boolean, data: ByteArray) {
@@ -156,7 +159,7 @@ internal class InlineImageConsentGate(
         }
     }
 
-    private fun drain() {
+    private fun drain(inCallback: Boolean = false, move: (Long, Int, Int) -> Unit = { value, row, col -> place(value, row, col) }) {
         while (groups.isNotEmpty()) {
             val group = groups.first()
             if (!group.complete || group.decision == null) return
@@ -164,12 +167,36 @@ internal class InlineImageConsentGate(
             pendingBytes -= group.bytes
             if (group.decision == true) {
                 for (sequence in group.sequences) {
-                    val movement = protocol.accept(sequence.kitty, sequence.bytes, true, true, sequence.row, sequence.col)
-                    if (movement > 0) place(movement)
+                    val movement = protocol.accept(
+                        sequence.kitty,
+                        sequence.bytes,
+                        true,
+                        true,
+                        sequence.row,
+                        sequence.col,
+                        reserveIterm = if (inCallback) null else place,
+                    )
+                    if (movement > 0) move(movement, sequence.row, sequence.col)
                 }
             } else if (group.request?.protocol == InlineImageProtocolType.KITTY) {
                 denyKitty(group.kittyOptions)
             }
+        }
+    }
+
+    fun scroll(rect: TermRect, down: Int, right: Int, history: Boolean) {
+        fun moved(row: Int, col: Int) = (row in rect.startRow until rect.endRow || (history && row < 0)) && col in rect.startCol until rect.endCol
+        for (group in groups) {
+            for (sequence in group.sequences) {
+                if (moved(sequence.row, sequence.col)) {
+                    sequence.row -= down
+                    sequence.col -= right
+                }
+            }
+        }
+        if (moved(currentRow, currentCol)) {
+            currentRow -= down
+            currentCol -= right
         }
     }
 

@@ -1,0 +1,17 @@
+INIT
+WANTSTATE s
+RESIZE 4,10
+RESET
+
+!Line insertion works with state callbacks without a screen object
+PUSH "A\r\nBC"
+INSERT_LINES 1,2
+  scrollrect 1..4,0..10 => -1,+0
+  scrollrect 2..4,0..10 => -1,+0
+  scrolled 0
+  ?cursor = 3,2
+INSERT_LINES 3,1
+  scrollrect 0..4,0..10 => +1,+0
+  scrollrect 2..4,0..10 => -1,+0
+  scrolled 1
+  ?cursor = 3,2

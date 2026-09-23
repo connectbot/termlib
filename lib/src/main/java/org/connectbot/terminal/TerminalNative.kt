@@ -97,8 +97,8 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
         return withNative { nativeResize(nativePtr, rows, cols) }
     }
 
-    /** Apply cursor movement returned by a delayed inline-image consent decision. */
-    fun placeImage(movement: Long): Int = withNative { nativePlaceImage(nativePtr, movement) }
+    /** Reserve a delayed image, preserving subsequent text; returns its adjusted row. */
+    fun placeImage(movement: Long, row: Int, col: Int): Int = withNative { nativePlaceImage(nativePtr, movement, row, col) }
 
     /**
      * Dispatch a keyboard key event to the terminal.
@@ -201,7 +201,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeWriteInputBuffer(ptr: Long, buffer: ByteBuffer, length: Int): Int
     private external fun nativeWriteInputArray(ptr: Long, data: ByteArray, offset: Int, length: Int): Int
     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
-    private external fun nativePlaceImage(ptr: Long, movement: Long): Int
+    private external fun nativePlaceImage(ptr: Long, movement: Long, row: Int, col: Int): Int
     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
     private external fun nativePaste(ptr: Long, data: ByteArray)

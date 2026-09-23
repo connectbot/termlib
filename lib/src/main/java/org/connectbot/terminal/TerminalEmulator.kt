@@ -390,7 +390,7 @@ internal class TerminalEmulatorImpl(
                     },
                 )
             }
-        }, policy.limits, { movement -> terminalNative.placeImage(movement) })
+        }, policy.limits, { movement, row, col -> terminalNative.placeImage(movement, row, col) })
     }
 
     override fun setCellPixelSize(width: Int, height: Int): Unit = synchronized(damageLock) {
@@ -414,9 +414,18 @@ internal class TerminalEmulatorImpl(
         synchronized(damageLock) {
             when (kind) {
                 0 -> imageStore.edit(TermRect(top, bottom, left, right))
-                1 -> imageStore.scroll(TermRect(top, bottom, left, right), downward, rightward)
+
+                1 -> {
+                    val rect = TermRect(top, bottom, left, right)
+                    val history = !imageStore.alternate && top == 0 && left == 0 && right == imageStore.cols && downward > 0 && rightward == 0
+                    imageConsentGate?.scroll(rect, downward, rightward, history)
+                    imageStore.scroll(rect, downward, rightward)
+                }
+
                 2 -> imageStore.clearScreen()
+
                 3 -> imageStore.resizeImages(top != 0, downward, bottom, left)
+
                 4 -> imageProtocol.reset()
             }
         }

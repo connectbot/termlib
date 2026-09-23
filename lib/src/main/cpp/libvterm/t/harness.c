@@ -771,6 +771,14 @@ int main(int argc, char **argv)
       vterm_set_size(vt, rows, cols);
     }
 
+    else if(strstartswith(line, "INSERT_LINES ")) {
+      int row, count;
+      assert(sscanf(line + 13, "%d,%d", &row, &count) == 2);
+      printf("scrolled %d\n", vterm_state_insert_lines_at(vterm_obtain_state(vt), row, count));
+      if(screen)
+        vterm_screen_flush_damage(screen);
+    }
+
     else if(strstartswith(line, "PUSH ")) {
       char *bytes = line + 5;
       size_t len = inplace_hex2bytes(bytes);
