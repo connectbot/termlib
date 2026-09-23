@@ -580,6 +580,11 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
   VTermPos old_cursor = statefields->pos;
   VTermPos new_cursor = { -1, -1 };
 
+  /* Rows of scrollback popped back onto the screen above the cursor during
+   * this resize; consumed at the end to keep the cursor at its pre-resize
+   * cell without disturbing the content shift. */
+  int backfilled_rows = 0;
+
 #ifdef DEBUG_REFLOW
   fprintf(stderr, "Resizing from %dx%d to %dx%d; cursor was at (%d,%d)\n",
       old_cols, old_rows, new_cols, new_rows, old_cursor.col, old_cursor.row);
@@ -772,8 +777,18 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
         clearcell(screen, &new_buffer[pos.row * new_cols + pos.col]);
       new_row--;
 
-      if(active)
+      if(active) {
         statefields->pos.row++;
+        /* Count each restored line instead of walking new_cursor down with
+         * it. new_cursor is the reflow's content truth, and the image_resize
+         * call below reads its shift to keep image anchors on their content;
+         * an app that repaints from its own model still holds the cursor at
+         * the pre-resize cell, so walking it down desyncs the app by exactly
+         * the restored row count (its next repaint lands that many rows
+         * off). The final pos assignment subtracts the counted rows, so a
+         * grow ends with the cursor at the cell the app believes it is on. */
+        backfilled_rows++;
+      }
     }
   }
   if(new_row >= 0) {
@@ -800,8 +815,13 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
   vterm_allocator_free(screen->vt, old_lineinfo);
   statefields->lineinfos[bufidx] = new_lineinfo;
 
-  if(active)
+  if(active) {
+    /* Undo the backfill walk: the app tracks the cursor by cell, not by
+     * history, so the physical cursor stays at the pre-resize cell. This
+     * runs after image_resize, which reads the unmodified content shift. */
+    new_cursor.row -= backfilled_rows;
     statefields->pos = new_cursor;
+  }
 
   return;
 }
