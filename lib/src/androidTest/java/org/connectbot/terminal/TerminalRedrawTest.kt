@@ -42,15 +42,15 @@ class TerminalRedrawTest {
         )
         for ((before, update) in cases) {
             compose.runOnIdle { current.value = terminal(before) }
-            compose.waitForIdle()
+            compose.waitForTerminalIdle(current.value)
             compose.runOnIdle {
                 current.value.writeInput(update.toByteArray())
                 current.value.processPendingUpdates()
             }
-            compose.waitForIdle()
+            compose.waitForTerminalIdle(current.value)
             val changed = compose.onRoot().captureToImage().asAndroidBitmap()
             compose.runOnIdle { current.value = terminal(before + update) }
-            compose.waitForIdle()
+            compose.waitForTerminalIdle(current.value)
             val fresh = compose.onRoot().captureToImage().asAndroidBitmap()
             assertTrue("Incremental output differs from a fresh surface", changed.sameAs(fresh))
         }

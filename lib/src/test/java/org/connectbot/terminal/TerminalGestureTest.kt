@@ -57,34 +57,29 @@ class TerminalGestureTest {
         composeTestRule.setContent {
             Terminal(emulator, Modifier.size(width.value, 200.dp), forcedSize = forced.value, resizeSuspended = paused.value)
         }
-        fun settle() {
-            composeTestRule.waitForIdle()
-            emulator.commands.call { Unit }
-            composeTestRule.waitForIdle()
-        }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         val original = emulator.dimensions
         sizes.clear()
         composeTestRule.runOnIdle { paused.value = true }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         composeTestRule.runOnIdle { width.value = 320.5.dp }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         assertEquals(original, emulator.dimensions)
         composeTestRule.runOnIdle { paused.value = false }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         assertEquals(1, sizes.size)
         assertEquals(original.columns, sizes.single().columns)
         assertEquals(original.widthPixels + 1, sizes.single().widthPixels)
         sizes.clear()
         composeTestRule.runOnIdle { paused.value = true }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         composeTestRule.runOnIdle { forced.value = 30 to 80 }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         composeTestRule.runOnIdle { forced.value = 20 to 60 }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         assertTrue(sizes.isEmpty())
         composeTestRule.runOnIdle { paused.value = false }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         assertEquals(1, sizes.size)
         assertEquals(20, sizes.single().rows)
         assertEquals(60, sizes.single().columns)
@@ -100,37 +95,32 @@ class TerminalGestureTest {
         composeTestRule.setContent {
             Terminal(emulator, Modifier.size(320.dp, height.value), initialFontSize = font.value, resizeSuspended = paused.value)
         }
-        fun settle() {
-            composeTestRule.waitForIdle()
-            emulator.commands.call { Unit }
-            composeTestRule.waitForIdle()
-        }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         val original = emulator.dimensions
         sizes.clear()
         composeTestRule.runOnIdle { paused.value = true }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         composeTestRule.runOnIdle { height.value = 400.dp }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         composeTestRule.runOnIdle { height.value = 300.dp }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         assertEquals(original, emulator.dimensions)
         assertTrue(sizes.isEmpty())
         composeTestRule.runOnIdle { height.value = 200.dp }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         composeTestRule.runOnIdle { paused.value = false }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         assertTrue("Menu restoration must not resize the PTY", sizes.isEmpty())
         composeTestRule.runOnIdle { paused.value = true }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         composeTestRule.runOnIdle {
             height.value = 250.dp
             font.value = 12.sp
         }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         assertTrue(sizes.isEmpty())
         composeTestRule.runOnIdle { paused.value = false }
-        settle()
+        composeTestRule.waitForTerminalIdle(emulator)
         assertEquals("Apply only the final viewport and font", 1, sizes.size)
         assertEquals(500, sizes.single().heightPixels)
     }
@@ -182,9 +172,7 @@ class TerminalGestureTest {
             )
         }
 
-        composeTestRule.waitForIdle()
-        (emulator as TerminalEmulatorImpl).commands.call { Unit }
-        composeTestRule.waitForIdle()
+        composeTestRule.waitForTerminalIdle(emulator)
         composeTestRule.runOnIdle {
             val measured = checkNotNull(viewport)
             assertEquals(320 * 2, measured.widthPixels)
@@ -210,9 +198,7 @@ class TerminalGestureTest {
             )
         }
 
-        composeTestRule.waitForIdle()
-        (emulator as TerminalEmulatorImpl).commands.call { Unit }
-        composeTestRule.waitForIdle()
+        composeTestRule.waitForTerminalIdle(emulator)
         composeTestRule.runOnIdle {
             val measured = checkNotNull(viewport)
             assertEquals(12, measured.rows)
