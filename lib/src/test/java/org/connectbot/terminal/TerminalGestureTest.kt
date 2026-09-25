@@ -245,6 +245,43 @@ class TerminalGestureTest {
     }
 
     @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun settledSelectionSurvivesLateFingerWobble() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 12, initialCols = 30) as TerminalEmulatorImpl
+        emulator.writeInput("ABCDEFGHIJKLMNOPQRSTUVWXYZABCD".toByteArray())
+        emulator.processPendingUpdates()
+        var controller: SelectionController? = null
+        composeTestRule.setContent {
+            Terminal(
+                terminalEmulator = emulator,
+                modifier = Modifier.size(400.dp, 300.dp),
+                forcedSize = 12 to 30,
+                onSelectionControllerAvailable = { controller = it },
+            )
+        }
+        composeTestRule.waitUntil { controller != null }
+        composeTestRule.waitUntil { emulator.dimensions.widthPixels > 0 && emulator.dimensions.heightPixels > 0 }
+        composeTestRule.waitForIdle()
+        val cellWidth = emulator.dimensions.widthPixels / 30f
+        val cellHeight = emulator.dimensions.heightPixels / 12f
+        assertTrue("Terminal must have measured cells: width=$cellWidth height=$cellHeight", cellWidth > 1f && cellHeight > 1f)
+        fun point(col: Int) = Offset((col + 0.5f) * cellWidth, cellHeight / 2f)
+
+        composeTestRule.onRoot().performTouchInput { down(point(12)) }
+        composeTestRule.mainClock.advanceTimeBy(600)
+        composeTestRule.waitForIdle()
+        composeTestRule.onRoot().performTouchInput { moveTo(point(18)) }
+        composeTestRule.mainClock.advanceTimeBy(400)
+        composeTestRule.onRoot().performTouchInput {
+            moveTo(point(22))
+            up()
+        }
+
+        composeTestRule.waitForIdle()
+        assertEquals("MNOPQRS", controller!!.copySelection())
+    }
+
+    @Test
     fun testSwipeTriggersScroll() {
         val emulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
         // Add some content to enable scrolling

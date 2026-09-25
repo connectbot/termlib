@@ -179,6 +179,10 @@ internal class SelectionManager {
         selectionRange = range.copy(endRow = row, endCol = col)
     }
 
+    internal fun restoreSelectionRange(range: SelectionRange) {
+        selectionRange = range
+    }
+
     /** UI navigation uses visual columns; the selection and copied text stay logical. */
     fun moveVisually(dx: Int, dy: Int, state: TerminalScreenState, paint: TerminalTextPaint, cellWidth: Float) {
         val range = selectionRange ?: return
