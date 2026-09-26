@@ -62,6 +62,45 @@ class TerminalMemoryTest {
     }
 
     @Test
+    fun selectionSurvivesNativeWidthReflow() {
+        val terminal = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 6) as TerminalEmulatorImpl
+        terminal.writeInput("abcdefghi".toByteArray())
+        terminal.processPendingUpdates()
+        val beforeResize = terminal.snapshot.value
+        val selection = SelectionManager()
+        selection.startSelection(0, 2, beforeResize.cols, SelectionMode.CHARACTER, beforeResize)
+        selection.updateSelection(1, 1)
+        val selectedText = selection.getSelectedText(beforeResize)
+
+        terminal.resize(4, 3)
+        terminal.processPendingUpdates()
+        val afterResize = terminal.snapshot.value
+        selection.onSnapshotChanged(beforeResize, afterResize)
+
+        assertEquals(selectedText, selection.getSelectedText(afterResize))
+    }
+
+    @Test
+    fun selectionSurvivesNativeHeightGrowthAndScrollbackPop() {
+        val terminal = TerminalEmulatorFactory.create(initialRows = 2, initialCols = 10) as TerminalEmulatorImpl
+        terminal.writeInput("first\r\nsecond\r\nthird".toByteArray())
+        terminal.processPendingUpdates()
+        val beforeResize = terminal.snapshot.value
+        assertTrue(beforeResize.scrollback.isNotEmpty())
+        val selection = SelectionManager()
+        selection.startSelection(0, 1, beforeResize.cols, SelectionMode.CHARACTER, beforeResize)
+        selection.updateSelection(beforeResize.scrollback.size + 1, 2)
+        val selectedText = selection.getSelectedText(beforeResize)
+
+        terminal.resize(4, 10)
+        terminal.processPendingUpdates()
+        val afterResize = terminal.snapshot.value
+        selection.onSnapshotChanged(beforeResize, afterResize)
+
+        assertEquals(selectedText, selection.getSelectedText(afterResize))
+    }
+
+    @Test
     fun concurrentResizeInputAndCapturePublishConsistentDimensions() {
         val terminal = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80) as TerminalEmulatorImpl
         val failure = AtomicReference<Throwable>()

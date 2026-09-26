@@ -60,6 +60,9 @@ internal class TerminalScreenState(
     var snapshot by mutableStateOf(initialSnapshot)
         private set
 
+    /** Called before a new snapshot replaces the one used by selection anchors. */
+    internal var onSnapshotChanged: ((TerminalSnapshot, TerminalSnapshot) -> Unit)? = null
+
     /**
      * Current scroll position in the scrollback buffer.
      * 0 = bottom (current screen), >0 = scrolled back in history
@@ -358,6 +361,7 @@ internal class TerminalScreenState(
     internal fun updateSnapshot(newSnapshot: TerminalSnapshot) {
         val oldScrollbackSize = snapshot.scrollback.size
         val newScrollbackSize = newSnapshot.scrollback.size
+        onSnapshotChanged?.invoke(snapshot, newSnapshot)
         snapshot = newSnapshot
         if (scrollbackPosition != 0) {
             val delta = newScrollbackSize - oldScrollbackSize

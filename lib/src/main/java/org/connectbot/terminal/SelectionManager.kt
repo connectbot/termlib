@@ -72,9 +72,12 @@ interface SelectionController {
     fun setSelectionMode(mode: SelectionMode)
 
     /**
-     * Select all text in the terminal.
+     * Select all retained scrollback and current screen text.
      */
     fun selectAll()
+
+    /** Select only the rows currently displayed in the terminal viewport. */
+    fun selectAllVisible() = selectAll()
 
     /**
      * Finish the selection (stop extending it, but keep it active for copying).
@@ -158,7 +161,8 @@ internal class SelectionManager {
     ) {
         this.mode = mode
         isSelecting = true
-        selectionRange = SelectionRange(row, col, row, col)
+        val absoluteRow = row + (snapshot?.scrollback?.size?.minus(scrollbackPosition) ?: 0)
+        selectionRange = SelectionRange(absoluteRow, col, absoluteRow, col)
         adjustSelectionForMode(cols, snapshot, scrollbackPosition)
     }
 
@@ -187,10 +191,13 @@ internal class SelectionManager {
     fun moveVisually(dx: Int, dy: Int, state: TerminalScreenState, paint: TerminalTextPaint, cellWidth: Float) {
         val range = selectionRange ?: return
         fun move(row: Int, col: Int): Pair<Int, Int> {
-            val visual = paint.visualColumn(state, row, col, cellWidth)
-            val nextRow = (row + dy).coerceIn(0, state.snapshot.rows - 1)
+            val firstVisible = state.visibleLineIndex(0)
+            val viewportRow = (row - firstVisible).coerceIn(0, state.snapshot.rows - 1)
+            val visual = paint.visualColumn(state, viewportRow, col, cellWidth)
+            val nextRow = (row + dy).coerceIn(0, state.totalLines - 1)
             val nextVisual = (visual + dx).coerceIn(0, state.snapshot.cols - 1)
-            return nextRow to paint.logicalColumn(state, nextRow, nextVisual, cellWidth)
+            val nextViewportRow = (nextRow - firstVisible).coerceIn(0, state.snapshot.rows - 1)
+            return nextRow to paint.logicalColumn(state, nextViewportRow, nextVisual, cellWidth)
         }
         val end = move(range.endRow, range.endCol)
         val start = if (isSelecting) range.startRow to range.startCol else move(range.startRow, range.startCol)
@@ -279,10 +286,86 @@ internal class SelectionManager {
         adjustSelectionForMode(cols, snapshot, scrollbackPosition)
     }
 
-    fun selectAll(rows: Int, cols: Int) {
+    fun selectAll(rows: Int, cols: Int, scrollbackRows: Int = 0) {
         mode = SelectionMode.CHARACTER
         isSelecting = false
-        selectionRange = SelectionRange(0, 0, rows - 1, cols - 1)
+        selectionRange = SelectionRange(0, 0, scrollbackRows + rows - 1, cols - 1)
+    }
+
+    fun selectAllVisible(rows: Int, cols: Int, firstVisibleRow: Int) {
+        mode = SelectionMode.CHARACTER
+        isSelecting = false
+        selectionRange = SelectionRange(firstVisibleRow, 0, firstVisibleRow + rows - 1, cols - 1)
+    }
+
+    /** Keep absolute history anchors attached to their cells as snapshots change. */
+    internal fun onSnapshotChanged(old: TerminalSnapshot, new: TerminalSnapshot) {
+        val range = selectionRange ?: return
+        if (old.alternateScreen != new.alternateScreen) {
+            clearSelection()
+            return
+        }
+        if (old.rows != new.rows || old.cols != new.cols) {
+            val oldStream = SelectionCellStream(old)
+            val newStream = SelectionCellStream(new)
+            val startDistance = oldStream.distanceFromEnd(range.startRow, range.startCol)
+            val endDistance = oldStream.distanceFromEnd(range.endRow, range.endCol)
+            fun retained(row: Int) = old.scrollback.getOrNull(row)?.let { oldLine ->
+                new.scrollback.any { it === oldLine }
+            } == true
+            if (newStream.total > 0 && startDistance >= newStream.total && endDistance >= newStream.total &&
+                !retained(range.startRow) && !retained(range.endRow)
+            ) {
+                clearSelection()
+                return
+            }
+            fun remap(row: Int, col: Int): Pair<Int, Int> {
+                old.scrollback.getOrNull(row)?.let { oldLine ->
+                    val retainedIndex = new.scrollback.indexOfFirst { it === oldLine }
+                    if (retainedIndex >= 0) {
+                        return retainedIndex to col.coerceIn(0, new.scrollback[retainedIndex].cells.lastIndex)
+                    }
+                }
+                val distanceFromEnd = oldStream.distanceFromEnd(row, col)
+                return newStream.positionFromEnd(distanceFromEnd)
+            }
+            val start = remap(range.startRow, range.startCol)
+            val end = remap(range.endRow, range.endCol)
+            selectionRange = SelectionRange(start.first, start.second, end.first, end.second)
+            if (mode == SelectionMode.LINE) adjustSelectionForMode(new.cols, new)
+            return
+        }
+
+        val oldHistory = old.scrollback
+        val newHistory = new.scrollback
+        val removedFromFront = when {
+            oldHistory.isEmpty() -> 0
+
+            newHistory.isEmpty() -> oldHistory.size
+
+            else -> {
+                val index = oldHistory.indexOfFirst { it === newHistory.first() }
+                if (index >= 0) {
+                    index
+                } else {
+                    // The history was replaced, so old anchors no longer identify content.
+                    clearSelection()
+                    return
+                }
+            }
+        }
+        if (removedFromFront == 0) return
+        val last = new.scrollback.size + new.rows - 1
+        if (range.startRow < removedFromFront && range.endRow < removedFromFront) {
+            clearSelection()
+            return
+        }
+        selectionRange = range.copy(
+            startRow = (range.startRow - removedFromFront).coerceIn(0, last),
+            startCol = if (range.startRow < removedFromFront) 0 else range.startCol,
+            endRow = (range.endRow - removedFromFront).coerceIn(0, last),
+            endCol = if (range.endRow < removedFromFront) 0 else range.endCol,
+        )
     }
 
     /**
@@ -337,11 +420,10 @@ internal class SelectionManager {
         }
     }
 
-    private fun getSnapshotLine(snapshot: TerminalSnapshot, row: Int, scrollbackPosition: Int = 0): TerminalLine? = if (scrollbackPosition > 0) {
-        val scrollbackIndex = snapshot.scrollback.size - scrollbackPosition + row
-        snapshot.scrollback.getOrNull(scrollbackIndex)
+    private fun getSnapshotLine(snapshot: TerminalSnapshot, row: Int, scrollbackPosition: Int = 0): TerminalLine? = if (row < snapshot.scrollback.size) {
+        snapshot.scrollback.getOrNull(row)
     } else {
-        snapshot.lines.getOrNull(row)
+        snapshot.lines.getOrNull(row - snapshot.scrollback.size)
     }
 
     private fun isWordChar(char: Char): Boolean = char.isLetterOrDigit() || char == '_'
@@ -401,20 +483,7 @@ internal class SelectionManager {
 
         return buildString {
             for (row in minRow..maxRow) {
-                // Get line from the appropriate source based on scrollback position
-                val line = if (scrollbackPosition > 0) {
-                    // A scrolled viewport can span the end of scrollback and the
-                    // beginning of the current screen.
-                    val index = snapshot.scrollback.size - scrollbackPosition + row
-                    if (index < snapshot.scrollback.size) {
-                        snapshot.scrollback.getOrNull(index)
-                    } else {
-                        snapshot.lines.getOrNull(index - snapshot.scrollback.size)
-                    }
-                } else {
-                    // Viewing current screen: get from visible lines
-                    snapshot.lines.getOrNull(row)
-                }
+                val line = getSnapshotLine(snapshot, row)
 
                 if (line == null) continue
 
@@ -464,5 +533,45 @@ internal class SelectionManager {
 
             SelectionMode.NONE -> false
         }
+    }
+}
+
+/** A resize preserves this ordered cell stream while changing its visual line breaks. */
+private class SelectionCellStream(snapshot: TerminalSnapshot) {
+    private val lines = snapshot.scrollback + snapshot.lines
+    private val lastContentRow = lines.indexOfLast { line -> line.cells.indices.any { !line.cells.blank(it) } }
+    private val lengths = IntArray(lines.size) { row ->
+        if (row > lastContentRow) {
+            0
+        } else {
+            val line = lines[row]
+            if (line.softWrapped) {
+                line.cells.size
+            } else {
+                line.cells.indices.lastOrNull { !line.cells.blank(it) }?.plus(1) ?: 0
+            }
+        }
+    }
+    private val spans = IntArray(lines.size) { row -> lengths[row] + if (row < lastContentRow && !lines[row].softWrapped) 1 else 0 }
+    val total = spans.sum()
+
+    fun distanceFromEnd(row: Int, col: Int): Int {
+        if (total == 0) return 0
+        val safeRow = row.coerceIn(0, lines.lastIndex)
+        val before = (0 until safeRow).sumOf { spans[it] }
+        val within = if (lengths[safeRow] == 0) 0 else col.coerceIn(0, lengths[safeRow] - 1)
+        return (total - 1 - before - within).coerceAtLeast(0)
+    }
+
+    fun positionFromEnd(distance: Int): Pair<Int, Int> {
+        if (total == 0) return 0 to 0
+        var remaining = (total - 1 - distance).coerceIn(0, total - 1)
+        for (row in spans.indices) {
+            if (remaining < spans[row]) {
+                return row to remaining.coerceAtMost((lengths[row] - 1).coerceAtLeast(0))
+            }
+            remaining -= spans[row]
+        }
+        return lastContentRow.coerceAtLeast(0) to (lengths[lastContentRow.coerceAtLeast(0)] - 1).coerceAtLeast(0)
     }
 }

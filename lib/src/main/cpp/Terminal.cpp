@@ -207,6 +207,8 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     mVts = vterm_obtain_screen(mVt);
     if (!mVts) return;
     vterm_screen_enable_altscreen(mVts, 1);
+    // Keep wrapped screen content when the viewport changes width (for example, on IME dismissal).
+    vterm_screen_enable_reflow(mVts, true);
 
     // Initialize callback structure as member variable so it doesn't go out of scope.
     // These callbacks run while mLock may be held by the native entrypoint that

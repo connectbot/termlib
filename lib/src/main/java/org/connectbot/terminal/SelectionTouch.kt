@@ -59,6 +59,17 @@ internal fun edgeReachAxis(value: Float, length: Float, inset: Float, transition
     }
 }
 
+/** Positive velocity moves into history; negative velocity returns toward the live screen. */
+internal fun selectionAutoScrollVelocity(y: Float, height: Float, edge: Float): Float {
+    if (height <= 0f || edge <= 0f) return 0f
+    val band = minOf(edge, height / 2f)
+    return when {
+        y < band -> 5f + 25f * (1f - y.coerceAtLeast(0f) / band)
+        y > height - band -> -(5f + 25f * (1f - (height - y).coerceAtLeast(0f) / band))
+        else -> 0f
+    }
+}
+
 internal fun magnifierSourceTopLeft(target: Offset, loupeSize: Float, scale: Float): Offset = target - Offset(loupeSize / (2f * scale), loupeSize / (2f * scale))
 
 internal fun magnifiedCellBounds(target: Offset, cellWidth: Float, cellHeight: Float, sourceTopLeft: Offset, scale: Float): Rect {
