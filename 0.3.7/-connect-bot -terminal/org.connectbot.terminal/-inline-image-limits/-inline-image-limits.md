@@ -1,0 +1,6 @@
+//[ConnectBot Terminal](../../../index.md)/[org.connectbot.terminal](../index.md)/[InlineImageLimits](index.md)/[InlineImageLimits](-inline-image-limits.md)
+
+# InlineImageLimits
+
+[release]\
+constructor(encodedBytes: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 16 * 1024 * 1024, decodedBytes: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 32 * 1024 * 1024, transferBytes: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 4 * 1024 * 1024, uploadBytes: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 16 * 1024 * 1024, maxDimension: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html), maxPixels: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 16 * 1024 * 1024, maxImages: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 1024, maxPlacements: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 4096, maxFrames: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 4096)

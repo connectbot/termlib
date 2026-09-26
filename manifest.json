@@ -3,12 +3,25 @@
   "versions": {
     "main": {
       "published": {
-        "commit": "f3cb594793d9afe64ea5108d4336600eb7c83a8a",
+        "commit": "d6956cbebf0ce4c7c3a941e0c1c614f29c8faf8f",
         "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
         "policy": 1
       },
       "attempt": {
-        "commit": "f3cb594793d9afe64ea5108d4336600eb7c83a8a",
+        "commit": "d6956cbebf0ce4c7c3a941e0c1c614f29c8faf8f",
+        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "policy": 1,
+        "status": "success"
+      }
+    },
+    "0.3.7": {
+      "published": {
+        "commit": "371283bb9582d001e2a8d6f178ac6f44dbf1ec53",
+        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "policy": 1
+      },
+      "attempt": {
+        "commit": "371283bb9582d001e2a8d6f178ac6f44dbf1ec53",
         "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
         "policy": 1,
         "status": "success"
