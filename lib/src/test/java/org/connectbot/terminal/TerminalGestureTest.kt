@@ -253,10 +253,11 @@ class TerminalGestureTest {
         assertTrue("Terminal must have measured cells: width=$cellWidth height=$cellHeight", cellWidth > 1f && cellHeight > 1f)
         fun point(col: Int) = Offset((col + 0.5f) * cellWidth, cellHeight / 2f)
 
-        composeTestRule.onRoot().performTouchInput { down(point(12)) }
+        // Keep this release-filter test at the center, away from edge reach adjustments.
+        composeTestRule.onRoot().performTouchInput { down(point(14)) }
         composeTestRule.mainClock.advanceTimeBy(600)
         composeTestRule.waitForIdle()
-        composeTestRule.onRoot().performTouchInput { moveTo(point(18)) }
+        composeTestRule.onRoot().performTouchInput { moveTo(point(15)) }
         composeTestRule.mainClock.advanceTimeBy(400)
         composeTestRule.onRoot().performTouchInput {
             moveTo(point(22))
@@ -264,7 +265,7 @@ class TerminalGestureTest {
         }
 
         composeTestRule.waitForIdle()
-        assertEquals("MNOPQRS", controller!!.copySelection())
+        assertEquals("OP", controller!!.copySelection())
     }
 
     @Test

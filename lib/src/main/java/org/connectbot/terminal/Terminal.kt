@@ -158,8 +158,8 @@ private const val MAGNIFIER_SIZE_DP = 100
  */
 private const val MAGNIFIER_SCALE = 2.5f
 
-private val SELECTION_EDGE_INSET = 24.dp
-private val SELECTION_EDGE_TRANSITION = 96.dp
+private val SELECTION_EDGE_INSET = 48.dp
+private val SELECTION_EDGE_TRANSITION = 192.dp
 
 /**
  * Delay in milliseconds to allow UI to settle before requesting focus.
@@ -1105,11 +1105,21 @@ internal fun TerminalWithAccessibility(
                                         (anchorVisualCol + 0.5f) * baseCharWidth - down.position.x,
                                         (anchor.first + 0.5f) * baseCharHeight - down.position.y,
                                     )
+                                    fun handlePoint(position: Offset): Offset {
+                                        val target = if (isFinger) {
+                                            selectionHandleDragPosition(
+                                                position, down.position, down.position + grabOffset,
+                                                size.width.toFloat(), size.height.toFloat(),
+                                                with(density) { SELECTION_EDGE_INSET.toPx() },
+                                            )
+                                        } else position + grabOffset
+                                        return selectionPoint(target, edgeReach = false)
+                                    }
                                     val handleFilter = SelectionReleaseFilter<SelectionRange>()
                                     selectionManager.selectionRange?.let { handleFilter.record(it, down.uptimeMillis) }
                                     showMagnifier = true
                                     magnifierFingerPosition = down.position
-                                    magnifierTargetPosition = selectionPoint(down.position + grabOffset, edgeReach = false)
+                                    magnifierTargetPosition = handlePoint(down.position)
 
                                     // Local variable to keep track of which handle we are moving in case they cross
                                     var isMovingStart = touchingStart
@@ -1121,7 +1131,7 @@ internal fun TerminalWithAccessibility(
                                             val change = event.changes.find { it.id == down.id } ?: break
                                             releaseTime = change.uptimeMillis
                                             if (!change.pressed) break
-                                            val target = selectionPoint(change.position + grabOffset, edgeReach = false)
+                                            val target = handlePoint(change.position)
                                             val newCol =
                                                 (target.x / baseCharWidth).toInt()
                                                     .coerceIn(0, screenState.snapshot.cols - 1)
