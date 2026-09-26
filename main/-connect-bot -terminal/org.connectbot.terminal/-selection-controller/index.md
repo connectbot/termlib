@@ -24,7 +24,8 @@ Interface for controlling text selection in the terminal. This allows external c
 | [moveSelectionLeft](move-selection-left.md) | [release]<br>abstract fun [moveSelectionLeft](move-selection-left.md)()<br>Move the selection cursor left by one column. |
 | [moveSelectionRight](move-selection-right.md) | [release]<br>abstract fun [moveSelectionRight](move-selection-right.md)()<br>Move the selection cursor right by one column. |
 | [moveSelectionUp](move-selection-up.md) | [release]<br>abstract fun [moveSelectionUp](move-selection-up.md)()<br>Move the selection cursor up by one row. |
-| [selectAll](select-all.md) | [release]<br>abstract fun [selectAll](select-all.md)()<br>Select all text in the terminal. |
+| [selectAll](select-all.md) | [release]<br>abstract fun [selectAll](select-all.md)()<br>Select all retained scrollback and current screen text. |
+| [selectAllVisible](select-all-visible.md) | [release]<br>open fun [selectAllVisible](select-all-visible.md)()<br>Select only the rows currently displayed in the terminal viewport. |
 | [setSelectionMode](set-selection-mode.md) | [release]<br>abstract fun [setSelectionMode](set-selection-mode.md)(mode: [SelectionMode](../-selection-mode/index.md))<br>Set the selection mode directly. |
 | [startSelection](start-selection.md) | [release]<br>abstract fun [startSelection](start-selection.md)(mode: [SelectionMode](../-selection-mode/index.md) = SelectionMode.CHARACTER)<br>Start selection mode at the current cursor position or center of screen. |
 | [toggleSelection](toggle-selection.md) | [release]<br>abstract fun [toggleSelection](toggle-selection.md)()<br>Toggle selection mode on/off. If off, turns it on. If on, turns it off. |

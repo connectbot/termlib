@@ -5,4 +5,4 @@
 [release]\
 abstract fun [selectAll](select-all.md)()
 
-Select all text in the terminal.
+Select all retained scrollback and current screen text.

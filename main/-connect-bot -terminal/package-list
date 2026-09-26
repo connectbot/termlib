@@ -83,6 +83,7 @@ $dokka.location:org.connectbot.terminal/SelectionController/moveSelectionLeft/#/
 $dokka.location:org.connectbot.terminal/SelectionController/moveSelectionRight/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-selection-controller/move-selection-right.html
 $dokka.location:org.connectbot.terminal/SelectionController/moveSelectionUp/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-selection-controller/move-selection-up.html
 $dokka.location:org.connectbot.terminal/SelectionController/selectAll/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-selection-controller/select-all.html
+$dokka.location:org.connectbot.terminal/SelectionController/selectAllVisible/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-selection-controller/select-all-visible.html
 $dokka.location:org.connectbot.terminal/SelectionController/setSelectionMode/#org.connectbot.terminal.SelectionMode/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-selection-controller/set-selection-mode.html
 $dokka.location:org.connectbot.terminal/SelectionController/startSelection/#org.connectbot.terminal.SelectionMode/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-selection-controller/start-selection.html
 $dokka.location:org.connectbot.terminal/SelectionController/toggleSelection/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-selection-controller/toggle-selection.html
