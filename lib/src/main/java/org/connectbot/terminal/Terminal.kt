@@ -73,6 +73,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -228,6 +229,19 @@ private const val MAGNIFIER_ROW_RANGE = 3
  * Width of selection handles (teardrop shape) in dp.
  */
 private val SELECTION_HANDLE_WIDTH = 24.dp
+
+/**
+ * When in line selection mode, we will draw a handle in the middle.
+ */
+private val LINE_HANDLE_WIDTH = 48.dp
+private val LINE_HANDLE_HEIGHT = 18.dp
+private val LINE_HANDLE_GAP = 8.dp
+private val LINE_HANDLE_HIT_RADIUS = 24.dp
+
+/**
+ * In selection mode, how close to the edge of the screen we get before starting to scroll.
+ */
+private val SELECTION_AUTO_SCROLL_EDGE = 40.dp
 
 /**
  * Alpha value for the block cursor.
@@ -663,6 +677,9 @@ internal fun TerminalWithAccessibility(
     val selectionManager = remember(terminalEmulator) {
         SelectionManager()
     }
+    SideEffect {
+        screenState.onSnapshotChanged = selectionManager::onSnapshotChanged
+    }
 
     // Selection controller - expose API for external control
     val selectionController = remember(terminalEmulator, selectionManager, clipboardManager, screenState, textPaint, baseCharWidth) {
@@ -712,7 +729,19 @@ internal fun TerminalWithAccessibility(
             }
 
             override fun selectAll() {
-                selectionManager.selectAll(screenState.snapshot.rows, screenState.snapshot.cols)
+                selectionManager.selectAll(
+                    screenState.snapshot.rows,
+                    screenState.snapshot.cols,
+                    screenState.snapshot.scrollback.size,
+                )
+            }
+
+            override fun selectAllVisible() {
+                selectionManager.selectAllVisible(
+                    screenState.snapshot.rows,
+                    screenState.snapshot.cols,
+                    screenState.visibleLineIndex(0),
+                )
             }
 
             override fun finishSelection() {
@@ -973,13 +1002,6 @@ internal fun TerminalWithAccessibility(
             }
         }
 
-        // Clamp only against dimensions actually committed by the terminal queue.
-        LaunchedEffect(screenState.snapshot.rows, screenState.snapshot.cols) {
-            if (selectionManager.mode != SelectionMode.NONE) {
-                selectionManager.clampToDimensions(screenState.snapshot.rows, screenState.snapshot.cols)
-            }
-        }
-
         // Use base dimensions for terminal sizing (not zoomed dimensions)
         val newCols =
             if (resizeSuspended) screenState.snapshot.cols else forcedSize?.second ?: charsPerDimension(availableWidth, baseCharWidth)
@@ -1054,6 +1076,55 @@ internal fun TerminalWithAccessibility(
                             val maxY = (snapshot.rows * baseCharHeight - minOf(0.5f, baseCharHeight / 2f)).coerceAtLeast(0f)
                             return Offset(point.x.coerceIn(0f, maxX), point.y.coerceIn(0f, maxY))
                         }
+                        var autoScrollPointer = down.position
+                        var autoScrolled = false
+                        var onAutoScroll: (() -> Unit)? = null
+                        var autoScrollJob: Job? = null
+                        fun startAutoScroll() {
+                            if (autoScrollJob != null) return
+                            autoScrollJob = launch {
+                                var fractionalRows = 0f
+                                while (true) {
+                                    delay(16)
+                                    val velocity = selectionAutoScrollVelocity(
+                                        autoScrollPointer.y,
+                                        size.height.toFloat(),
+                                        with(density) { SELECTION_AUTO_SCROLL_EDGE.toPx() },
+                                    )
+                                    if (velocity == 0f) {
+                                        fractionalRows = 0f
+                                        continue
+                                    }
+                                    fractionalRows += kotlin.math.abs(velocity) * 0.016f
+                                    val rows = fractionalRows.toInt()
+                                    if (rows == 0) continue
+                                    fractionalRows -= rows
+                                    val previous = screenState.scrollbackPosition
+                                    screenState.scrollBy(if (velocity > 0f) rows else -rows)
+                                    if (screenState.scrollbackPosition != previous) {
+                                        autoScrolled = true
+                                        onAutoScroll?.invoke()
+                                    }
+                                }
+                            }
+                        }
+                        fun selectAt(position: Offset, time: Long) {
+                            val target = selectionPoint(position)
+                            val col = (target.x / baseCharWidth).toInt().coerceIn(0, screenState.snapshot.cols - 1)
+                            val row = (target.y / baseCharHeight).toInt().coerceIn(0, screenState.snapshot.rows - 1)
+                            selectionManager.updateSelection(
+                                screenState.visibleLineIndex(row),
+                                textPaint.logicalColumn(screenState, row, col, baseCharWidth),
+                            )
+                            selectionManager.adjustSelectionForMode(
+                                screenState.snapshot.cols,
+                                screenState.snapshot,
+                                screenState.scrollbackPosition,
+                            )
+                            selectionManager.selectionRange?.let { releaseFilter.record(it, time) }
+                            magnifierFingerPosition = position
+                            magnifierTargetPosition = target
+                        }
                         scrollJob?.cancel()
 
                         // 1a. Check for double-tap to start word selection
@@ -1073,6 +1144,8 @@ internal fun TerminalWithAccessibility(
                             showMagnifier = true
                             magnifierFingerPosition = down.position
                             magnifierTargetPosition = target
+                            onAutoScroll = { if (selectionManager.isSelecting) selectAt(autoScrollPointer, android.os.SystemClock.uptimeMillis()) }
+                            startAutoScroll()
                             tapTracker.lastTimestamp = 0L // prevent triple-tap double triggers
                         }
 
@@ -1082,18 +1155,31 @@ internal fun TerminalWithAccessibility(
                             if (range != null) {
                                 val start = range.getStartPosition()
                                 val end = range.getEndPosition()
+                                val firstVisible = screenState.visibleLineIndex(0)
+                                val startViewportRow = start.first - firstVisible
+                                val endViewportRow = end.first - firstVisible
                                 val visualRange = SelectionRange(
-                                    start.first,
-                                    textPaint.visualColumn(screenState, start.first, start.second, baseCharWidth),
-                                    end.first,
-                                    textPaint.visualColumn(screenState, end.first, end.second, baseCharWidth),
+                                    if (startViewportRow in 0 until screenState.snapshot.rows) startViewportRow else -10000,
+                                    if (startViewportRow in 0 until screenState.snapshot.rows) textPaint.visualColumn(screenState, startViewportRow, start.second, baseCharWidth) else 0,
+                                    if (endViewportRow in 0 until screenState.snapshot.rows) endViewportRow else -10000,
+                                    if (endViewportRow in 0 until screenState.snapshot.rows) textPaint.visualColumn(screenState, endViewportRow, end.second, baseCharWidth) else 0,
                                 )
                                 val (touchingStart, touchingEnd) = isTouchingHandle(
                                     down.position,
                                     visualRange,
                                     baseCharWidth,
                                     baseCharHeight,
-                                    with(density) { HANDLE_HIT_RADIUS.toPx() },
+                                    with(density) {
+                                        if (selectionManager.mode == SelectionMode.LINE) {
+                                            LINE_HANDLE_HIT_RADIUS.toPx()
+                                        } else {
+                                            HANDLE_HIT_RADIUS.toPx()
+                                        }
+                                    },
+                                    selectionManager.mode,
+                                    size.width.toFloat(),
+                                    with(density) { LINE_HANDLE_WIDTH.toPx() },
+                                    with(density) { LINE_HANDLE_GAP.toPx() },
                                 )
                                 if (touchingStart || touchingEnd) {
                                     gestureType = GestureType.HandleDrag
@@ -1102,17 +1188,22 @@ internal fun TerminalWithAccessibility(
                                     val anchor = if (touchingStart) start else end
                                     val anchorVisualCol = if (touchingStart) visualRange.startCol else visualRange.endCol
                                     val grabOffset = Offset(
-                                        (anchorVisualCol + 0.5f) * baseCharWidth - down.position.x,
-                                        (anchor.first + 0.5f) * baseCharHeight - down.position.y,
+                                        if (selectionManager.mode == SelectionMode.LINE) 0f else (anchorVisualCol + 0.5f) * baseCharWidth - down.position.x,
+                                        ((if (touchingStart) visualRange.startRow else visualRange.endRow) + 0.5f) * baseCharHeight - down.position.y,
                                     )
                                     fun handlePoint(position: Offset): Offset {
                                         val target = if (isFinger) {
                                             selectionHandleDragPosition(
-                                                position, down.position, down.position + grabOffset,
-                                                size.width.toFloat(), size.height.toFloat(),
+                                                position,
+                                                down.position,
+                                                down.position + grabOffset,
+                                                size.width.toFloat(),
+                                                size.height.toFloat(),
                                                 with(density) { SELECTION_EDGE_INSET.toPx() },
                                             )
-                                        } else position + grabOffset
+                                        } else {
+                                            position + grabOffset
+                                        }
                                         return selectionPoint(target, edgeReach = false)
                                     }
                                     val handleFilter = SelectionReleaseFilter<SelectionRange>()
@@ -1125,51 +1216,58 @@ internal fun TerminalWithAccessibility(
                                     var isMovingStart = touchingStart
 
                                     var releaseTime = down.uptimeMillis
+                                    fun dragHandle(position: Offset, time: Long) {
+                                        val target = handlePoint(position)
+                                        val newCol = (target.x / baseCharWidth).toInt()
+                                            .coerceIn(0, screenState.snapshot.cols - 1)
+                                        val newRow = (target.y / baseCharHeight).toInt()
+                                            .coerceIn(0, screenState.snapshot.rows - 1)
+                                        val current = selectionManager.selectionRange
+                                        if (current != null) {
+                                            val result = applyHandleDrag(
+                                                startRow = current.startRow,
+                                                startCol = current.startCol,
+                                                endRow = current.endRow,
+                                                endCol = current.endCol,
+                                                isMovingStart = isMovingStart,
+                                                newRow = screenState.visibleLineIndex(newRow),
+                                                newCol = if (selectionManager.mode == SelectionMode.LINE) {
+                                                    if (isMovingStart) 0 else screenState.snapshot.cols - 1
+                                                } else {
+                                                    textPaint.logicalColumn(screenState, newRow, newCol, baseCharWidth)
+                                                },
+                                            )
+                                            isMovingStart = result.isMovingStart
+                                            selectionManager.updateSelectionStart(result.startRow, result.startCol)
+                                            selectionManager.updateSelectionEnd(result.endRow, result.endCol)
+                                            selectionManager.adjustSelectionForMode(
+                                                screenState.snapshot.cols,
+                                                screenState.snapshot,
+                                                screenState.scrollbackPosition,
+                                            )
+                                            selectionManager.selectionRange?.let { handleFilter.record(it, time) }
+                                        }
+                                        magnifierFingerPosition = position
+                                        magnifierTargetPosition = target
+                                    }
+                                    onAutoScroll = { dragHandle(autoScrollPointer, android.os.SystemClock.uptimeMillis()) }
+                                    startAutoScroll()
                                     try {
                                         while (true) {
                                             val event = awaitPointerEvent(PointerEventPass.Main)
                                             val change = event.changes.find { it.id == down.id } ?: break
                                             releaseTime = change.uptimeMillis
                                             if (!change.pressed) break
-                                            val target = handlePoint(change.position)
-                                            val newCol =
-                                                (target.x / baseCharWidth).toInt()
-                                                    .coerceIn(0, screenState.snapshot.cols - 1)
-                                            val newRow =
-                                                (target.y / baseCharHeight).toInt()
-                                                    .coerceIn(0, screenState.snapshot.rows - 1)
-
-                                            val current = selectionManager.selectionRange
-                                            if (current != null) {
-                                                val result = applyHandleDrag(
-                                                    startRow = current.startRow,
-                                                    startCol = current.startCol,
-                                                    endRow = current.endRow,
-                                                    endCol = current.endCol,
-                                                    isMovingStart = isMovingStart,
-                                                    newRow = newRow,
-                                                    newCol = textPaint.logicalColumn(screenState, newRow, newCol, baseCharWidth),
-                                                )
-                                                isMovingStart = result.isMovingStart
-                                                selectionManager.updateSelectionStart(result.startRow, result.startCol)
-                                                selectionManager.updateSelectionEnd(result.endRow, result.endCol)
-                                                selectionManager.adjustSelectionForMode(
-                                                    screenState.snapshot.cols,
-                                                    screenState.snapshot,
-                                                    screenState.scrollbackPosition,
-                                                )
-                                                selectionManager.selectionRange?.let { handleFilter.record(it, change.uptimeMillis) }
-                                            }
-
-                                            magnifierFingerPosition = change.position
-                                            magnifierTargetPosition = target
+                                            autoScrollPointer = change.position
+                                            dragHandle(change.position, change.uptimeMillis)
                                             change.consume()
                                         }
                                     } finally {
                                         isDraggingHandle = false
+                                        autoScrollJob?.cancel()
                                     }
 
-                                    if (isFinger) {
+                                    if (isFinger && !autoScrolled) {
                                         handleFilter.resultAtRelease(releaseTime)?.let(selectionManager::restoreSelectionRange)
                                     }
                                     selectionManager.adjustSelectionForMode(
@@ -1211,6 +1309,8 @@ internal fun TerminalWithAccessibility(
                                         textPaint.logicalColumn(screenState, row, col, baseCharWidth),
                                         screenState.snapshot.cols,
                                         SelectionMode.CHARACTER,
+                                        screenState.snapshot,
+                                        screenState.scrollbackPosition,
                                     )
                                     selectionManager.selectionRange?.let {
                                         releaseFilter.record(it, down.uptimeMillis + viewConfiguration.longPressTimeoutMillis)
@@ -1219,6 +1319,8 @@ internal fun TerminalWithAccessibility(
                                     showMagnifier = true
                                     magnifierFingerPosition = down.position
                                     magnifierTargetPosition = target
+                                    onAutoScroll = { if (selectionManager.isSelecting) selectAt(autoScrollPointer, android.os.SystemClock.uptimeMillis()) }
+                                    startAutoScroll()
                                 }
                             }
                         } else {
@@ -1247,6 +1349,7 @@ internal fun TerminalWithAccessibility(
                                 val change = primaryChange ?: event.changes.first()
                                 selectionReleaseTime = change.uptimeMillis
                                 if (gestureType == GestureType.Selection && primaryChange?.pressed != true) break
+                                autoScrollPointer = change.position
 
                                 // Track velocity for all events, including the final UP event.
                                 // addPointerInputChange handles historical positions for better accuracy.
@@ -1274,10 +1377,6 @@ internal fun TerminalWithAccessibility(
                                         isUserScrolling = true
                                         // Adjust initialScrollOffset so (initial + panAccumulator) matches current offset
                                         initialScrollOffset = scrollOffset.value - panAccumulator.y
-                                        // Clear any active selection when scrolling starts
-                                        if (selectionManager.mode != SelectionMode.NONE) {
-                                            selectionManager.clearSelection()
-                                        }
                                     }
                                 }
 
@@ -1285,25 +1384,7 @@ internal fun TerminalWithAccessibility(
                                 when (gestureType) {
                                     GestureType.Selection -> {
                                         if (selectionManager.isSelecting && change.pressed) {
-                                            val target = selectionPoint(change.position)
-                                            val dragCol =
-                                                (target.x / baseCharWidth).toInt()
-                                                    .coerceIn(0, screenState.snapshot.cols - 1)
-                                            val dragRow =
-                                                (target.y / baseCharHeight).toInt()
-                                                    .coerceIn(0, screenState.snapshot.rows - 1)
-                                            selectionManager.updateSelection(
-                                                dragRow,
-                                                textPaint.logicalColumn(screenState, dragRow, dragCol, baseCharWidth),
-                                            )
-                                            selectionManager.adjustSelectionForMode(
-                                                screenState.snapshot.cols,
-                                                screenState.snapshot,
-                                                screenState.scrollbackPosition,
-                                            )
-                                            selectionManager.selectionRange?.let { releaseFilter.record(it, change.uptimeMillis) }
-                                            magnifierFingerPosition = change.position
-                                            magnifierTargetPosition = target
+                                            selectAt(change.position, change.uptimeMillis)
                                         }
                                     }
 
@@ -1336,6 +1417,7 @@ internal fun TerminalWithAccessibility(
                             }
                         } finally {
                             isUserScrolling = false
+                            autoScrollJob?.cancel()
                         }
 
                         // 5. Handle zoom if multi-touch was detected
@@ -1408,7 +1490,7 @@ internal fun TerminalWithAccessibility(
                             GestureType.Selection -> {
                                 showMagnifier = false
                                 if (selectionManager.isSelecting) {
-                                    if (isFinger) {
+                                    if (isFinger && !autoScrolled) {
                                         releaseFilter.resultAtRelease(selectionReleaseTime)
                                             ?.let(selectionManager::restoreSelectionRange)
                                     }
@@ -1525,23 +1607,34 @@ internal fun TerminalWithAccessibility(
                     if (selectionManager.mode != SelectionMode.NONE && !selectionManager.isSelecting) {
                         val range = selectionManager.selectionRange
                         if (range != null) {
+                            val firstVisible = screenState.visibleLineIndex(0)
                             val startPosition = range.getStartPosition()
-                            drawSelectionHandle(
-                                row = startPosition.first,
-                                col = textPaint.visualColumn(screenState, startPosition.first, startPosition.second, baseCharWidth),
-                                charWidth = baseCharWidth,
-                                charHeight = baseCharHeight,
-                                pointingDown = false,
-                            )
-
                             val endPosition = range.getEndPosition()
-                            drawSelectionHandle(
-                                row = endPosition.first,
-                                col = textPaint.visualColumn(screenState, endPosition.first, endPosition.second, baseCharWidth),
-                                charWidth = baseCharWidth,
-                                charHeight = baseCharHeight,
-                                pointingDown = true,
-                            )
+                            val sameRow = startPosition.first == endPosition.first
+                            val startRow = startPosition.first - firstVisible
+                            if (startRow in 0 until snapshot.rows) {
+                                drawSelectionHandle(
+                                    row = startRow,
+                                    col = textPaint.visualColumn(screenState, startRow, startPosition.second, baseCharWidth),
+                                    charWidth = baseCharWidth,
+                                    charHeight = baseCharHeight,
+                                    pointingDown = false,
+                                    lineMode = selectionManager.mode == SelectionMode.LINE,
+                                    sameRow = sameRow,
+                                )
+                            }
+                            val endRow = endPosition.first - firstVisible
+                            if (endRow in 0 until snapshot.rows) {
+                                drawSelectionHandle(
+                                    row = endRow,
+                                    col = textPaint.visualColumn(screenState, endRow, endPosition.second, baseCharWidth),
+                                    charWidth = baseCharWidth,
+                                    charHeight = baseCharHeight,
+                                    pointingDown = true,
+                                    lineMode = selectionManager.mode == SelectionMode.LINE,
+                                    sameRow = sameRow,
+                                )
+                            }
                         }
                     }
                 }
@@ -1605,13 +1698,15 @@ internal fun TerminalWithAccessibility(
                 // Try placing below the selection first
                 val handleHeightPx = with(density) { SELECTION_HANDLE_WIDTH.toPx() }
                 val marginPx = with(density) { 8.dp.toPx() }
-                var buttonY = (endPosition.first + 1) * baseCharHeight + handleHeightPx + marginPx
+                val endViewportRow = (endPosition.first - screenState.visibleLineIndex(0))
+                    .coerceIn(0, screenState.snapshot.rows - 1)
+                var buttonY = (endViewportRow + 1) * baseCharHeight + handleHeightPx + marginPx
 
                 if (buttonY + buttonHeightPx > availableHeight) {
                     // Doesn't fit below, place above the selection (clearing the handle if it's there)
                     // Note: endPosition might have a handle pointing down, but if the selection is
                     // short, we might be overlapping the start handle which points up.
-                    buttonY = endPosition.first * baseCharHeight - handleHeightPx - buttonHeightPx - marginPx
+                    buttonY = endViewportRow * baseCharHeight - handleHeightPx - buttonHeightPx - marginPx
                 }
 
                 val context = LocalContext.current
@@ -1667,6 +1762,13 @@ internal fun TerminalWithAccessibility(
                                     text = { Text(stringResource(R.string.terminal_selection_select_all)) },
                                     onClick = {
                                         selectionController.selectAll()
+                                        overflowMenuExpanded = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.terminal_selection_select_all_visible)) },
+                                    onClick = {
+                                        selectionController.selectAllVisible()
                                         overflowMenuExpanded = false
                                     },
                                 )
@@ -1805,6 +1907,7 @@ private fun TerminalRows(
                         selectionForegroundColor = selectionForegroundColor,
                         backgroundsOnly = backgrounds,
                         shapedLine = (textPaint as? TerminalTextPaint)?.layout(screenState, row, charWidth),
+                        selectionRow = screenState.visibleLineIndex(row),
                     )
                 }
             }
@@ -1831,6 +1934,7 @@ internal fun DrawScope.drawLine(
     aboveLine: TerminalLine? = null,
     belowLine: TerminalLine? = null,
     shapedLine: ShapedLine? = null,
+    selectionRow: Int = row,
 ) {
     // A standalone line (tests/magnifier) also paints backgrounds first.
     if (backgroundsOnly == null) {
@@ -1839,7 +1943,7 @@ internal fun DrawScope.drawLine(
                 line, row, charWidth, charHeight, charBaseline, textPaint, underlinePaint,
                 defaultFg, defaultBg, selectionManager, autoDetectUrls, hyperlinkMask,
                 selectionBackgroundColor, selectionForegroundColor, backgrounds, aboveLine, belowLine,
-                shapedLine,
+                shapedLine, selectionRow,
             )
         }
         return
@@ -1865,7 +1969,7 @@ internal fun DrawScope.drawLine(
             val width = cells.width(col)
             if (width == 0) continue
             val selected = activeSelection?.let {
-                it.isCellSelected(row, col, line) || (width == 2 && it.isCellSelected(row, col + 1, line))
+                it.isCellSelected(selectionRow, col, line) || (width == 2 && it.isCellSelected(selectionRow, col + 1, line))
             } == true
             val color = if (selected) {
                 selectionBackgroundColor
@@ -1902,7 +2006,7 @@ internal fun DrawScope.drawLine(
         val underline = (flags ushr 1) and 3
         val cellWidth = charWidth * width
         val isSelected = activeSelection?.let {
-            it.isCellSelected(row, col, line) || (width == 2 && it.isCellSelected(row, col + 1, line))
+            it.isCellSelected(selectionRow, col, line) || (width == 2 && it.isCellSelected(selectionRow, col + 1, line))
         } == true
         val reversed = flags and 32 != 0
         val fg = if (isSelected) {
@@ -2125,20 +2229,34 @@ internal fun isTouchingHandle(
     charWidth: Float,
     charHeight: Float,
     hitRadius: Float,
+    mode: SelectionMode = SelectionMode.CHARACTER,
+    viewportWidth: Float = 0f,
+    lineHandleWidth: Float = 32f,
+    lineHandleGap: Float = 8f,
 ): Pair<Boolean, Boolean> {
     // Handle circles are drawn offset from the character edge by their radius (~12dp).
     // Start handle points up (circle above the character top),
     // end handle points down (circle below the character bottom).
     // Use a generous hit radius centered on the circle's visual center.
     val handleRadius = charHeight * 0.4f // approximate circle radius
-    val startPos = Offset(
-        range.startCol * charWidth + charWidth / 2,
-        range.startRow * charHeight - handleRadius,
-    )
-    val endPos = Offset(
-        range.endCol * charWidth + charWidth / 2,
-        range.endRow * charHeight + charHeight + handleRadius,
-    )
+    val sameRow = range.startRow == range.endRow
+    val offset = if (sameRow) (lineHandleWidth + lineHandleGap) / 2f else 0f
+    val startPos = if (mode == SelectionMode.LINE) {
+        Offset(
+            viewportWidth / 2f - offset,
+            (range.startRow + 0.5f) * charHeight,
+        )
+    } else {
+        Offset(range.startCol * charWidth + charWidth / 2, range.startRow * charHeight - handleRadius)
+    }
+    val endPos = if (mode == SelectionMode.LINE) {
+        Offset(
+            viewportWidth / 2f + offset,
+            (range.endRow + 0.5f) * charHeight,
+        )
+    } else {
+        Offset(range.endCol * charWidth + charWidth / 2, range.endRow * charHeight + charHeight + handleRadius)
+    }
 
     val distToStart = (touchPos - startPos).getDistance()
     val distToEnd = (touchPos - endPos).getDistance()
@@ -2316,6 +2434,7 @@ private fun MagnifyingGlass(
                                 selectionForegroundColor = selectionForegroundColor,
                                 backgroundsOnly = backgrounds,
                                 shapedLine = (textPaint as? TerminalTextPaint)?.layout(screenState, row, baseCharWidth),
+                                selectionRow = screenState.visibleLineIndex(row),
                             )
                         }
                     }
@@ -2355,8 +2474,27 @@ private fun DrawScope.drawSelectionHandle(
     charWidth: Float,
     charHeight: Float,
     pointingDown: Boolean,
+    lineMode: Boolean = false,
+    sameRow: Boolean = false,
     color: Color = Color.White,
 ) {
+    if (lineMode) {
+        val width = LINE_HANDLE_WIDTH.toPx()
+        val height = LINE_HANDLE_HEIGHT.toPx()
+        val gap = LINE_HANDLE_GAP.toPx()
+        val centerX = size.width / 2f + if (sameRow) {
+            if (pointingDown) (width + gap) / 2f else -(width + gap) / 2f
+        } else {
+            0f
+        }
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(centerX - width / 2f, (row + 0.5f) * charHeight - height / 2f),
+            size = Size(width, height),
+            cornerRadius = CornerRadius(height / 2f),
+        )
+        return
+    }
     val handleWidthPx = SELECTION_HANDLE_WIDTH.toPx()
 
     // Position handle at the character position

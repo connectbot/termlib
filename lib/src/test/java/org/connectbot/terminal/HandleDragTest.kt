@@ -31,6 +31,19 @@ class HandleDragTest {
         assertEquals(false to true, isTouchingHandle(Offset(115f, 52f), range, 10f, 20f, 40f))
     }
 
+    @Test
+    fun lineHandlesAreCenteredAndSeparatelyTouchableOnOneRow() {
+        val range = SelectionRange(2, 0, 2, 79)
+        assertEquals(
+            true to false,
+            isTouchingHandle(Offset(180f, 50f), range, 10f, 20f, 24f, SelectionMode.LINE, 400f, 32f, 8f),
+        )
+        assertEquals(
+            false to true,
+            isTouchingHandle(Offset(220f, 50f), range, 10f, 20f, 24f, SelectionMode.LINE, 400f, 32f, 8f),
+        )
+    }
+
     // Initial selection: start=(row=2, col=10), end=(row=2, col=40)
 
     private fun drag(

@@ -648,6 +648,123 @@ class SelectionManagerTest {
         assertEquals("ld!\nliv", selectionManager.getSelectedText(snapshot, scrollbackPosition = 1))
     }
 
+    @Test
+    fun selectionStaysOnHistoryCellsWhenViewportScrolls() {
+        val snapshot = makeTwoLineSnapshot("live", "next").copy(
+            scrollback = listOf(
+                TerminalLine(row = -1, cells = "older".map { cell(it) }),
+                TerminalLine(row = -1, cells = "old!".map { cell(it) }),
+            ),
+        )
+        selectionManager.startSelection(1, 1, 4, SelectionMode.CHARACTER, snapshot, scrollbackPosition = 2)
+        selectionManager.updateSelection(2, 2)
+        selectionManager.endSelection()
+
+        assertEquals(1, selectionManager.selectionRange!!.startRow)
+        assertTrue(selectionManager.isCellSelected(1, 1))
+        assertFalse(selectionManager.isCellSelected(0, 1))
+        assertEquals("ld!\nliv", selectionManager.getSelectedText(snapshot))
+    }
+
+    @Test
+    fun selectAllAndSelectAllVisibleUseDifferentHistoryBounds() {
+        val snapshot = makeTwoLineSnapshot("live", "next").copy(
+            scrollback = listOf(
+                TerminalLine(row = -1, cells = "old1".map { cell(it) }),
+                TerminalLine(row = -1, cells = "old2".map { cell(it) }),
+            ),
+        )
+        selectionManager.selectAll(2, 4, snapshot.scrollback.size)
+        assertEquals(0, selectionManager.selectionRange!!.startRow)
+        assertEquals(3, selectionManager.selectionRange!!.endRow)
+        assertEquals("old1\nold2\nlive\nnext", selectionManager.getSelectedText(snapshot))
+
+        selectionManager.selectAllVisible(2, 4, firstVisibleRow = 1)
+        assertEquals(1, selectionManager.selectionRange!!.startRow)
+        assertEquals(2, selectionManager.selectionRange!!.endRow)
+        assertEquals("old2\nlive", selectionManager.getSelectedText(snapshot))
+    }
+
+    @Test
+    fun resizeMovesHistoryIntoScreenWithoutMovingSelectedText() {
+        val old = makeTwoLineSnapshot("first", "second").copy(
+            scrollback = listOf(TerminalLine(row = -1, cells = "older ".map { cell(it) })),
+        )
+        val new = old.copy(
+            scrollback = emptyList(),
+            lines = listOf(old.scrollback[0], old.lines[0], old.lines[1]),
+            rows = 3,
+        )
+        selectionManager.startSelection(0, 1, old.cols, SelectionMode.CHARACTER, old)
+        selectionManager.updateSelection(2, 2)
+        val before = selectionManager.getSelectedText(old)
+        selectionManager.onSnapshotChanged(old, new)
+
+        assertEquals(1, selectionManager.selectionRange!!.startRow)
+        assertEquals(2, selectionManager.selectionRange!!.endRow)
+        assertEquals(before, selectionManager.getSelectedText(new))
+    }
+
+    @Test
+    fun widthReflowPreservesEndpointsAcrossWrappedRows() {
+        val old = makeTwoLineSnapshot("abcdef", "ghi   ").copy(
+            lines = listOf(
+                TerminalLine(row = 0, cells = "abcdef".map { cell(it) }, softWrapped = true),
+                TerminalLine(row = 1, cells = "ghi   ".map { cell(it) }),
+            ),
+        )
+        val new = old.copy(
+            lines = listOf(
+                TerminalLine(row = 0, cells = "abc".map { cell(it) }, softWrapped = true),
+                TerminalLine(row = 1, cells = "def".map { cell(it) }, softWrapped = true),
+                TerminalLine(row = 2, cells = "ghi".map { cell(it) }),
+            ),
+            rows = 3,
+            cols = 3,
+        )
+        selectionManager.startSelection(0, 2, old.cols, SelectionMode.CHARACTER, old)
+        selectionManager.updateSelection(1, 1)
+        val before = selectionManager.getSelectedText(old)
+        selectionManager.onSnapshotChanged(old, new)
+
+        assertEquals(SelectionRange(0, 2, 2, 1), selectionManager.selectionRange)
+        assertEquals(before, selectionManager.getSelectedText(new))
+    }
+
+    @Test
+    fun reflowUsesCellOffsetsWhenTextRepeats() {
+        val old = makeSnapshot("abcabc", cols = 6)
+        val new = old.copy(
+            lines = listOf(
+                TerminalLine(row = 0, cells = "abc".map { cell(it) }, softWrapped = true),
+                TerminalLine(row = 1, cells = "abc".map { cell(it) }),
+            ),
+            rows = 2,
+            cols = 3,
+        )
+        selectionManager.startSelection(0, 3, old.cols, SelectionMode.CHARACTER, old)
+        selectionManager.updateSelection(0, 5)
+        selectionManager.onSnapshotChanged(old, new)
+
+        assertEquals(SelectionRange(1, 0, 1, 2), selectionManager.selectionRange)
+        assertEquals("abc", selectionManager.getSelectedText(new))
+    }
+
+    @Test
+    fun evictedHistoryClampsSelectionToSurvivingText() {
+        val oldest = TerminalLine(row = -1, cells = "old1".map { cell(it) })
+        val remaining = TerminalLine(row = -1, cells = "old2".map { cell(it) })
+        val incoming = TerminalLine(row = -1, cells = "new!".map { cell(it) })
+        val old = makeTwoLineSnapshot("live", "next").copy(scrollback = listOf(oldest, remaining))
+        val new = old.copy(scrollback = listOf(remaining, incoming))
+        selectionManager.startSelection(0, 2, old.cols, SelectionMode.CHARACTER, old, scrollbackPosition = 2)
+        selectionManager.updateSelection(1, 3)
+        selectionManager.onSnapshotChanged(old, new)
+
+        assertEquals(SelectionRange(0, 0, 0, 3), selectionManager.selectionRange)
+        assertEquals("old2", selectionManager.getSelectedText(new))
+    }
+
     private fun makeTwoLineSnapshot(first: String, second: String): TerminalSnapshot {
         val cols = maxOf(first.length, second.length)
         val lines = listOf(first, second).mapIndexed { i, t ->

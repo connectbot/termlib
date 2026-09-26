@@ -9,8 +9,11 @@
     <!-- Accessibility content description for the overflow menu button, read aloud by screen readers such as TalkBack -->
     <string name="terminal_selection_more_options_description">More options</string>
 
-    <!-- Overflow menu item that selects all visible text in the terminal -->
+    <!-- Overflow menu item that selects all retained terminal history and live text -->
     <string name="terminal_selection_select_all">Select All</string>
+
+    <!-- Overflow menu item that selects all terminal history and live text currently visible on the screen -->
+    <string name="terminal_selection_select_all_visible">Select All Visible</string>
 
     <!-- Overflow menu item that shares the currently selected terminal text via the Android share sheet, without copying to clipboard -->
     <string name="terminal_selection_share">Share</string>

@@ -82,6 +82,10 @@ class SelectionControllerTest {
                 selectionManager.selectAll(25, 80)
             }
 
+            override fun selectAllVisible() {
+                selectionManager.selectAllVisible(25, 80, 0)
+            }
+
             override fun finishSelection() {
                 selectionManager.endSelection()
             }

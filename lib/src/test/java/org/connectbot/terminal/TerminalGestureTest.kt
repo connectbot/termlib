@@ -269,6 +269,56 @@ class TerminalGestureTest {
     }
 
     @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun heldSelectionScrollsIntoHistoryAndBackTowardLiveScreen() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 12, initialCols = 30) as TerminalEmulatorImpl
+        emulator.writeInput((1..50).joinToString("\r\n") { "line $it" }.toByteArray())
+        emulator.processPendingUpdates()
+        var selectionController: SelectionController? = null
+        var scrollController: ScrollController? = null
+        composeTestRule.setContent {
+            TerminalWithAccessibility(
+                terminalEmulator = emulator,
+                modifier = Modifier.size(400.dp, 300.dp),
+                forcedSize = 12 to 30,
+                onSelectionControllerAvailable = { selectionController = it },
+                onScrollControllerAvailable = { scrollController = it },
+            )
+        }
+        composeTestRule.waitUntil { selectionController != null && scrollController != null }
+        composeTestRule.waitForTerminalIdle(emulator)
+        assertTrue(scrollController!!.maxScrollback > 0)
+
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.onRoot().performTouchInput { down(Offset(100f, 300f)) }
+        composeTestRule.mainClock.advanceTimeBy(600)
+        composeTestRule.onRoot().performTouchInput { moveTo(Offset(100f, 4f)) }
+        composeTestRule.mainClock.advanceTimeBy(600)
+        val historyPosition = scrollController.scrollbackPosition
+        assertTrue("Holding at the top should scroll into history", historyPosition > 0)
+
+        composeTestRule.onRoot().performTouchInput { moveTo(Offset(100f, 596f)) }
+        composeTestRule.mainClock.advanceTimeBy(600)
+        assertTrue("Holding at the bottom should scroll toward live output", scrollController.scrollbackPosition < historyPosition)
+        composeTestRule.onRoot().performTouchInput { up() }
+        composeTestRule.mainClock.autoAdvance = true
+        composeTestRule.waitForIdle()
+        assertTrue(selectionController!!.isSelectionActive)
+
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.onRoot().performTouchInput { down(Offset(600f, 280f)) }
+        composeTestRule.mainClock.advanceTimeBy(16)
+        composeTestRule.onRoot().performTouchInput { moveTo(Offset(600f, 400f)) }
+        composeTestRule.mainClock.advanceTimeBy(16)
+        composeTestRule.onRoot().performTouchInput { moveTo(Offset(600f, 450f)) }
+        composeTestRule.mainClock.advanceTimeBy(100)
+        composeTestRule.onRoot().performTouchInput { up() }
+        composeTestRule.mainClock.autoAdvance = true
+        composeTestRule.waitForIdle()
+        assertTrue("Manual viewport scrolling should retain the selection", selectionController.isSelectionActive)
+    }
+
+    @Test
     fun testSwipeTriggersScroll() {
         val emulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
         // Add some content to enable scrolling

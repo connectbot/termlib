@@ -22,6 +22,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SelectionTouchTest {
+    @Test fun selectionAutoScrollWorksAtBothEdgesAndStopsInMiddle() {
+        assertEquals(30f, selectionAutoScrollVelocity(0f, 600f, 40f), 0.001f)
+        assertEquals(17.5f, selectionAutoScrollVelocity(20f, 600f, 40f), 0.001f)
+        assertEquals(0f, selectionAutoScrollVelocity(300f, 600f, 40f), 0.001f)
+        assertEquals(-17.5f, selectionAutoScrollVelocity(580f, 600f, 40f), 0.001f)
+        assertEquals(-30f, selectionAutoScrollVelocity(600f, 600f, 40f), 0.001f)
+    }
+
     @Test fun handleReachesEdgesBeforeFingerHitsCaseWithoutJumpingOnGrab() {
         val down = Offset(180f, 300f)
         val anchor = Offset(200f, 270f)
