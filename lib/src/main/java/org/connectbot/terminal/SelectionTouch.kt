@@ -19,6 +19,25 @@ package org.connectbot.terminal
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 
+/** Preserve the grabbed cell, but map the remaining finger travel to both viewport edges. */
+internal fun selectionHandleDragPosition(position: Offset, down: Offset, anchor: Offset, width: Float, height: Float, inset: Float): Offset {
+    fun axis(value: Float, start: Float, target: Float, length: Float): Float {
+        if (length <= 0f) return 0f
+        val origin = start.coerceIn(0f, length)
+        val margin = minOf(inset, length / 4f)
+        // Leave travel on either side even when the handle was grabbed inside the edge band.
+        val left = minOf(margin, origin / 2f)
+        val right = maxOf(length - margin, (length + origin) / 2f)
+        val destination = target.coerceIn(0f, length)
+        return when {
+            value == origin -> destination
+            value < origin -> if (origin == left) 0f else destination * ((value - left) / (origin - left)).coerceIn(0f, 1f)
+            else -> if (right == origin) length else destination + (length - destination) * ((value - origin) / (right - origin)).coerceIn(0f, 1f)
+        }
+    }
+    return Offset(axis(position.x, down.x, anchor.x, width), axis(position.y, down.y, anchor.y, height))
+}
+
 /** Makes the outermost cells reachable without putting the center of a finger on the bezel. */
 internal fun edgeReachPosition(position: Offset, width: Float, height: Float, inset: Float, transition: Float): Offset = Offset(
     edgeReachAxis(position.x, width, inset, transition),

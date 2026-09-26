@@ -22,6 +22,47 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SelectionTouchTest {
+    @Test fun handleReachesEdgesBeforeFingerHitsCaseWithoutJumpingOnGrab() {
+        val down = Offset(180f, 300f)
+        val anchor = Offset(200f, 270f)
+        fun drag(point: Offset) = selectionHandleDragPosition(point, down, anchor, 400f, 600f, 48f)
+        assertEquals(anchor, drag(down))
+        assertEquals(Offset.Zero, drag(Offset(48f, 48f)))
+        assertEquals(Offset(400f, 600f), drag(Offset(352f, 552f)))
+        assertTrue((drag(down + Offset(0.1f, 0.1f)) - anchor).getDistance() < 1f)
+    }
+
+    @Test fun handleGrabbedNearEdgeStillMovesContinuously() {
+        val down = Offset(20f, 20f)
+        val anchor = Offset(5f, 5f)
+        assertEquals(anchor, selectionHandleDragPosition(down, down, anchor, 400f, 600f, 48f))
+        val moved = selectionHandleDragPosition(Offset(19f, 19f), down, anchor, 400f, 600f, 48f)
+        assertTrue(moved.x > 0f && moved.x < anchor.x)
+        assertTrue(moved.y > 0f && moved.y < anchor.y)
+    }
+
+    @Test fun oneHandleDragCanReverseAcrossBothEdges() {
+        val down = Offset(180f, 300f)
+        val anchor = Offset(250f, 280f)
+        val positions = listOf(352f, 300f, 180f, 100f, 48f, 100f, 180f, 300f, 352f)
+        val targets = positions.map {
+            selectionHandleDragPosition(Offset(it, down.y), down, anchor, 400f, 600f, 48f)
+        }
+        assertEquals(400f, targets.first().x, 0.001f)
+        assertEquals(0f, targets[4].x, 0.001f)
+        assertEquals(400f, targets.last().x, 0.001f)
+        assertEquals(anchor, targets[2])
+        assertEquals(anchor, targets[6])
+        assertTrue(targets.take(5).zipWithNext().all { (a, b) -> a.x >= b.x })
+        assertTrue(targets.drop(4).zipWithNext().all { (a, b) -> a.x <= b.x })
+        assertTrue(targets.all { it.y == anchor.y })
+    }
+
+    @Test fun widerCaseClearanceAppliesToDirectSelection() {
+        assertEquals(Offset.Zero, edgeReachPosition(Offset(48f, 48f), 400f, 600f, 48f, 192f))
+        assertEquals(Offset(400f, 600f), edgeReachPosition(Offset(352f, 552f), 400f, 600f, 48f, 192f))
+    }
+
     @Test fun edgeReachIsSymmetricAndLeavesMiddleUntouched() {
         assertEquals(0f, edgeReachAxis(24f, 400f, 24f, 96f), 0.001f)
         assertEquals(400f, edgeReachAxis(376f, 400f, 24f, 96f), 0.001f)
