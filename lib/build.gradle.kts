@@ -219,6 +219,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.capture)
     testImplementation(composeBom)
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.mockk)

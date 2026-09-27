@@ -71,6 +71,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
@@ -83,7 +84,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -244,24 +244,9 @@ private val LINE_HANDLE_HIT_RADIUS = 24.dp
 private val SELECTION_AUTO_SCROLL_EDGE = 40.dp
 
 /**
- * Alpha value for the block cursor.
- */
-private const val CURSOR_BLOCK_ALPHA = 0.7f
-
-/**
- * Alpha value for the underline and bar cursors.
+ * Alpha value for the compose-mode cursor.
  */
 private const val CURSOR_LINE_ALPHA = 0.9f
-
-/**
- * Percentage of cell height for underline cursor (0.0 to 1.0).
- */
-private const val CURSOR_UNDERLINE_HEIGHT_RATIO = 0.15f
-
-/**
- * Percentage of cell width for bar cursor (0.0 to 1.0).
- */
-private const val CURSOR_BAR_WIDTH_RATIO = 0.15f
 
 /**
  * Convergence threshold for binary search when finding optimal font size.
@@ -316,8 +301,9 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
  * @param onComposeControllerAvailable Optional callback providing access to the ComposeController for handling IME compose state
  * @param onPasteRequest Optional callback for handling a request to paste content, normally triggered by a context menu action
  * @param rightAltMode How the right-alt key should behave (CharacterModifier vs Meta)
- * @param selectionBackgroundColor Background color for selected text (default: 0xFFB3D7FF)
- * @param selectionForegroundColor Foreground color for selected text (default: Black)
+ * @param selectionBackgroundColor Optional fixed selection background. Both selection colors unspecified invert pixels;
+ *                                 supplying either color uses fixed colors, with pale blue as the background fallback.
+ * @param selectionForegroundColor Optional fixed selection foreground, with black as the fixed-color fallback.
  * @param delKeyMode How the backspace/delete keys should map to terminal characters
  * @param onInterceptKey Optional callback to intercept raw Compose KeyEvents before the terminal emulator handles them. Return true to consume the event.
  */
@@ -331,8 +317,8 @@ fun Terminal(
     maxFontSize: TextUnit = 30.sp,
     backgroundColor: Color = Color.Black,
     foregroundColor: Color = Color.White,
-    selectionBackgroundColor: Color = Color(0xFFB3D7FF),
-    selectionForegroundColor: Color = Color.Black,
+    selectionBackgroundColor: Color = Color.Unspecified,
+    selectionForegroundColor: Color = Color.Unspecified,
     keyboardEnabled: Boolean = false,
     showSoftKeyboard: Boolean = true,
     focusRequester: FocusRequester = remember { FocusRequester() },
@@ -416,8 +402,8 @@ internal fun TerminalWithAccessibility(
     onPasteRequest: (() -> Unit)? = null,
     onInterceptKey: ((ComposeKeyEvent) -> Boolean)? = null,
     rightAltMode: RightAltMode = RightAltMode.CharacterModifier,
-    selectionBackgroundColor: Color = Color(0xFFB3D7FF),
-    selectionForegroundColor: Color = Color.Black,
+    selectionBackgroundColor: Color = Color.Unspecified,
+    selectionForegroundColor: Color = Color.Unspecified,
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
     resizeSuspended: Boolean = false,
 ) {
@@ -606,6 +592,7 @@ internal fun TerminalWithAccessibility(
         TerminalTextPaint(typeface, with(density) { calculatedFontSize.toPx() })
     }
     var retainedPaint by remember(terminalEmulator) { mutableStateOf<TerminalTextPaint?>(null) }
+    val terminalInversion = remember { TerminalInversion() }
     val textPaint = if (resizeSuspended) retainedPaint ?: requestedPaint else requestedPaint
     SideEffect { if (!resizeSuspended) retainedPaint = textPaint }
 
@@ -1554,40 +1541,89 @@ internal fun TerminalWithAccessibility(
                         transformOrigin = zoomOrigin
                     },
             ) {
-                TerminalRows(
-                    screenState = screenState,
-                    charWidth = baseCharWidth,
-                    charHeight = baseCharHeight,
-                    charBaseline = baseCharBaseline,
-                    textPaint = textPaint,
-                    underlinePaint = underlinePaint,
-                    defaultFg = foregroundColor,
-                    defaultBg = backgroundColor,
-                    autoDetectUrls = terminalEmulator.autoDetectUrls,
-                    selectionManager = selectionManager,
-                    selectionBackgroundColor = selectionBackgroundColor,
-                    selectionForegroundColor = selectionForegroundColor,
-                )
+                Box(
+                    Modifier.fillMaxSize().drawWithContent {
+                        val snapshot = screenState.snapshot
+                        terminalInversion.reset()
+                        if (inverseSelection(selectionBackgroundColor, selectionForegroundColor) && selectionManager.selectionRange != null) {
+                            for (row in 0 until snapshot.rows) {
+                                terminalInversion.selectLine(
+                                    screenState.getVisibleLine(row),
+                                    row,
+                                    screenState.visibleLineIndex(row),
+                                    selectionManager,
+                                    textPaint.layout(screenState, row, baseCharWidth),
+                                    baseCharWidth,
+                                    baseCharHeight,
+                                )
+                            }
+                        }
+                        val cursorVisible = snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible &&
+                            snapshot.cursorRow in 0 until snapshot.rows && snapshot.cursorCol in 0 until snapshot.cols
+                        val cursorLine = if (cursorVisible) screenState.getVisibleLine(snapshot.cursorRow) else null
+                        val cursorCol = cursorLine?.let { cursorLeadColumn(it, snapshot.cursorCol) } ?: 0
+                        val visualCol = if (cursorVisible) textPaint.visualColumn(screenState, snapshot.cursorRow, cursorCol, baseCharWidth) else 0
+                        if (cursorLine != null) {
+                            terminalInversion.cursor(
+                                cursorBounds(
+                                    snapshot.cursorRow,
+                                    visualCol,
+                                    cursorLine.cells.width(cursorCol).coerceAtLeast(1),
+                                    baseCharWidth,
+                                    baseCharHeight,
+                                    snapshot.cursorShape,
+                                    textPaint.resolvedRtl(screenState, snapshot.cursorRow, cursorCol, baseCharWidth),
+                                ),
+                            )
+                        }
+                        terminalInversion.draw(drawContext.canvas.nativeCanvas) {
+                            drawContent()
+                            if (cursorLine != null && composeController.pendingDeadChar != 0) {
+                                val cells = cursorLine.cells
+                                val fixedSelection = !inverseSelection(selectionBackgroundColor, selectionForegroundColor) &&
+                                    (
+                                        selectionManager.isCellSelected(screenState.visibleLineIndex(snapshot.cursorRow), cursorCol, cursorLine) ||
+                                            (cells.width(cursorCol) == 2 && selectionManager.isCellSelected(screenState.visibleLineIndex(snapshot.cursorRow), cursorCol + 1, cursorLine))
+                                        )
+                                val color = if (fixedSelection) {
+                                    selectionForegroundColor.takeUnless { it == Color.Unspecified } ?: Color.Black
+                                } else if (cells.flags(cursorCol) and 32 != 0) {
+                                    cells.background(cursorCol)
+                                } else {
+                                    cells.foreground(cursorCol)
+                                }
+                                drawPendingDeadChar(
+                                    snapshot.cursorRow,
+                                    visualCol,
+                                    baseCharWidth,
+                                    baseCharHeight,
+                                    color,
+                                    composeController.pendingDeadChar,
+                                    baseCharBaseline,
+                                    textPaint,
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    TerminalRows(
+                        screenState = screenState,
+                        charWidth = baseCharWidth,
+                        charHeight = baseCharHeight,
+                        charBaseline = baseCharBaseline,
+                        textPaint = textPaint,
+                        underlinePaint = underlinePaint,
+                        defaultFg = foregroundColor,
+                        defaultBg = backgroundColor,
+                        autoDetectUrls = terminalEmulator.autoDetectUrls,
+                        selectionManager = selectionManager,
+                        selectionBackgroundColor = selectionBackgroundColor,
+                        selectionForegroundColor = selectionForegroundColor,
+                    )
+                }
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val snapshot = screenState.snapshot
-
-                    // Draw cursor (only when viewing current screen, not scrollback)
-                    if (snapshot.cursorVisible && screenState.scrollbackPosition == 0 && cursorBlinkVisible) {
-                        drawCursor(
-                            row = snapshot.cursorRow,
-                            col = textPaint.visualColumn(screenState, snapshot.cursorRow, snapshot.cursorCol, baseCharWidth),
-                            charWidth = baseCharWidth,
-                            charHeight = baseCharHeight,
-                            foregroundColor = foregroundColor,
-                            backgroundColor = backgroundColor,
-                            cursorShape = snapshot.cursorShape,
-                            pendingDeadChar = composeController.pendingDeadChar,
-                            charBaseline = baseCharBaseline,
-                            textPaint = textPaint,
-                            resolvedRtl = textPaint.resolvedRtl(screenState, snapshot.cursorRow, snapshot.cursorCol, baseCharWidth),
-                        )
-                    }
 
                     // Draw compose mode overlay
                     if (composeMode.isActive && screenState.scrollbackPosition == 0) {
@@ -1928,23 +1964,40 @@ internal fun DrawScope.drawLine(
     selectionManager: SelectionManager?,
     autoDetectUrls: Boolean = false,
     hyperlinkMask: BooleanArray? = null,
-    selectionBackgroundColor: Color = Color(0xFFB3D7FF),
-    selectionForegroundColor: Color = Color.Black,
+    selectionBackgroundColor: Color = Color.Unspecified,
+    selectionForegroundColor: Color = Color.Unspecified,
     backgroundsOnly: Boolean? = null,
     aboveLine: TerminalLine? = null,
     belowLine: TerminalLine? = null,
     shapedLine: ShapedLine? = null,
     selectionRow: Int = row,
 ) {
-    // A standalone line (tests/magnifier) also paints backgrounds first.
+    // Standalone callers need the same final-pixel effect as a complete terminal.
     if (backgroundsOnly == null) {
-        for (backgrounds in listOf(true, false)) {
-            drawLine(
-                line, row, charWidth, charHeight, charBaseline, textPaint, underlinePaint,
-                defaultFg, defaultBg, selectionManager, autoDetectUrls, hyperlinkMask,
-                selectionBackgroundColor, selectionForegroundColor, backgrounds, aboveLine, belowLine,
-                shapedLine, selectionRow,
+        fun drawPasses() {
+            for (backgrounds in listOf(true, false)) {
+                drawLine(
+                    line, row, charWidth, charHeight, charBaseline, textPaint, underlinePaint,
+                    defaultFg, defaultBg, selectionManager, autoDetectUrls, hyperlinkMask,
+                    selectionBackgroundColor, selectionForegroundColor, backgrounds, aboveLine, belowLine,
+                    shapedLine, selectionRow,
+                )
+            }
+        }
+        if (selectionManager?.selectionRange != null && inverseSelection(selectionBackgroundColor, selectionForegroundColor)) {
+            val inversion = TerminalInversion()
+            inversion.selectLine(
+                line,
+                row,
+                selectionRow,
+                selectionManager,
+                shapedLine ?: (textPaint as? TerminalTextPaint)?.layout(line.cells, charWidth),
+                charWidth,
+                charHeight,
             )
+            inversion.draw(drawContext.canvas.nativeCanvas) { drawPasses() }
+        } else {
+            drawPasses()
         }
         return
     }
@@ -1952,7 +2005,9 @@ internal fun DrawScope.drawLine(
     val cells = line.cells
     val shaped = shapedLine ?: (textPaint as? TerminalTextPaint)?.layout(cells, charWidth)
     // Observe selection once per row when inactive, not once per terminal cell.
-    val activeSelection = selectionManager?.takeIf { it.selectionRange != null }
+    val activeSelection = selectionManager?.takeIf {
+        it.selectionRange != null && !inverseSelection(selectionBackgroundColor, selectionForegroundColor)
+    }
     if (backgroundsOnly) {
         val behindBackground = line.images.filter { it.z < -1_073_741_824 }
         if (behindBackground.isNotEmpty()) {
@@ -1972,7 +2027,7 @@ internal fun DrawScope.drawLine(
                 it.isCellSelected(selectionRow, col, line) || (width == 2 && it.isCellSelected(selectionRow, col + 1, line))
             } == true
             val color = if (selected) {
-                selectionBackgroundColor
+                selectionBackgroundColor.takeUnless { it == Color.Unspecified } ?: Color(0xFFB3D7FF)
             } else if (cells.flags(col) and 32 != 0) {
                 cells.foreground(col)
             } else {
@@ -2010,7 +2065,7 @@ internal fun DrawScope.drawLine(
         } == true
         val reversed = flags and 32 != 0
         val fg = if (isSelected) {
-            selectionForegroundColor
+            selectionForegroundColor.takeUnless { it == Color.Unspecified } ?: Color.Black
         } else if (reversed) {
             cells.background(col)
         } else {
@@ -2355,9 +2410,10 @@ private fun MagnifyingGlass(
     autoDetectUrls: Boolean = false,
     componentWidth: Int = 0,
     componentHeight: Int = 0,
-    selectionBackgroundColor: Color = Color(0xFFB3D7FF),
-    selectionForegroundColor: Color = Color.Black,
+    selectionBackgroundColor: Color = Color.Unspecified,
+    selectionForegroundColor: Color = Color.Unspecified,
 ) {
+    val inversion = remember { TerminalInversion() }
     val magnifierSize = MAGNIFIER_SIZE_DP.dp
     val magnifierScale = MAGNIFIER_SCALE
     val density = LocalDensity.current
@@ -2414,28 +2470,45 @@ private fun MagnifyingGlass(
                     // Calculate which rows to draw
                     val centerRow = (targetPosition.y / baseCharHeight).toInt().coerceIn(0, screenState.snapshot.rows - 1)
 
-                    // Draw a few rows around the touch point
-                    for (backgrounds in listOf(true, false)) {
-                        for (row in maxOf(0, centerRow - MAGNIFIER_ROW_RANGE)..minOf(screenState.snapshot.rows - 1, centerRow + MAGNIFIER_ROW_RANGE)) {
-                            val line = screenState.getVisibleLine(row)
-                            drawLine(
-                                line = line,
-                                row = row,
-                                charWidth = baseCharWidth,
-                                charHeight = baseCharHeight,
-                                charBaseline = baseCharBaseline,
-                                textPaint = textPaint,
-                                underlinePaint = underlinePaint,
-                                defaultFg = foregroundColor,
-                                defaultBg = backgroundColor,
-                                selectionManager = selectionManager,
-                                autoDetectUrls = autoDetectUrls,
-                                selectionBackgroundColor = selectionBackgroundColor,
-                                selectionForegroundColor = selectionForegroundColor,
-                                backgroundsOnly = backgrounds,
-                                shapedLine = (textPaint as? TerminalTextPaint)?.layout(screenState, row, baseCharWidth),
-                                selectionRow = screenState.visibleLineIndex(row),
+                    val visibleRows = maxOf(0, centerRow - MAGNIFIER_ROW_RANGE)..minOf(screenState.snapshot.rows - 1, centerRow + MAGNIFIER_ROW_RANGE)
+                    inversion.reset()
+                    if (inverseSelection(selectionBackgroundColor, selectionForegroundColor)) {
+                        for (row in visibleRows) {
+                            inversion.selectLine(
+                                screenState.getVisibleLine(row),
+                                row,
+                                screenState.visibleLineIndex(row),
+                                selectionManager,
+                                (textPaint as? TerminalTextPaint)?.layout(screenState, row, baseCharWidth),
+                                baseCharWidth,
+                                baseCharHeight,
                             )
+                        }
+                    }
+                    inversion.draw(drawContext.canvas.nativeCanvas) {
+                        // Draw a few rows around the touch point
+                        for (backgrounds in listOf(true, false)) {
+                            for (row in visibleRows) {
+                                val line = screenState.getVisibleLine(row)
+                                drawLine(
+                                    line = line,
+                                    row = row,
+                                    charWidth = baseCharWidth,
+                                    charHeight = baseCharHeight,
+                                    charBaseline = baseCharBaseline,
+                                    textPaint = textPaint,
+                                    underlinePaint = underlinePaint,
+                                    defaultFg = foregroundColor,
+                                    defaultBg = backgroundColor,
+                                    selectionManager = selectionManager,
+                                    autoDetectUrls = autoDetectUrls,
+                                    selectionBackgroundColor = selectionBackgroundColor,
+                                    selectionForegroundColor = selectionForegroundColor,
+                                    backgroundsOnly = backgrounds,
+                                    shapedLine = (textPaint as? TerminalTextPaint)?.layout(screenState, row, baseCharWidth),
+                                    selectionRow = screenState.visibleLineIndex(row),
+                                )
+                            }
                         }
                     }
                 }
@@ -2525,76 +2598,29 @@ private fun DrawScope.drawSelectionHandle(
     )
 }
 
-/**
- * Draw the cursor with shape support (block, underline, bar).
- */
-private fun DrawScope.drawCursor(
+/** Pending accents participate in the same inversion as the underlying terminal. */
+private fun DrawScope.drawPendingDeadChar(
     row: Int,
     col: Int,
     charWidth: Float,
     charHeight: Float,
     foregroundColor: Color,
-    backgroundColor: Color = Color.Transparent,
-    cursorShape: CursorShape = CursorShape.BLOCK,
-    pendingDeadChar: Int = 0,
-    charBaseline: Float = 0f,
-    textPaint: TextPaint? = null,
-    resolvedRtl: Boolean = false,
+    pendingDeadChar: Int,
+    charBaseline: Float,
+    textPaint: TextPaint,
 ) {
     val x = col * charWidth
     val y = row * charHeight
 
-    when (cursorShape) {
-        CursorShape.BLOCK -> {
-            // Block cursor - full cell rectangle outline
-            drawRect(
-                color = foregroundColor,
-                topLeft = Offset(x, y),
-                size = Size(charWidth, charHeight),
-                alpha = CURSOR_BLOCK_ALPHA,
-            )
-        }
-
-        CursorShape.UNDERLINE -> {
-            // Underline cursor - line at bottom of cell
-            val underlineHeight = charHeight * CURSOR_UNDERLINE_HEIGHT_RATIO
-            drawRect(
-                color = foregroundColor,
-                topLeft = Offset(x, y + charHeight - underlineHeight),
-                size = Size(charWidth, underlineHeight),
-                alpha = CURSOR_LINE_ALPHA,
-            )
-        }
-
-        CursorShape.BAR_LEFT -> {
-            // A terminal bar cursor follows the resolved direction of its cell.
-            val barWidth = charWidth * CURSOR_BAR_WIDTH_RATIO
-            drawRect(
-                color = foregroundColor,
-                topLeft = Offset(if (resolvedRtl) x + charWidth - barWidth else x, y),
-                size = Size(barWidth, charHeight),
-                alpha = CURSOR_LINE_ALPHA,
-            )
-        }
-    }
-
     // Draw pending dead character if present
-    if (pendingDeadChar != 0 && textPaint != null) {
+    if (pendingDeadChar != 0) {
         val savedColor = textPaint.color
         val savedBold = textPaint.isFakeBoldText
         val savedSkew = textPaint.textSkewX
         val savedUnderline = textPaint.isUnderlineText
         val savedStrike = textPaint.isStrikeThruText
 
-        // Use opposite color for block cursor to ensure visibility
-        val accentColor =
-            if (cursorShape == CursorShape.BLOCK) {
-                if (foregroundColor.luminance() > 0.5f) Color.Black else Color.White
-            } else {
-                foregroundColor
-            }
-
-        textPaint.color = accentColor.toArgb()
+        textPaint.color = foregroundColor.toArgb()
         textPaint.isFakeBoldText = false
         textPaint.textSkewX = 0f
         textPaint.isUnderlineText = false

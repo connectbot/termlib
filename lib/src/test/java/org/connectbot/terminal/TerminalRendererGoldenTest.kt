@@ -17,17 +17,16 @@
 package org.connectbot.terminal
 
 import android.graphics.Typeface
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.github.takahirom.roborazzi.RoborazziComposeOptions
-import com.github.takahirom.roborazzi.RoborazziComposeSizeOption
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -39,6 +38,9 @@ import org.robolectric.shadows.ShadowLog
 @Config(sdk = [34], qualifiers = "w520dp-h320dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TerminalRendererGoldenTest {
+    @get:Rule
+    val compose = createComposeRule()
+
     @Test
     fun terminalRenderingMatchesGoldenImage() {
         ShadowLog.stream = System.out
@@ -46,25 +48,11 @@ class TerminalRendererGoldenTest {
         emulator.writeInput(goldenTerminalContent().toByteArray(Charsets.UTF_8))
         (emulator as TerminalEmulatorImpl).processPendingUpdates()
 
-        captureRoboImage(
-            filePath = "src/test/roborazzi/terminal-renderer-golden.png",
-            roborazziComposeOptions = RoborazziComposeOptions.Builder()
-                .addOption(RoborazziComposeSizeOption(520, 320))
-                .build(),
-        ) {
-            var selectionController by remember { mutableStateOf<SelectionController?>(null) }
-            LaunchedEffect(selectionController) {
-                val controller = selectionController ?: return@LaunchedEffect
-                controller.startSelection(SelectionMode.CHARACTER)
-                repeat(18) { controller.moveSelectionRight() }
-                repeat(2) { controller.moveSelectionDown() }
-                repeat(8) { controller.moveSelectionRight() }
-                // Keep selection active without its floating toolbar obscuring glyphs.
-            }
-
+        var selectionController: SelectionController? = null
+        compose.setContent {
             Terminal(
                 terminalEmulator = emulator,
-                modifier = Modifier,
+                modifier = Modifier.requiredSize(520.dp, 320.dp),
                 typeface = Typeface.MONOSPACE,
                 initialFontSize = 16.sp,
                 backgroundColor = Color.Black,
@@ -73,6 +61,18 @@ class TerminalRendererGoldenTest {
                 onSelectionControllerAvailable = { selectionController = it },
             )
         }
+        // Capture after layout, the terminal command queue, and selection have settled.
+        compose.waitForTerminalIdle(emulator)
+        compose.runOnIdle {
+            val controller = checkNotNull(selectionController)
+            controller.startSelection(SelectionMode.CHARACTER)
+            repeat(18) { controller.moveSelectionRight() }
+            repeat(2) { controller.moveSelectionDown() }
+            repeat(8) { controller.moveSelectionRight() }
+            assertTrue(controller.isSelectionActive)
+        }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage(filePath = "src/test/roborazzi/terminal-renderer-golden.png")
     }
 
     private fun goldenTerminalContent(): String = buildString {

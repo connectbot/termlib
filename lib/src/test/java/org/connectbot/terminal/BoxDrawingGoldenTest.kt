@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.github.takahirom.roborazzi.RoborazziComposeOptions
@@ -49,24 +50,30 @@ class BoxDrawingGoldenTest {
             }
         }
         CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(bitmap.asImageBitmap()), Size(bitmap.width.toFloat(), bitmap.height.toFloat())) {
-            // Same two-pass foreground/background renderer as Terminal and magnifier.
-            for (backgrounds in listOf(true, false)) {
-                terminal.snapshot.value.lines.take(lines.size).forEachIndexed { row, line ->
-                    drawLine(
-                        line = line,
-                        aboveLine = terminal.snapshot.value.lines.getOrNull(row - 1),
-                        belowLine = terminal.snapshot.value.lines.getOrNull(row + 1),
-                        row = row,
-                        charWidth = width,
-                        charHeight = height,
-                        charBaseline = baseline,
-                        textPaint = paint,
-                        underlinePaint = Paint(),
-                        defaultFg = Color.White,
-                        defaultBg = Color.Black,
-                        selectionManager = selection,
-                        backgroundsOnly = backgrounds,
-                    )
+            val inversion = TerminalInversion()
+            terminal.snapshot.value.lines.take(lines.size).forEachIndexed { row, line ->
+                inversion.selectLine(line, row, row, selection, paint.layout(line.cells, width), width, height)
+            }
+            inversion.draw(drawContext.canvas.nativeCanvas) {
+                // Same two-pass foreground/background renderer as Terminal and magnifier.
+                for (backgrounds in listOf(true, false)) {
+                    terminal.snapshot.value.lines.take(lines.size).forEachIndexed { row, line ->
+                        drawLine(
+                            line = line,
+                            aboveLine = terminal.snapshot.value.lines.getOrNull(row - 1),
+                            belowLine = terminal.snapshot.value.lines.getOrNull(row + 1),
+                            row = row,
+                            charWidth = width,
+                            charHeight = height,
+                            charBaseline = baseline,
+                            textPaint = paint,
+                            underlinePaint = Paint(),
+                            defaultFg = Color.White,
+                            defaultBg = Color.Black,
+                            selectionManager = selection,
+                            backgroundsOnly = backgrounds,
+                        )
+                    }
                 }
             }
         }
