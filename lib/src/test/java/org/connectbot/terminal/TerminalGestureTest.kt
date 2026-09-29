@@ -478,15 +478,6 @@ class TerminalGestureTest {
     @Test
     fun testScrollIsNotInterruptedBySecondPointer() {
         val emulator = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80)
-        // Add some content to enable scrolling
-        val content = (1..100).joinToString("\r\n") { "Line $it" }
-        emulator.writeInput(content.toByteArray())
-
-        // Wait for emulator to process input
-        if (emulator is TerminalEmulatorImpl) {
-            emulator.processPendingUpdates()
-        }
-
         var tapCount = 0
         var scrollController: ScrollController? = null
         composeTestRule.setContent {
@@ -498,74 +489,58 @@ class TerminalGestureTest {
             )
         }
 
-        composeTestRule.waitForIdle()
-        if (emulator is TerminalEmulatorImpl) {
-            emulator.processPendingUpdates()
-        }
-        composeTestRule.waitForIdle()
+        // Populate scrollback only after the initial asynchronous resize has settled.
+        composeTestRule.waitForTerminalIdle(emulator)
+        val content = (1..200).joinToString("\r\n") { "Line $it" }
+        emulator.writeInput(content.toByteArray())
+        composeTestRule.waitForTerminalIdle(emulator)
 
-        composeTestRule.waitUntil { scrollController != null }
+        // Snapshot publication uses a separate, frame-throttled dispatcher. Draining
+        // commands and Compose does not guarantee the scrollback is visible yet.
+        composeTestRule.waitUntil(timeoutMillis = 5_000) {
+            (scrollController?.maxScrollback ?: 0) > 0
+        }
         val controller = scrollController!!
         val initialPosition = controller.scrollbackPosition
         assertTrue("Test requires scrollback content", controller.maxScrollback > initialPosition)
 
-        composeTestRule.mainClock.autoAdvance = false
         composeTestRule.onRoot().performTouchInput {
-            // 1. First pointer down
-            down(0, center)
-        }
-        composeTestRule.mainClock.advanceTimeBy(16)
-
-        composeTestRule.onRoot().performTouchInput {
-            // Touch-event time controls the multi-touch grace period independently
-            // of the Compose animation clock. Establish a scroll before adding a finger.
+            // Keep the primary pointer inside the viewport throughout the gesture.
+            down(0, Offset(center.x, height * 0.1f))
+            // Event time, rather than the animation clock, controls the zoom grace period.
             advanceEventTime(100)
-            moveTo(0, center + Offset(0f, 100f))
-            // The first move crosses slop; a subsequent move scrolls the content.
-            moveTo(0, center + Offset(0f, 500f))
+            moveTo(0, Offset(center.x, height * 0.2f))
+            // The first move crosses slop; the next move scrolls the content.
+            moveTo(0, Offset(center.x, height * 0.4f))
         }
-        composeTestRule.mainClock.advanceTimeBy(100) // Give it time to process
         composeTestRule.waitForIdle()
         val positionBeforeSecondPointer = controller.scrollbackPosition
         assertTrue(
             "Scroll should start before the second pointer arrives",
             positionBeforeSecondPointer > initialPosition,
         )
+        assertTrue(
+            "Test requires room to continue scrolling",
+            positionBeforeSecondPointer < controller.maxScrollback,
+        )
 
         composeTestRule.onRoot().performTouchInput {
-            // 3. Second pointer down
-            down(1, center + Offset(50f, 50f))
+            down(1, Offset(center.x + 50f, height * 0.4f))
+            moveTo(0, Offset(center.x, height * 0.7f))
+            moveTo(1, Offset(center.x + 50f, height * 0.7f))
         }
-        composeTestRule.mainClock.advanceTimeBy(16)
-
-        composeTestRule.onRoot().performTouchInput {
-            // 4. Move both further DOWN
-            moveTo(0, center + Offset(0f, 800f))
-            moveTo(1, center + Offset(100f, 100f))
-        }
-        composeTestRule.mainClock.advanceTimeBy(100)
         composeTestRule.waitForIdle()
         assertTrue(
             "Scroll should continue after the second pointer arrives",
             controller.scrollbackPosition > positionBeforeSecondPointer,
         )
 
+        // The assertion above checks the active drag, before any release fling.
         composeTestRule.onRoot().performTouchInput {
-            // 5. Up
-            up(0)
             up(1)
+            up(0)
         }
-
-        composeTestRule.mainClock.autoAdvance = true
         composeTestRule.waitForIdle()
-        composeTestRule.mainClock.advanceTimeBy(500) // Give animation time to settle if any
-        composeTestRule.waitForIdle()
-
-        // Verify that we actually scrolled (scrollbackPosition > 0)
-        assertTrue(
-            "Scroll position should have changed (initial=$initialPosition, current=${controller.scrollbackPosition})",
-            controller.scrollbackPosition > initialPosition,
-        )
 
         assertEquals("Tap count should be 0", 0, tapCount)
     }

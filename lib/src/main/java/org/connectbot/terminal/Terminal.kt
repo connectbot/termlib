@@ -123,6 +123,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
 import kotlin.math.ceil
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 
@@ -134,6 +135,7 @@ private val CURLY_UNDERLINE_PATH = ThreadLocal.withInitial { Path() }
 private enum class GestureType {
     Undetermined,
     Scroll,
+    Page,
     Selection,
     Zoom,
     HandleDrag,
@@ -305,6 +307,10 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
  *                                 supplying either color uses fixed colors, with pale blue as the background fallback.
  * @param selectionForegroundColor Optional fixed selection foreground, with black as the fixed-color fallback.
  * @param delKeyMode How the backspace/delete keys should map to terminal characters
+ * @param onPageGesture Optional callback receiving VTermKey.PAGEUP or VTermKey.PAGEDOWN for vertical
+ *                      drags starting in the left third, once per five measured text rows. Null keeps
+ *                      normal scrollback everywhere. Selection and pinch zoom take priority; paging
+ *                      does not scroll local history or fling. Upward drags emit PAGEDOWN.
  * @param onInterceptKey Optional callback to intercept raw Compose KeyEvents before the terminal emulator handles them. Return true to consume the event.
  */
 @Composable
@@ -334,6 +340,7 @@ fun Terminal(
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
     onInterceptKey: ((ComposeKeyEvent) -> Boolean)? = null,
     resizeSuspended: Boolean = false,
+    onPageGesture: ((Int) -> Unit)? = null,
 ) {
     if (LocalInspectionMode.current) {
         TerminalPreview(modifier, backgroundColor, foregroundColor)
@@ -367,6 +374,7 @@ fun Terminal(
         selectionForegroundColor = selectionForegroundColor,
         delKeyMode = delKeyMode,
         resizeSuspended = resizeSuspended,
+        onPageGesture = onPageGesture,
     )
 }
 
@@ -406,6 +414,7 @@ internal fun TerminalWithAccessibility(
     selectionForegroundColor: Color = Color.Unspecified,
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
     resizeSuspended: Boolean = false,
+    onPageGesture: ((Int) -> Unit)? = null,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -419,6 +428,7 @@ internal fun TerminalWithAccessibility(
     val terminalEmulator: TerminalEmulatorImpl = terminalEmulator
 
     // Remember updated callbacks to avoid stale lambdas inside pointerInput
+    val currentOnPageGesture by rememberUpdatedState(onPageGesture)
     val currentOnTerminalTap by rememberUpdatedState(onTerminalTap)
     val currentOnHyperlinkClick by rememberUpdatedState(onHyperlinkClick)
     val currentOnInterceptKey by rememberUpdatedState(onInterceptKey)
@@ -1082,7 +1092,7 @@ internal fun TerminalWithAccessibility(
                                         fractionalRows = 0f
                                         continue
                                     }
-                                    fractionalRows += kotlin.math.abs(velocity) * 0.016f
+                                    fractionalRows += abs(velocity) * 0.016f
                                     val rows = fractionalRows.toInt()
                                     if (rows == 0) continue
                                     fractionalRows -= rows
@@ -1324,6 +1334,11 @@ internal fun TerminalWithAccessibility(
                         val multiTouchTimeout = down.uptimeMillis + WAIT_FOR_SECOND_TOUCH_MS
                         var panAccumulator = Offset.Zero
                         var initialScrollOffset = 0f
+                        var singleTouch = true
+                        var pendingPageDrag = 0f
+                        val pagingCandidate = currentOnPageGesture != null &&
+                            down.position.x <= size.width / 3f &&
+                            selectionManager.mode == SelectionMode.NONE
 
                         // 4. Main event loop
                         try {
@@ -1344,6 +1359,9 @@ internal fun TerminalWithAccessibility(
 
                                 val dragAmount = change.positionChange()
                                 panAccumulator += dragAmount
+                                if (event.changes.count { it.pressed } > 1) {
+                                    singleTouch = false
+                                }
 
                                 // 4a. Check for multi-touch (zoom)
                                 // Only allow zoom if we are still undetermined and within the initial grace period.
@@ -1360,8 +1378,19 @@ internal fun TerminalWithAccessibility(
 
                                     if (!isGracePeriod && panAccumulator.getDistanceSquared() > touchSlopSquared) {
                                         longPressJob?.cancel()
-                                        gestureType = GestureType.Scroll
-                                        isUserScrolling = true
+                                        gestureType = if (pagingCandidate && singleTouch &&
+                                            currentOnPageGesture != null &&
+                                            abs(panAccumulator.y) > abs(panAccumulator.x)
+                                        ) {
+                                            GestureType.Page
+                                        } else {
+                                            GestureType.Scroll
+                                        }
+                                        isUserScrolling = gestureType == GestureType.Scroll
+                                        if (gestureType == GestureType.Page) {
+                                            // Include movement accumulated during touch slop and the zoom grace period.
+                                            pendingPageDrag = -panAccumulator.y + dragAmount.y
+                                        }
                                         // Adjust initialScrollOffset so (initial + panAccumulator) matches current offset
                                         initialScrollOffset = scrollOffset.value - panAccumulator.y
                                     }
@@ -1372,6 +1401,21 @@ internal fun TerminalWithAccessibility(
                                     GestureType.Selection -> {
                                         if (selectionManager.isSelecting && change.pressed) {
                                             selectAt(change.position, change.uptimeMillis)
+                                        }
+                                    }
+
+                                    GestureType.Page -> {
+                                        // Stop paging for the rest of a gesture if another finger joins.
+                                        if (singleTouch) {
+                                            pendingPageDrag -= dragAmount.y
+                                            val step = baseCharHeight * 5f
+                                            val pages = (pendingPageDrag / step).toInt()
+                                            repeat(abs(pages)) {
+                                                currentOnPageGesture?.invoke(
+                                                    if (pages > 0) VTermKey.PAGEDOWN else VTermKey.PAGEUP,
+                                                )
+                                            }
+                                            pendingPageDrag -= pages * step
                                         }
                                     }
 
