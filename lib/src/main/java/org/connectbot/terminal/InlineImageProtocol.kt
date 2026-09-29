@@ -139,10 +139,7 @@ internal class InlineImageProtocol(
             }
             if (!enabled) return 0
             if (kitty) {
-                if (!payload) {
-                    require(header.startsWith("G")) { "ENOTSUP:unknown APC" }
-                    keys = parse(header.substring(1), ',')
-                }
+                if (!payload) prepareKittyChunk(hasPayload = false)
                 if (keys["m"] == "1") {
                     upload?.nextChunk()
                     return 0
@@ -181,24 +178,30 @@ internal class InlineImageProtocol(
     private fun startPayload() {
         if (!enabled) return
         if (kitty) {
-            require(header.startsWith("G")) { "ENOTSUP:unknown APC" }
-            keys = parse(header.substring(1), ',')
-            if (upload != null && !upload!!.iterm && keys.keys.all { it in listOf("m", "q", "a", "i", "I") }) {
-                // m applies to this chunk only. In particular, omitting it on
-                // the last chunk means the protocol default m=0; inheriting
-                // m=1 would leave older Kitty streams open forever.
-                keys = (upload!!.options - "m") + keys
-            } else {
-                abortUpload()
-                require(keys["t"] in listOf(null, "d")) { "ENOTSUP:only stream transport is supported" }
-                require(keys["f"] in listOf(null, "24", "32", "100")) { "ENOTSUP:unsupported pixel format" }
-                require(keys["o"] in listOf(null, "z")) { "ENOTSUP:unsupported compression" }
-                upload = Upload(false, keys)
-            }
+            prepareKittyChunk(hasPayload = true)
         } else {
             abortUpload()
             keys = parse(header.toString().substringAfter('='), ';')
             if (keys["inline"] == "1") upload = Upload(true, keys)
+        }
+    }
+
+    private fun prepareKittyChunk(hasPayload: Boolean) {
+        require(header.startsWith("G")) { "ENOTSUP:unknown APC" }
+        keys = parse(header.substring(1), ',')
+        // Header-only placement and animation commands are not upload chunks.
+        if (!hasPayload && keys["a"] !in listOf(null, "t", "T", "q", "f")) return
+        if (upload != null && !upload!!.iterm && keys.keys.all { it in listOf("m", "q", "a", "i", "I") }) {
+            // m applies to this chunk only. In particular, omitting it on
+            // the last chunk means the protocol default m=0; inheriting
+            // m=1 would leave older Kitty streams open forever.
+            keys = (upload!!.options - "m") + keys
+        } else if (hasPayload || keys["m"] == "1") {
+            abortUpload()
+            require(keys["t"] in listOf(null, "d")) { "ENOTSUP:only stream transport is supported" }
+            require(keys["f"] in listOf(null, "24", "32", "100")) { "ENOTSUP:unsupported pixel format" }
+            require(keys["o"] in listOf(null, "z")) { "ENOTSUP:unsupported compression" }
+            upload = Upload(false, keys)
         }
     }
 

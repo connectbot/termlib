@@ -504,6 +504,88 @@ class InlineImageTest {
     }
 
     @Test
+    fun kittyHeaderOnlyChunksPreserveTransferOptions() {
+        val payloads = mapOf(24 to "/wAA", 32 to "/wAA/w==", 100 to png)
+        for ((format, data) in payloads) {
+            for (firstPayload in listOf<String?>(null, "")) {
+                for (lastPayload in listOf<String?>(null, "")) {
+                    for (lastOptions in listOf("m=0", "")) {
+                        val responses = mutableListOf<String>()
+                        val terminal = TerminalEmulatorFactory.create(
+                            initialRows = 6,
+                            initialCols = 12,
+                            onKeyboardInput = { responses.add(it.toString(Charsets.US_ASCII)) },
+                            inlineImages = InlineImages.On(),
+                        ) as TerminalEmulatorImpl
+                        fun writeFragmented(sequence: String) = sequence.toByteArray().forEach { terminal.writeInput(byteArrayOf(it)) }
+                        writeFragmented(kitty("a=T,f=$format,s=1,v=1,i=9,p=3,c=2,r=2,C=1,q=2,m=1", firstPayload))
+                        writeFragmented(kitty("m=1", data))
+                        writeFragmented(kitty("m=1"))
+                        assertTrue(terminal.imageStore.assets.isEmpty())
+                        assertTrue(terminal.imageStore.placements.isEmpty())
+
+                        writeFragmented(kitty(lastOptions, lastPayload))
+                        assertEquals(setOf(9L), terminal.imageStore.assets.keys)
+                        val asset = terminal.imageStore.assets[9]!!
+                        assertEquals(1, asset.width)
+                        assertEquals(1, asset.height)
+                        val placement = terminal.imageStore.placements.single()
+                        assertEquals(3L, placement.id)
+                        assertEquals(2, placement.width)
+                        assertEquals(2, placement.height)
+                        val snapshot = terminal.flush()
+                        assertTrue(snapshot.lines.any { it.images.isNotEmpty() })
+                        assertEquals(0, snapshot.cursorRow)
+                        assertEquals(0, snapshot.cursorCol)
+                        shadowOf(Looper.getMainLooper()).idle()
+                        terminal.commands.call { Unit }
+                        assertTrue(responses.isEmpty())
+                        assertEquals(0, terminal.imageStore.uploadBytes)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun kittyHeaderOnlyFinalChunkOverridesTransferOptions() {
+        val responses = mutableListOf<String>()
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            onKeyboardInput = { responses.add(it.toString(Charsets.US_ASCII)) },
+            inlineImages = InlineImages.On(),
+        ) as TerminalEmulatorImpl
+        terminal.write(kitty("a=T,f=32,s=1,v=1,i=9,q=2,m=1", "/wAA/w=="))
+        terminal.write(kitty("a=t,i=10,q=0"))
+
+        assertEquals(setOf(10L), terminal.imageStore.assets.keys)
+        assertTrue(terminal.imageStore.placements.isEmpty())
+        shadowOf(Looper.getMainLooper()).idle()
+        terminal.commands.call { Unit }
+        assertEquals(listOf("\u001b_Gi=10;OK\u001b\\"), responses)
+        assertEquals(0, terminal.imageStore.uploadBytes)
+    }
+
+    @Test
+    fun kittyHeaderOnlyCommandsDoNotInheritActiveTransferOptions() {
+        val terminal = emulator()
+        terminal.write(kitty("a=t,f=100,i=7,q=2", png))
+        terminal.write(kitty("a=T,f=32,s=1,v=1,i=9,p=3,c=2,r=2,C=1,q=2,m=1", "/wAA/w=="))
+        terminal.write(kitty("a=p,i=7,q=2"))
+        val placement = terminal.imageStore.placements.single()
+        assertEquals(7L, placement.asset.id)
+        assertEquals(0L, placement.id)
+
+        terminal.write(kitty("m=0"))
+        assertEquals(setOf(7L, 9L), terminal.imageStore.assets.keys)
+        terminal.write(kitty("a=d,d=I,i=7,q=2"))
+        assertEquals(setOf(9L), terminal.imageStore.assets.keys)
+        assertEquals(9L, terminal.imageStore.placements.single().asset.id)
+        assertEquals(0, terminal.imageStore.uploadBytes)
+    }
+
+    @Test
     fun naturalKittyPlacementKeepsPixelSizeWhenCellSizeChanges() {
         val terminal = emulator()
         terminal.setCellPixelSize(8, 16)
