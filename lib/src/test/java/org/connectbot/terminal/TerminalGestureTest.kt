@@ -232,6 +232,40 @@ class TerminalGestureTest {
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun initialSelectionNearEitherEdgeUsesTouchedCharacter() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 12, initialCols = 26) as TerminalEmulatorImpl
+        var controller: SelectionController? = null
+        composeTestRule.setContent {
+            Terminal(
+                terminalEmulator = emulator,
+                modifier = Modifier.size(400.dp, 300.dp),
+                forcedSize = 12 to 26,
+                onSelectionControllerAvailable = { controller = it },
+            )
+        }
+        composeTestRule.waitForTerminalIdle(emulator)
+        val alphabet = "abcdefghijklmnopqrstuvwxyz"
+        emulator.writeInput(alphabet.toByteArray())
+        emulator.processPendingUpdates()
+        composeTestRule.waitForTerminalIdle(emulator)
+        val cellWidth = emulator.dimensions.widthPixels / 26f
+        val cellHeight = emulator.dimensions.heightPixels / 12f
+        assertTrue(cellWidth > 1f && cellHeight > 1f)
+
+        for (col in listOf(5, 12, 21)) {
+            composeTestRule.onRoot().performTouchInput {
+                longClick(Offset((col + 0.5f) * cellWidth, cellHeight / 2f))
+            }
+            composeTestRule.runOnIdle {
+                val selectionController = checkNotNull(controller)
+                assertEquals("Initial press on ${alphabet[col]}", alphabet[col].toString(), selectionController.copySelection())
+                selectionController.clearSelection()
+            }
+        }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
     fun settledSelectionSurvivesLateFingerWobble() {
         val emulator = TerminalEmulatorFactory.create(initialRows = 12, initialCols = 30) as TerminalEmulatorImpl
         emulator.writeInput("ABCDEFGHIJKLMNOPQRSTUVWXYZABCD".toByteArray())
