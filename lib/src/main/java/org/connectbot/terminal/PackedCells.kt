@@ -8,6 +8,7 @@ package org.connectbot.terminal
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import java.nio.ByteBuffer
+import kotlin.math.abs
 
 /** Immutable column-addressed storage. Arrays never escape to mutable consumers. */
 internal class PackedCells private constructor(
@@ -131,7 +132,7 @@ internal class PackedCells private constructor(
     private var advances: FloatArray? = null
 
     fun draw(canvas: android.graphics.Canvas, col: Int, x: Float, baseline: Float, paint: android.graphics.Paint, cellWidth: Float) {
-        if (measuredTypeface !== paint.typeface || kotlin.math.abs(measuredSizeAndScript) != paint.textSize || advances == null) {
+        if (measuredTypeface !== paint.typeface || abs(measuredSizeAndScript) != paint.textSize || advances == null) {
             measuredTypeface = paint.typeface
             measuredSizeAndScript = if (needsShaping()) -paint.textSize else paint.textSize
             advances = FloatArray(size) { Float.NaN }
