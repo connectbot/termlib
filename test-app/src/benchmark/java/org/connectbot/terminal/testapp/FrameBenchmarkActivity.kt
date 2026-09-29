@@ -26,6 +26,7 @@ import org.connectbot.terminal.TerminalEmulatorFactory
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.locks.LockSupport
 import kotlin.concurrent.thread
+import kotlin.math.abs
 
 /** Same public-API-only workload is built against both library revisions. */
 class FrameBenchmarkActivity : ComponentActivity() {
@@ -35,7 +36,7 @@ class FrameBenchmarkActivity : ComponentActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val currentMode = display?.mode
         val mode = display?.supportedModes?.firstOrNull {
-            kotlin.math.abs(it.refreshRate - 60f) < 0.1f &&
+            abs(it.refreshRate - 60f) < 0.1f &&
                 it.physicalWidth == currentMode?.physicalWidth && it.physicalHeight == currentMode.physicalHeight
         }
         window.attributes = window.attributes.apply {
