@@ -1056,15 +1056,15 @@ internal fun TerminalWithAccessibility(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val isFinger = down.type == PointerType.Touch
                         val releaseFilter = SelectionReleaseFilter<SelectionRange>()
+                        val selectionEdgeReach = SelectionEdgeReach(
+                            size.width.toFloat(),
+                            size.height.toFloat(),
+                            with(density) { SELECTION_EDGE_INSET.toPx() },
+                            with(density) { SELECTION_EDGE_TRANSITION.toPx() },
+                        )
                         fun selectionPoint(raw: Offset, edgeReach: Boolean = isFinger): Offset {
                             val point = if (edgeReach) {
-                                edgeReachPosition(
-                                    raw,
-                                    size.width.toFloat(),
-                                    size.height.toFloat(),
-                                    with(density) { SELECTION_EDGE_INSET.toPx() },
-                                    with(density) { SELECTION_EDGE_TRANSITION.toPx() },
-                                )
+                                selectionEdgeReach.position(raw)
                             } else {
                                 raw
                             }

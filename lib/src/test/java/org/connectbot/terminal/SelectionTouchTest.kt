@@ -22,6 +22,41 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SelectionTouchTest {
+    @Test fun selectionStartsUnderFingerAtEveryEdgeAndStaysThereWhileHeld() {
+        for (point in listOf(Offset(20f, 20f), Offset(380f, 20f), Offset(20f, 580f), Offset(380f, 580f))) {
+            val reach = SelectionEdgeReach(400f, 600f, 24f, 96f)
+            assertEquals(point, reach.position(point))
+            assertEquals(point, reach.position(point))
+            assertEquals(point + Offset(1f, 1f), reach.position(point + Offset(1f, 1f)))
+        }
+    }
+
+    @Test fun selectionEnablesEdgeReachPerAxisAfterLeavingItsTransitionRegion() {
+        val reach = SelectionEdgeReach(400f, 600f, 24f, 96f)
+        assertEquals(Offset(20f, 20f), reach.position(Offset(20f, 20f)))
+        assertEquals(Offset(96f, 20f), reach.position(Offset(96f, 20f)))
+        assertEquals(Offset(0f, 20f), reach.position(Offset(20f, 20f)))
+        assertEquals(Offset(0f, 96f), reach.position(Offset(20f, 96f)))
+        assertEquals(Offset.Zero, reach.position(Offset(20f, 20f)))
+        assertEquals(Offset(400f, 600f), reach.position(Offset(380f, 580f)))
+        // A new gesture must start under the finger again.
+        assertEquals(Offset(20f, 20f), SelectionEdgeReach(400f, 600f, 24f, 96f).position(Offset(20f, 20f)))
+    }
+
+    @Test fun selectionStartingInMiddleCanReachEdgesImmediately() {
+        val reach = SelectionEdgeReach(400f, 600f, 24f, 96f)
+        assertEquals(Offset(200f, 300f), reach.position(Offset(200f, 300f)))
+        assertEquals(Offset.Zero, reach.position(Offset(24f, 24f)))
+        assertEquals(Offset(400f, 600f), reach.position(Offset(376f, 576f)))
+    }
+
+    @Test fun selectionEnablesEdgeReachWhenAMoveCrossesMiddleOfSmallViewport() {
+        val reach = SelectionEdgeReach(100f, 100f, 24f, 96f)
+        assertEquals(Offset(20f, 20f), reach.position(Offset(20f, 20f)))
+        assertEquals(Offset(100f, 100f), reach.position(Offset(80f, 80f)))
+        assertEquals(Offset.Zero, reach.position(Offset(20f, 20f)))
+    }
+
     @Test fun selectionAutoScrollWorksAtBothEdgesAndStopsInMiddle() {
         assertEquals(30f, selectionAutoScrollVelocity(0f, 600f, 40f), 0.001f)
         assertEquals(17.5f, selectionAutoScrollVelocity(20f, 600f, 40f), 0.001f)

@@ -38,6 +38,30 @@ internal fun selectionHandleDragPosition(position: Offset, down: Offset, anchor:
     return Offset(axis(position.x, down.x, anchor.x, width), axis(position.y, down.y, anchor.y, height))
 }
 
+/** Keep an edge press under the finger until it leaves that axis's assisted region. */
+internal class SelectionEdgeReach(private val width: Float, private val height: Float, private val inset: Float, private val transition: Float) {
+    private var horizontalEnabled = false
+    private var verticalEnabled = false
+    private var previousPosition: Offset? = null
+
+    fun position(raw: Offset): Offset {
+        fun reachesMiddle(value: Float, previous: Float?, length: Float): Boolean {
+            val zone = minOf(transition, length / 2f)
+            // A move can cross the middle without delivering an event inside it,
+            // especially when the transition bands meet in a narrow viewport.
+            return minOf(value, previous ?: value) <= length - zone &&
+                maxOf(value, previous ?: value) >= zone
+        }
+        horizontalEnabled = horizontalEnabled || reachesMiddle(raw.x, previousPosition?.x, width)
+        verticalEnabled = verticalEnabled || reachesMiddle(raw.y, previousPosition?.y, height)
+        previousPosition = raw
+        return Offset(
+            if (horizontalEnabled) edgeReachAxis(raw.x, width, inset, transition) else raw.x,
+            if (verticalEnabled) edgeReachAxis(raw.y, height, inset, transition) else raw.y,
+        )
+    }
+}
+
 /** Makes the outermost cells reachable without putting the center of a finger on the bezel. */
 internal fun edgeReachPosition(position: Offset, width: Float, height: Float, inset: Float, transition: Float): Offset = Offset(
     edgeReachAxis(position.x, width, inset, transition),
