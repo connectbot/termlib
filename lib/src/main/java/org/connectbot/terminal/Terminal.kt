@@ -1124,6 +1124,13 @@ internal fun TerminalWithAccessibility(
                         }
                         scrollJob?.cancel()
 
+                        // Who this gesture belongs to is decided once, here, and
+                        // read by both the scroll and tap paths below. An
+                        // application that enables or drops mouse tracking
+                        // mid-gesture should not take a gesture that began as
+                        // ours, or abandon one halfway through.
+                        val appOwnsPointer = terminalEmulator.mouseTracking.isEnabled
+
                         // 1a. Check for double-tap to start word selection
                         val isDoubleTap = (down.uptimeMillis - tapTracker.lastTimestamp) < viewConfiguration.doubleTapTimeoutMillis &&
                             (down.position - tapTracker.lastPosition).getDistanceSquared() < touchSlopSquared
@@ -1340,6 +1347,11 @@ internal fun TerminalWithAccessibility(
                             down.position.x <= size.width / 3f &&
                             selectionManager.mode == SelectionMode.NONE
 
+                        // Set when the running application has taken over scrolling
+                        // via mouse tracking; null means scroll our own scrollback.
+                        var wheelScroller: WheelScroller? = null
+                        var wheelPanY = 0f
+
                         // 4. Main event loop
                         try {
                             while (true) {
@@ -1393,6 +1405,22 @@ internal fun TerminalWithAccessibility(
                                         }
                                         // Adjust initialScrollOffset so (initial + panAccumulator) matches current offset
                                         initialScrollOffset = scrollOffset.value - panAccumulator.y
+                                        // Hand the gesture to the application if it asked
+                                        // for mouse reporting; it owns the viewport then.
+                                        wheelScroller = if (appOwnsPointer) {
+                                            WheelScroller(
+                                                emulator = terminalEmulator,
+                                                lineHeightPx = baseCharHeight,
+                                                anchorRow = (down.position.y / baseCharHeight).toInt(),
+                                                anchorCol = (down.position.x / baseCharWidth).toInt(),
+                                            )
+                                        } else {
+                                            null
+                                        }
+                                        // Clear any active selection when scrolling starts
+                                        if (selectionManager.mode != SelectionMode.NONE) {
+                                            selectionManager.clearSelection()
+                                        }
                                     }
                                 }
 
@@ -1420,24 +1448,35 @@ internal fun TerminalWithAccessibility(
                                     }
 
                                     GestureType.Scroll -> {
-                                        // Update scroll offset using total pan from the start of the gesture
-                                        // to avoid stuttering from stale scrollOffset.value.
-                                        val currentMaxScroll =
-                                            screenState.snapshot.scrollback.size * baseCharHeight
-                                        val newOffset = (initialScrollOffset + panAccumulator.y)
-                                            .coerceIn(0f, currentMaxScroll)
+                                        val scroller = wheelScroller
+                                        if (scroller != null) {
+                                            // The application scrolls itself; our own
+                                            // scrollback and offset stay put. Feed the
+                                            // delta since the last sample, taken from the
+                                            // accumulator so the travel that satisfied
+                                            // touch slop is not dropped.
+                                            scroller.scrollBy(panAccumulator.y - wheelPanY)
+                                            wheelPanY = panAccumulator.y
+                                        } else {
+                                            // Update scroll offset using total pan from the start of the gesture
+                                            // to avoid stuttering from stale scrollOffset.value.
+                                            val currentMaxScroll =
+                                                screenState.snapshot.scrollback.size * baseCharHeight
+                                            val newOffset = (initialScrollOffset + panAccumulator.y)
+                                                .coerceIn(0f, currentMaxScroll)
 
-                                        // Cancel any ongoing scroll or fling and snap to the new position.
-                                        // Using launch with cancel ensures the latest snap always wins.
-                                        scrollJob?.cancel()
-                                        scrollJob = launch {
-                                            scrollOffset.snapTo(newOffset)
+                                            // Cancel any ongoing scroll or fling and snap to the new position.
+                                            // Using launch with cancel ensures the latest snap always wins.
+                                            scrollJob?.cancel()
+                                            scrollJob = launch {
+                                                scrollOffset.snapTo(newOffset)
+                                            }
+
+                                            // Update terminal buffer scrollback position
+                                            val scrolledLines =
+                                                (newOffset / baseCharHeight).toInt()
+                                            screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
                                         }
-
-                                        // Update terminal buffer scrollback position
-                                        val scrolledLines =
-                                            (newOffset / baseCharHeight).toInt()
-                                        screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
                                     }
 
                                     else -> {}
@@ -1504,16 +1543,24 @@ internal fun TerminalWithAccessibility(
                             GestureType.Scroll -> {
                                 // Apply fling animation
                                 val velocity = velocityTracker.calculateVelocity()
+                                val scroller = wheelScroller
                                 scrollJob?.cancel()
                                 scrollJob = launch {
-                                    scrollOffset.animateDecay(
-                                        initialVelocity = velocity.y,
-                                        animationSpec = splineBasedDecay(density),
-                                    ) {
-                                        // Update terminal buffer during animation
-                                        val scrolledLines =
-                                            (value / baseCharHeight).toInt()
-                                        screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                    if (scroller != null) {
+                                        // The application scrolls itself, so the fling is
+                                        // reported rather than animated; the scroller owns
+                                        // the decay and the bound that stops it.
+                                        scroller.fling(velocity.y, splineBasedDecay(density))
+                                    } else {
+                                        scrollOffset.animateDecay(
+                                            initialVelocity = velocity.y,
+                                            animationSpec = splineBasedDecay(density),
+                                        ) {
+                                            // Update terminal buffer during animation
+                                            val scrolledLines =
+                                                (value / baseCharHeight).toInt()
+                                            screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                        }
                                     }
                                 }
                             }
@@ -1531,15 +1578,35 @@ internal fun TerminalWithAccessibility(
 
                             GestureType.Undetermined -> {
                                 // This is a tap. If a selection is active, clear it.
-                                // Otherwise, check for hyperlink or forward the tap.
+                                // Otherwise the application gets it if it asked for the
+                                // mouse; failing that, check for a hyperlink and forward.
+                                val tapCol = (down.position.x / baseCharWidth).toInt()
+                                    .coerceIn(0, screenState.snapshot.cols - 1)
+                                val tapRow = (down.position.y / baseCharHeight).toInt()
+                                    .coerceIn(0, screenState.snapshot.rows - 1)
+
+                                // Request focus when terminal is tapped to show keyboard
+                                fun forwardTap() {
+                                    if (currentKeyboardEnabled) {
+                                        focusRequester.requestFocus()
+                                        if (currentShouldShowIme) imeInputView?.showIme()
+                                    }
+                                    currentOnTerminalTap()
+                                }
+
                                 if (selectionManager.mode != SelectionMode.NONE) {
                                     selectionManager.clearSelection()
+                                } else if (appOwnsPointer) {
+                                    // The application owns the viewport, so it owns the
+                                    // click too — including on anything that looks like a
+                                    // link, which it drew and will handle itself. Sent as
+                                    // one click so the release cannot go missing.
+                                    // Long-press selection stays local: it remains the way
+                                    // to copy text out of a full-screen application.
+                                    terminalEmulator.mouseClick(MouseButton.LEFT, tapRow, tapCol)
+                                    forwardTap()
                                 } else {
                                     // Check if tap is on a hyperlink
-                                    val tapCol = (down.position.x / baseCharWidth).toInt()
-                                        .coerceIn(0, screenState.snapshot.cols - 1)
-                                    val tapRow = (down.position.y / baseCharHeight).toInt()
-                                        .coerceIn(0, screenState.snapshot.rows - 1)
                                     val hyperlinkUrl = screenState.getHyperlinkUrlAt(
                                         tapRow,
                                         textPaint.logicalColumn(screenState, tapRow, tapCol, baseCharWidth),
@@ -1550,12 +1617,7 @@ internal fun TerminalWithAccessibility(
                                         // User tapped on a hyperlink
                                         currentOnHyperlinkClick(hyperlinkUrl)
                                     } else {
-                                        // Request focus when terminal is tapped to show keyboard
-                                        if (currentKeyboardEnabled) {
-                                            focusRequester.requestFocus()
-                                            if (currentShouldShowIme) imeInputView?.showIme()
-                                        }
-                                        currentOnTerminalTap()
+                                        forwardTap()
                                     }
                                 }
                                 // Record tap for double-tap detection
