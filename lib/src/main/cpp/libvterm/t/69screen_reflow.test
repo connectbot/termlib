@@ -86,3 +86,35 @@ RESIZE 3,1
 PUSH "\x1b[2;1Habc\r\n\x1b[H"
 RESIZE 1,1
   ?cursor = 0,0
+
+!Resize wider after the start of a wrapped line scrolls off-screen
+RESET
+RESIZE 2,4
+PUSH "abcdefghijkl"
+  ?screen_row 0 = "efgh"
+  ?screen_row 1 = "ijkl"
+  ?lineinfo 0 = cont
+RESIZE 2,8
+  ?screen_row 0 = "efghijkl"
+  ?lineinfo 0 =
+  ?cursor = 0,7
+
+!Resize narrower after the start of a wrapped line scrolls off-screen
+RESET
+RESIZE 2,4
+PUSH "abcdefghijkl"
+RESIZE 4,2
+  ?screen_row 0 = "ef"
+  ?screen_row 1 = "gh"
+  ?screen_row 2 = "ij"
+  ?screen_row 3 = "kl"
+  ?cursor = 3,1
+
+!Resize wrapped text on the alternate screen
+RESET
+RESIZE 2,4
+PUSH "\x1b[?1049habcdefghijkl"
+RESIZE 2,8
+  ?screen_row 0 = "efghijkl"
+  ?cursor = 0,7
+PUSH "\x1b[?1049l"
