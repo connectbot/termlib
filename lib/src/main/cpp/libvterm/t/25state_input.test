@@ -25,6 +25,22 @@ INCHAR CA 41
 INCHAR CA 61
   output "\e\x01"
 
+!Unicode characters are encoded as UTF-8
+INCHAR 0 e9
+  output "\xc3\xa9"
+INCHAR 0 20ac
+  output "\xe2\x82\xac"
+INCHAR 0 1f389
+  output "\xf0\x9f\x8e\x89"
+
+!Alt modifier on Unicode characters
+INCHAR A e9
+  output "\e\xc3\xa9"
+INCHAR A 20ac
+  output "\e\xe2\x82\xac"
+INCHAR A 1f389
+  output "\e\xf0\x9f\x8e\x89"
+
 !Special handling of Ctrl-I
 INCHAR 0 49
   output "I"

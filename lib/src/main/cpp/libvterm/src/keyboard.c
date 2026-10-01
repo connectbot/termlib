@@ -48,12 +48,14 @@ void vterm_keyboard_unichar(VTerm *vt, uint32_t c, VTermModifier mod)
   if(mod & VTERM_MOD_CTRL)
     c &= 0x1f;
 
+  /* Keep the Escape prefix and UTF-8 character in one output callback. */
+  char str[7];
+  int prefixlen = 0;
   if(mod & VTERM_MOD_ALT)
-    vterm_push_output_bytes(vt, ESC_S, sizeof(ESC_S) - 1);
+    str[prefixlen++] = '\x1b';
 
-  char str[6];
-  int seqlen = fill_utf8(c, str);
-  vterm_push_output_bytes(vt, str, seqlen);
+  int seqlen = fill_utf8(c, str + prefixlen);
+  vterm_push_output_bytes(vt, str, prefixlen + seqlen);
 }
 
 typedef struct {
