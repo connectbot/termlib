@@ -207,8 +207,8 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
     mVts = vterm_obtain_screen(mVt);
     if (!mVts) return;
     vterm_screen_enable_altscreen(mVts, 1);
-    // Keep wrapped screen content when the viewport changes width (for example, on IME dismissal).
-    vterm_screen_enable_reflow(mVts, true);
+    // Reflow is disabled until scrollback, wide cells and metadata survive resizing.
+    vterm_screen_enable_reflow(mVts, false);
 
     // Initialize callback structure as member variable so it doesn't go out of scope.
     // These callbacks run while mLock may be held by the native entrypoint that
@@ -310,11 +310,13 @@ int Terminal::writeInput(const uint8_t* data, size_t length) {
 int Terminal::resize(int rows, int cols) {
     std::scoped_lock lock(mLock);
 
-    mRows = rows;
-    mCols = cols;
-
+    // Scrollback callbacks during resize still inspect the old lineinfo array.
     if (mVt) {
         vterm_set_size(mVt, rows, cols);
+    }
+    mRows = rows;
+    mCols = cols;
+    if (mVt) {
         vterm_screen_flush_damage(mVts);
     }
 
