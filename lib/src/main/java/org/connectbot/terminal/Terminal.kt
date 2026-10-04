@@ -1053,7 +1053,7 @@ internal fun TerminalWithAccessibility(
                 coroutineScope {
                     awaitEachGesture {
                         var gestureType: GestureType = GestureType.Undetermined
-                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val down = awaitFirstDown(requireUnconsumed = true)
                         val isFinger = down.type == PointerType.Touch
                         val releaseFilter = SelectionReleaseFilter<SelectionRange>()
                         val selectionEdgeReach = SelectionEdgeReach(
@@ -1341,6 +1341,7 @@ internal fun TerminalWithAccessibility(
                             selectionManager.mode == SelectionMode.NONE
 
                         // 4. Main event loop
+                        var gestureCancelled = false
                         try {
                             while (true) {
                                 val event: PointerEvent =
@@ -1349,6 +1350,13 @@ internal fun TerminalWithAccessibility(
                                 // Use the same pointer that started the gesture for consistency
                                 val primaryChange = event.changes.find { it.id == primaryPointerId }
                                 val change = primaryChange ?: event.changes.first()
+                                // An ancestor can claim a session swipe in Initial.
+                                // Consumed movement reads as zero, so continuing would
+                                // incorrectly classify that swipe as a terminal tap.
+                                if (event.changes.any { it.isConsumed }) {
+                                    gestureCancelled = true
+                                    break
+                                }
                                 selectionReleaseTime = change.uptimeMillis
                                 if (gestureType == GestureType.Selection && primaryChange?.pressed != true) break
                                 autoScrollPointer = change.position
@@ -1447,8 +1455,15 @@ internal fun TerminalWithAccessibility(
                                 change.consume()
                             }
                         } finally {
+                            gestureEnded = true
+                            longPressJob?.cancel()
                             isUserScrolling = false
                             autoScrollJob?.cancel()
+                        }
+                        if (gestureCancelled) {
+                            showMagnifier = false
+                            tapTracker.lastTimestamp = 0L
+                            return@awaitEachGesture
                         }
 
                         // 5. Handle zoom if multi-touch was detected
@@ -1496,10 +1511,7 @@ internal fun TerminalWithAccessibility(
                             return@awaitEachGesture
                         }
 
-                        // 6. Gesture ended - cleanup
-                        gestureEnded = true
-                        longPressJob?.cancel()
-
+                        // 6. Handle the completed gesture
                         when (gestureType) {
                             GestureType.Scroll -> {
                                 // Apply fling animation
