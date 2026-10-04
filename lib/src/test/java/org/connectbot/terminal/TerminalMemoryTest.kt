@@ -62,22 +62,28 @@ class TerminalMemoryTest {
     }
 
     @Test
-    fun selectionSurvivesNativeWidthReflow() {
+    fun nativeWidthResizeClipsRowsWithoutReflow() {
         val terminal = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 6) as TerminalEmulatorImpl
         terminal.writeInput("abcdefghi".toByteArray())
         terminal.processPendingUpdates()
         val beforeResize = terminal.snapshot.value
-        val selection = SelectionManager()
-        selection.startSelection(0, 2, beforeResize.cols, SelectionMode.CHARACTER, beforeResize)
-        selection.updateSelection(1, 1)
-        val selectedText = selection.getSelectedText(beforeResize)
+        assertEquals("abcdef", beforeResize.lines[0].text)
+        assertEquals("ghi", beforeResize.lines[1].text.trimEnd())
 
         terminal.resize(4, 3)
         terminal.processPendingUpdates()
         val afterResize = terminal.snapshot.value
-        selection.onSnapshotChanged(beforeResize, afterResize)
+        // Reflow is disabled, so narrowing clips each row instead of moving its text.
+        assertEquals("abc", afterResize.lines[0].text)
+        assertEquals("ghi", afterResize.lines[1].text)
+        assertTrue(afterResize.lines.drop(2).all { it.text.isBlank() })
+        assertEquals("abcdef", beforeResize.lines[0].text)
 
-        assertEquals(selectedText, selection.getSelectedText(afterResize))
+        terminal.resize(4, 6)
+        terminal.processPendingUpdates()
+        val widened = terminal.snapshot.value
+        assertEquals("abc", widened.lines[0].text.trimEnd())
+        assertEquals("ghi", widened.lines[1].text.trimEnd())
     }
 
     @Test
