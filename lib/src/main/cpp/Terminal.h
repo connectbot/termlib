@@ -61,6 +61,9 @@ public:
     void paste(JNIEnv* env, jbyteArray data);
     bool dispatchCharacter(int modifiers, int codepoint);
 
+    // Mouse wheel - generates a report only while the application has enabled mouse tracking
+    bool dispatchMouseWheel(int row, int col, bool up);
+
     // Cell data retrieval for rendering
     int getCells(JNIEnv* env, jobject buffer, int requests);
 

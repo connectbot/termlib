@@ -120,6 +120,21 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
         return withNative { nativeDispatchCharacter(nativePtr, modifiers, character) }
     }
 
+    /**
+     * Report one mouse wheel step at a screen cell.
+     * This generates an escape sequence via onKeyboardInput() only while the
+     * application has enabled mouse tracking.
+     *
+     * @param row Zero-based screen row
+     * @param col Zero-based screen column
+     * @param up true for wheel up (toward older content), false for wheel down
+     * @return true if handled
+     */
+    fun dispatchMouseWheel(row: Int, col: Int, up: Boolean): Boolean {
+        require(row >= 0 && col >= 0) { "Invalid mouse position" }
+        return withNative { nativeDispatchMouseWheel(nativePtr, row, col, up) }
+    }
+
     /** Fill bounded row/column requests in Kotlin-owned direct scratch. */
     fun getCells(buffer: ByteBuffer, requests: Int): Int {
         require(buffer.isDirect && !buffer.isReadOnly && buffer.capacity() >= CellData.BUFFER_BYTES)
@@ -200,6 +215,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
+    private external fun nativeDispatchMouseWheel(ptr: Long, row: Int, col: Int, up: Boolean): Boolean
     private external fun nativePaste(ptr: Long, data: ByteArray)
 
     fun pasteText(data: ByteArray) = withNative { nativePaste(nativePtr, data) }

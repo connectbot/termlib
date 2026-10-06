@@ -482,6 +482,10 @@ internal class TerminalEmulatorImpl(
 
     @Volatile private var isAltScreenActive = false
 
+    /** Whether the application has enabled mouse tracking (DECSET 1000, 1002 or 1003). */
+    @Volatile internal var isMouseTrackingActive = false
+        private set
+
     // Scrollback buffer
     private val scrollback = ArrayDeque<TerminalLine>()
     private val maxScrollbackLines = 1000
@@ -590,6 +594,16 @@ internal class TerminalEmulatorImpl(
     override fun dispatchCharacter(modifiers: Int, codepoint: Int): Unit = commands.call {
         synchronized(damageLock) { terminalNative.dispatchCharacter(modifiers, codepoint) }
         Unit
+    }
+
+    /**
+     * Report one mouse wheel step at a screen cell. Queued rather than awaited, so
+     * gesture handling never blocks on terminal output; steps are sent in call order.
+     */
+    internal fun dispatchMouseWheel(row: Int, col: Int, up: Boolean) {
+        commands.execute {
+            synchronized(damageLock) { terminalNative.dispatchMouseWheel(row, col, up) }
+        }
     }
 
     override fun pasteText(text: String) {
@@ -781,6 +795,11 @@ internal class TerminalEmulatorImpl(
                 }
 
                 is TerminalProperty.IntValue -> {
+                    // Property 8 is VTERM_PROP_MOUSE; 0 is VTERM_PROP_MOUSE_NONE.
+                    // It only affects input, so it needs no redraw.
+                    if (prop == 8) {
+                        isMouseTrackingActive = value.value != 0
+                    }
                     // Property 7 is VTERM_PROP_CURSORSHAPE.
                     if (prop == 7) {
                         cursorShape = when (value.value) {

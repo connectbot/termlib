@@ -136,6 +136,7 @@ private enum class GestureType {
     Undetermined,
     Scroll,
     Page,
+    Wheel,
     Selection,
     Zoom,
     HandleDrag,
@@ -1340,6 +1341,29 @@ internal fun TerminalWithAccessibility(
                             down.position.x <= size.width / 3f &&
                             selectionManager.mode == SelectionMode.NONE
 
+                        // While the application tracks the mouse, vertical drags become wheel
+                        // reports at the cell under the initial touch (tmux routes them to the
+                        // pane there). Downward travel is wheel up, matching the direction of
+                        // local scrollback. Invariant: the net steps sent always equal the whole
+                        // rows of vertical travel since touch down, so the remote position is a
+                        // function of the finger position and returning the finger undoes it.
+                        val wheelRow = (down.position.y / baseCharHeight).toInt()
+                            .coerceIn(0, (screenState.snapshot.rows - 1).coerceAtLeast(0))
+                        val wheelCol = (down.position.x / baseCharWidth).toInt()
+                            .coerceIn(0, (screenState.snapshot.cols - 1).coerceAtLeast(0))
+                        var wheelStepsSent = 0
+                        fun wheelTo(travel: Float) {
+                            val target = (travel / baseCharHeight).toInt()
+                            while (wheelStepsSent < target) {
+                                terminalEmulator.dispatchMouseWheel(wheelRow, wheelCol, up = true)
+                                wheelStepsSent++
+                            }
+                            while (wheelStepsSent > target) {
+                                terminalEmulator.dispatchMouseWheel(wheelRow, wheelCol, up = false)
+                                wheelStepsSent--
+                            }
+                        }
+
                         // 4. Main event loop
                         var gestureCancelled = false
                         try {
@@ -1391,6 +1415,8 @@ internal fun TerminalWithAccessibility(
                                             abs(panAccumulator.y) > abs(panAccumulator.x)
                                         ) {
                                             GestureType.Page
+                                        } else if (terminalEmulator.isMouseTrackingActive) {
+                                            GestureType.Wheel
                                         } else {
                                             GestureType.Scroll
                                         }
@@ -1426,6 +1452,8 @@ internal fun TerminalWithAccessibility(
                                             pendingPageDrag -= pages * step
                                         }
                                     }
+
+                                    GestureType.Wheel -> wheelTo(panAccumulator.y)
 
                                     GestureType.Scroll -> {
                                         // Update scroll offset using total pan from the start of the gesture
@@ -1526,6 +1554,22 @@ internal fun TerminalWithAccessibility(
                                         val scrolledLines =
                                             (value / baseCharHeight).toInt()
                                         screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
+                                    }
+                                }
+                            }
+
+                            GestureType.Wheel -> {
+                                // Fling: the decay extends the travel past the release point.
+                                // The next touch cancels scrollJob, stopping the steps.
+                                val velocity = velocityTracker.calculateVelocity()
+                                val releaseTravel = panAccumulator.y
+                                scrollJob?.cancel()
+                                scrollJob = launch {
+                                    Animatable(releaseTravel).animateDecay(
+                                        initialVelocity = velocity.y,
+                                        animationSpec = splineBasedDecay(density),
+                                    ) {
+                                        wheelTo(value)
                                     }
                                 }
                             }

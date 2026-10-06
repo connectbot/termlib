@@ -456,6 +456,20 @@ bool Terminal::dispatchCharacter(int modifiers, int codepoint) {
     return true;
 }
 
+bool Terminal::dispatchMouseWheel(int row, int col, bool up) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt) {
+        return false;
+    }
+
+    // libvterm reports the wheel as buttons 4 (up) and 5 (down) at the last moved-to
+    // position, and emits nothing unless the application enabled mouse tracking.
+    vterm_mouse_move(mVt, row, col, VTERM_MOD_NONE);
+    vterm_mouse_button(mVt, up ? 4 : 5, true, VTERM_MOD_NONE);
+    return true;
+}
+
 // Cell run retrieval
 void Terminal::packCell(const VTermScreenCell& cell, jint* out) {
     std::fill_n(out, CELL_STRIDE, 0);
@@ -1122,6 +1136,13 @@ Java_org_connectbot_terminal_TerminalNative_nativeDispatchCharacter(JNIEnv* /* e
                                                                     jlong ptr, jint modifiers, jint character) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     return term->dispatchCharacter(modifiers, character);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeDispatchMouseWheel(JNIEnv* /* env */, jobject /* thiz */,
+                                                                     jlong ptr, jint row, jint col, jboolean up) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->dispatchMouseWheel(row, col, up);
 }
 
 JNIEXPORT void JNICALL
