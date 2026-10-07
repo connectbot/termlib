@@ -424,6 +424,13 @@ void Terminal::paste(JNIEnv* env, jbyteArray data) {
     vterm_keyboard_end_paste(mVt);
 }
 
+static VTermModifier toVTermModifier(int modifiers) {
+    VTermModifier mod = VTERM_MOD_NONE;
+    if (modifiers & 1) mod = (VTermModifier)(mod | VTERM_MOD_SHIFT);
+    if (modifiers & 2) mod = (VTermModifier)(mod | VTERM_MOD_ALT);
+    if (modifiers & 4) mod = (VTermModifier)(mod | VTERM_MOD_CTRL);
+    return mod;
+}
 bool Terminal::dispatchKey(int modifiers, int key) {
     std::scoped_lock lock(mLock);
 
@@ -431,12 +438,7 @@ bool Terminal::dispatchKey(int modifiers, int key) {
         return false;
     }
 
-    VTermModifier mod = VTERM_MOD_NONE;
-    if (modifiers & 1) mod = (VTermModifier)(mod | VTERM_MOD_SHIFT);
-    if (modifiers & 2) mod = (VTermModifier)(mod | VTERM_MOD_ALT);
-    if (modifiers & 4) mod = (VTermModifier)(mod | VTERM_MOD_CTRL);
-
-    vterm_keyboard_key(mVt, (VTermKey)key, mod);
+    vterm_keyboard_key(mVt, (VTermKey)key, toVTermModifier(modifiers));
     return true;
 }
 
@@ -447,12 +449,86 @@ bool Terminal::dispatchCharacter(int modifiers, int codepoint) {
         return false;
     }
 
-    VTermModifier mod = VTERM_MOD_NONE;
-    if (modifiers & 1) mod = (VTermModifier)(mod | VTERM_MOD_SHIFT);
-    if (modifiers & 2) mod = (VTermModifier)(mod | VTERM_MOD_ALT);
-    if (modifiers & 4) mod = (VTermModifier)(mod | VTERM_MOD_CTRL);
+    vterm_keyboard_unichar(mVt, codepoint, toVTermModifier(modifiers));
+    return true;
+}
 
-    vterm_keyboard_unichar(mVt, codepoint, mod);
+// Mouse input handlers
+VTermModifier Terminal::positionMouseLocked(int row, int col, int modifiers) {
+    VTermModifier mod = toVTermModifier(modifiers);
+
+    // libvterm only emits a report here when the application asked for drag or
+    // motion tracking; otherwise this just records the position that a
+    // subsequent button report will carry.
+    vterm_mouse_move(mVt,
+                     std::clamp(row, 0, mRows > 0 ? mRows - 1 : 0),
+                     std::clamp(col, 0, mCols > 0 ? mCols - 1 : 0),
+                     mod);
+    return mod;
+}
+
+bool Terminal::mouseMove(int row, int col, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt) {
+        return false;
+    }
+
+    positionMouseLocked(row, col, modifiers);
+    return true;
+}
+
+bool Terminal::mouseButton(int row, int col, int button, bool pressed, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt) {
+        return false;
+    }
+
+    // Position and button are set under one lock: libvterm carries the position
+    // recorded by the move into the button report, so a concurrent move for a
+    // different gesture must not be able to land between the two.
+    vterm_mouse_button(mVt, button, pressed, positionMouseLocked(row, col, modifiers));
+    return true;
+}
+
+bool Terminal::mouseClick(int row, int col, int button, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt) {
+        return false;
+    }
+
+    // Press and release under one lock. An application tracks button state from
+    // these reports, so a press whose release is lost - dropped by a caller, or
+    // separated from it by a reset that clears the button state in between -
+    // leaves the application believing the button is still down. Emitting the
+    // pair as one operation means a click cannot be left half-delivered, and
+    // coalescing sends the pair in one trip rather than two.
+    CoalescedOutput out(this);
+    VTermModifier mod = positionMouseLocked(row, col, modifiers);
+    vterm_mouse_button(mVt, button, true, mod);
+    vterm_mouse_button(mVt, button, false, mod);
+    return true;
+}
+
+bool Terminal::scrollWheel(int row, int col, int button, int steps, int modifiers) {
+    std::scoped_lock lock(mLock);
+
+    if (!mVt || steps < 1) {
+        return false;
+    }
+
+    // One report per detent leaves libvterm, so the whole burst is collected
+    // and delivered in a single upcall rather than one per detent.
+    CoalescedOutput out(this);
+    VTermModifier mod = positionMouseLocked(row, col, modifiers);
+    int bounded = std::min(steps, MAX_WHEEL_STEPS_PER_CALL);
+    for (int i = 0; i < bounded; i++) {
+        // Wheel buttons report a press with no matching release; libvterm emits
+        // one report per call.
+        vterm_mouse_button(mVt, button, true, mod);
+    }
     return true;
 }
 
@@ -619,7 +695,22 @@ int Terminal::termSbClear(void* user) {
 
 void Terminal::termOutput(const char* s, size_t len, void* user) {
     auto* term = static_cast<Terminal*>(user);
+    if (term->mOutputSink) {
+        term->mOutputSink->append(s, len);
+        return;
+    }
     term->invokeKeyboardOutput(s, len);
+}
+
+Terminal::CoalescedOutput::CoalescedOutput(Terminal* term) : mTerm(term) {
+    mTerm->mOutputSink = &mBuffer;
+}
+
+Terminal::CoalescedOutput::~CoalescedOutput() {
+    mTerm->mOutputSink = nullptr;
+    if (!mBuffer.empty()) {
+        mTerm->invokeKeyboardOutput(mBuffer.data(), mBuffer.size());
+    }
 }
 
 // OSC sequence fallback handler
@@ -806,6 +897,22 @@ void Terminal::invokeMoveCursor(int row, int col, int oldRow, int oldCol, bool v
     if (env->ExceptionCheck()) return;
 }
 
+Terminal::PropCode Terminal::toPropCode(VTermProp prop) {
+    switch (prop) {
+        case VTERM_PROP_CURSORVISIBLE: return PropCode::CursorVisible;
+        case VTERM_PROP_CURSORBLINK:   return PropCode::CursorBlink;
+        case VTERM_PROP_ALTSCREEN:     return PropCode::AltScreen;
+        case VTERM_PROP_TITLE:         return PropCode::Title;
+        case VTERM_PROP_ICONNAME:      return PropCode::IconName;
+        case VTERM_PROP_REVERSE:       return PropCode::Reverse;
+        case VTERM_PROP_CURSORSHAPE:   return PropCode::CursorShape;
+        case VTERM_PROP_MOUSE:         return PropCode::Mouse;
+        case VTERM_PROP_FOCUSREPORT:   return PropCode::FocusReport;
+        case VTERM_N_PROPS:            break;
+    }
+    return PropCode::Unknown;
+}
+
 void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
     if (!mSetTermPropMethod) {
         return;
@@ -843,8 +950,8 @@ void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
     }
 
     if (propValue.get()) {
-        if (env->ExceptionCheck()) return;
-        env->CallIntMethod(mCallbacks, mSetTermPropMethod, prop, propValue.get());
+        env->CallIntMethod(mCallbacks, mSetTermPropMethod,
+                           static_cast<jint>(toPropCode(prop)), propValue.get());
         if (env->ExceptionCheck()) return;
     }
 }
@@ -1129,6 +1236,36 @@ Java_org_connectbot_terminal_TerminalNative_nativePaste(JNIEnv* env, jobject, jl
     reinterpret_cast<Terminal*>(ptr)->paste(env, data);
 }
 
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeMouseMove(JNIEnv* /* env */, jobject /* thiz */,
+                                                            jlong ptr, jint row, jint col, jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->mouseMove(row, col, modifiers);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeMouseButton(JNIEnv* /* env */, jobject /* thiz */,
+                                                               jlong ptr, jint row, jint col, jint button,
+                                                               jboolean pressed, jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->mouseButton(row, col, button, pressed, modifiers);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeMouseClick(JNIEnv* /* env */, jobject /* thiz */,
+                                                              jlong ptr, jint row, jint col, jint button,
+                                                              jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->mouseClick(row, col, button, modifiers);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_connectbot_terminal_TerminalNative_nativeScrollWheel(JNIEnv* /* env */, jobject /* thiz */,
+                                                               jlong ptr, jint row, jint col, jint button,
+                                                               jint steps, jint modifiers) {
+    auto* term = reinterpret_cast<Terminal*>(ptr);
+    return term->scrollWheel(row, col, button, steps, modifiers);
+}
 JNIEXPORT jint JNICALL
 Java_org_connectbot_terminal_TerminalNative_nativeGetCells(JNIEnv* env, jobject, jlong ptr, jobject buffer, jint requests) {
     return reinterpret_cast<Terminal*>(ptr)->getCells(env, buffer, requests);

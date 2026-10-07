@@ -276,4 +276,58 @@ class CursorAndModeEscapeTest {
             after.lines[0].text.trimEnd() == "protected row 0",
         )
     }
+
+    // -----------------------------------------------------------------------
+    // Terminal properties reaching the snapshot
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun testOsc0SetsTitle() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        emulator.send("\u001B]0;hello")
+
+        assertEquals("hello", getSnapshot(impl).terminalTitle)
+    }
+
+    @Test
+    fun testOsc2SetsTitle() = runBlocking {
+        // OSC 2 sets the window title only; OSC 0 sets title and icon name.
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        emulator.send("\u001B]2;window")
+
+        assertEquals("window", getSnapshot(impl).terminalTitle)
+    }
+
+    @Test
+    fun testDecscusrSelectsCursorShape() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        // DECSCUSR: 4 is a steady underline, 6 a steady bar, 2 a steady block.
+        emulator.send("\u001B[4 q")
+        assertEquals("underline", CursorShape.UNDERLINE, getSnapshot(impl).cursorShape)
+
+        emulator.send("\u001B[6 q")
+        assertEquals("bar", CursorShape.BAR_LEFT, getSnapshot(impl).cursorShape)
+
+        emulator.send("\u001B[2 q")
+        assertEquals("block", CursorShape.BLOCK, getSnapshot(impl).cursorShape)
+    }
+
+    @Test
+    fun testDecscusrSetsBlink() = runBlocking {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40)
+        val impl = emulator as TerminalEmulatorImpl
+
+        // Odd DECSCUSR values blink, even ones are steady.
+        emulator.send("\u001B[2 q")
+        assertEquals("steady block", false, getSnapshot(impl).cursorBlink)
+
+        emulator.send("\u001B[1 q")
+        assertEquals("blinking block", true, getSnapshot(impl).cursorBlink)
+    }
 }
