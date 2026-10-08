@@ -3,13 +3,13 @@
   "versions": {
     "main": {
       "published": {
-        "commit": "bc93e6102bb5d914140d15a3b20cd7f60d20f778",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "commit": "87947d8ffa32267e62752921cf238af45e314225",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
-        "commit": "bc93e6102bb5d914140d15a3b20cd7f60d20f778",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "commit": "87947d8ffa32267e62752921cf238af45e314225",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -17,12 +17,12 @@
     "0.3.11": {
       "published": {
         "commit": "8292cd1b995dfd48c1196dc6d6be5c8774ba3b69",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "8292cd1b995dfd48c1196dc6d6be5c8774ba3b69",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -30,12 +30,12 @@
     "0.3.10": {
       "published": {
         "commit": "194995476486117b1b32edf062a2655221068c28",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "194995476486117b1b32edf062a2655221068c28",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -43,12 +43,12 @@
     "0.3.9": {
       "published": {
         "commit": "e10900840f3a4c20eaf43423177bf5c16a5c4367",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "e10900840f3a4c20eaf43423177bf5c16a5c4367",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -56,12 +56,12 @@
     "0.3.8": {
       "published": {
         "commit": "a27ad26b340d765faf675937ebb35405113fe64a",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "a27ad26b340d765faf675937ebb35405113fe64a",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -69,12 +69,12 @@
     "0.3.7": {
       "published": {
         "commit": "371283bb9582d001e2a8d6f178ac6f44dbf1ec53",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "371283bb9582d001e2a8d6f178ac6f44dbf1ec53",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -82,12 +82,12 @@
     "0.3.6": {
       "published": {
         "commit": "e4c2294c9e0bd66d63ff43e40b91e3898b17ef11",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "e4c2294c9e0bd66d63ff43e40b91e3898b17ef11",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -95,12 +95,12 @@
     "0.3.5": {
       "published": {
         "commit": "08d0c254265a503639a5d65719def23a2f643ddc",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "08d0c254265a503639a5d65719def23a2f643ddc",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -108,12 +108,12 @@
     "0.3.4": {
       "published": {
         "commit": "5e5f2a0056d8ccf4921aef653e1539ec556a71c6",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "5e5f2a0056d8ccf4921aef653e1539ec556a71c6",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -121,12 +121,12 @@
     "0.3.3": {
       "published": {
         "commit": "28fc8972ab6fe89ce2d244fecc77ebfa590660c9",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "28fc8972ab6fe89ce2d244fecc77ebfa590660c9",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -134,12 +134,12 @@
     "0.3.2": {
       "published": {
         "commit": "6d0210881655493855c475c17b734fe372f3cd2d",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "6d0210881655493855c475c17b734fe372f3cd2d",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -147,12 +147,12 @@
     "0.3.1": {
       "published": {
         "commit": "2ac1816d3fa8f34a12e63f0cf2269830fe3ac1c4",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "2ac1816d3fa8f34a12e63f0cf2269830fe3ac1c4",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -160,12 +160,12 @@
     "0.3.0": {
       "published": {
         "commit": "068f9669adba48c5220185eebd55836296dbc6b5",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "068f9669adba48c5220185eebd55836296dbc6b5",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -173,12 +173,12 @@
     "0.2.1": {
       "published": {
         "commit": "27e024fccb2d722b47c57f5da1b4da9bca477b68",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "27e024fccb2d722b47c57f5da1b4da9bca477b68",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -186,12 +186,12 @@
     "0.2.0": {
       "published": {
         "commit": "eb10552bb0796a73975b25dacd883a8909996e0c",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "eb10552bb0796a73975b25dacd883a8909996e0c",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }
@@ -199,12 +199,12 @@
     "0.1.0": {
       "published": {
         "commit": "e3f4bdc3b3b5563fee54b0eca4b50d0e611bfd07",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1
       },
       "attempt": {
         "commit": "e3f4bdc3b3b5563fee54b0eca4b50d0e611bfd07",
-        "config": "db2533770663685942d462e1595aeb2421529ea951673a666890ec89d26322b7",
+        "config": "631b7668cf659e13a09b806a821528f9a9bdd60f7e13732e6aed1af7cbddc009",
         "policy": 1,
         "status": "success"
       }

@@ -73,3 +73,31 @@ Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() �
 | Name |
 |---|
 | [org.connectbot.terminal](-connect-bot -terminal/org.connectbot.terminal/index.md) |
+
+<!-- BEGIN DOCS API CHANGES -->
+## New and changed APIs
+
+Changes since 0.2.1.
+
+[Compare source versions](https://github.com/connectbot/termlib/compare/0.2.1...0.3.0)
+
+### Terminal
+
+#### org.connectbot.terminal.ComposeController
+
+- Added: [open fun syncImeShortcutInputMode(mode: ImeShortcutInputMode)](-connect-bot%20-terminal/org.connectbot.terminal/-compose-controller/sync-ime-shortcut-input-mode.html)
+
+#### org.connectbot.terminal.ImeShortcutInputMode
+
+- Added: [DISABLED](-connect-bot%20-terminal/org.connectbot.terminal/-ime-shortcut-input-mode/-d-i-s-a-b-l-e-d/index.html)
+
+- Added: [FORCE_ASCII](-connect-bot%20-terminal/org.connectbot.terminal/-ime-shortcut-input-mode/-f-o-r-c-e_-a-s-c-i-i/index.html)
+
+- Added: [TYPE_NULL](-connect-bot%20-terminal/org.connectbot.terminal/-ime-shortcut-input-mode/-t-y-p-e_-n-u-l-l/index.html)
+
+- Added: [enum ImeShortcutInputMode : Enum<ImeShortcutInputMode> ](-connect-bot%20-terminal/org.connectbot.terminal/-ime-shortcut-input-mode/index.html)
+
+#### org.connectbot.terminal.TerminalKt
+
+- Changed: [fun Terminal(terminalEmulator: TerminalEmulator, modifier: Modifier = Modifier, typeface: Typeface = Typeface.MONOSPACE, initialFontSize: TextUnit = 11.sp, minFontSize: TextUnit = 6.sp, maxFontSize: TextUnit = 30.sp, backgroundColor: Color = Color.Black, foregroundColor: Color = Color.White, selectionBackgroundColor: Color = Color(0xFFB3D7FF), selectionForegroundColor: Color = Color.Black, keyboardEnabled: Boolean = false, showSoftKeyboard: Boolean = true, focusRequester: FocusRequester = remember { FocusRequester() }, onTerminalTap: () -> Unit = {}, onImeVisibilityChanged: (Boolean) -> Unit = {}, forcedSize: Pair<Int, Int>? = null, modifierManager: ModifierManager? = null, onSelectionControllerAvailable: (SelectionController) -> Unit? = null, onHyperlinkClick: (String) -> Unit = {}, onComposeControllerAvailable: (ComposeController) -> Unit? = null, onPasteRequest: () -> Unit? = null, rightAltMode: RightAltMode = RightAltMode.CharacterModifier, delKeyMode: DelKeyMode = DelKeyMode.Delete, onInterceptKey: (KeyEvent) -> Boolean? = null, resizeSuspended: Boolean = false)](-connect-bot%20-terminal/org.connectbot.terminal/-terminal.html)
+<!-- END DOCS API CHANGES -->

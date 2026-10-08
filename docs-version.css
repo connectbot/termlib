@@ -1,0 +1,19 @@
+#library-version { display: flex; align-items: center; padding-top: 0; margin-inline-start: 16px; }
+.docs-version-label { display: inline-flex; align-items: center; gap: 8px; line-height: 24px;
+    padding: 4px 10px; border: 1px solid rgba(255, 255, 255, .2); border-radius: 6px;
+    background: rgba(255, 255, 255, .035); white-space: nowrap; max-width: 100%; box-sizing: border-box; }
+.docs-version-label:focus-within { border-color: rgba(255, 255, 255, .5); }
+#docs-version { font: inherit; line-height: 24px; color: inherit; background: transparent; border: 0;
+    border-radius: 4px; padding: 2px 4px; min-width: 0; max-width: 15rem; cursor: pointer; }
+#docs-version:focus-visible { outline: 2px solid #307fff; outline-offset: 2px; }
+#docs-version option { color: #222; background: #fff; }
+#api-changes { margin: 1.5rem 0; overflow-wrap: anywhere; }
+#api-changes code.language-kotlin, #api-changes code.language-kotlin .token { white-space: pre-wrap; overflow-wrap: anywhere; }
+#api-changes pre { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }
+@media (max-width: 899px) {
+    #library-version { margin-inline-start: 0; padding-inline: 12px; flex-basis: 0; min-width: 0; }
+}
+@media (max-width: 600px) {
+    .docs-version-label { font-size: 14px; padding: 4px 6px; gap: 6px; }
+    #docs-version { max-width: 9rem; padding-inline: 2px; }
+}

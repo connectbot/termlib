@@ -73,3 +73,15 @@ Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() �
 | Name |
 |---|
 | [org.connectbot.terminal](-connect-bot -terminal/org.connectbot.terminal/index.md) |
+
+<!-- BEGIN DOCS API CHANGES -->
+## New and changed APIs
+
+Changes since 0.3.10.
+
+[Compare source versions](https://github.com/connectbot/termlib/compare/0.3.10...0.3.11)
+
+### Terminal
+
+No public API signature changes.
+<!-- END DOCS API CHANGES -->

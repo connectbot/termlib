@@ -65,3 +65,17 @@ Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() �
 | Name |
 |---|
 | [org.connectbot.terminal](-connect-bot -terminal/org.connectbot.terminal/index.md) |
+
+<!-- BEGIN DOCS API CHANGES -->
+## New and changed APIs
+
+Changes since 0.0.40.
+
+[Compare source versions](https://github.com/connectbot/termlib/compare/0.0.40...0.1.0)
+
+### Terminal
+
+#### org.connectbot.terminal.TerminalKt
+
+- Changed: [fun Terminal(terminalEmulator: TerminalEmulator, modifier: Modifier = Modifier, typeface: Typeface = Typeface.MONOSPACE, initialFontSize: TextUnit = 11.sp, minFontSize: TextUnit = 6.sp, maxFontSize: TextUnit = 30.sp, backgroundColor: Color = Color.Black, foregroundColor: Color = Color.White, selectionBackgroundColor: Color = Color(0xFFB3D7FF), selectionForegroundColor: Color = Color.Black, keyboardEnabled: Boolean = false, showSoftKeyboard: Boolean = true, focusRequester: FocusRequester = remember { FocusRequester() }, onTerminalTap: () -> Unit = {}, onImeVisibilityChanged: (Boolean) -> Unit = {}, forcedSize: Pair<Int, Int>? = null, modifierManager: ModifierManager? = null, onSelectionControllerAvailable: (SelectionController) -> Unit? = null, onHyperlinkClick: (String) -> Unit = {}, onComposeControllerAvailable: (ComposeController) -> Unit? = null, onPasteRequest: () -> Unit? = null, rightAltMode: RightAltMode = RightAltMode.CharacterModifier, delKeyMode: DelKeyMode = DelKeyMode.Delete, onInterceptKey: (KeyEvent) -> Boolean? = null)](-connect-bot%20-terminal/org.connectbot.terminal/-terminal.html)
+<!-- END DOCS API CHANGES -->

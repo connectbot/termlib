@@ -31,6 +31,10 @@
 <script type="text/javascript" src="scripts/main.js" defer="defer"></script>
 <script type="text/javascript" src="scripts/prism.js" async="async"></script>
 <script type="text/javascript" src="ui-kit/ui-kit.min.js" defer="defer"></script>
+<!-- BEGIN DOCS NAVIGATION -->
+<link rel="stylesheet" href="https://termlib.connectbot.org/docs-version.css">
+<script src="https://termlib.connectbot.org/docs-version.js" defer data-docs-root="https://termlib.connectbot.org/" data-docs-version="0.2.0"></script>
+<!-- END DOCS NAVIGATION -->
 </head>
 <body>
 <div class="root">
@@ -42,8 +46,7 @@
                 type="button">Toggle table of contents
         </button>
         <div class="navigation-controls--break ui-kit_mobile-only"></div>
-        <div class="library-version" id="library-version">
-0.2.0        </div>
+        <div class="library-version" id="library-version"><label class="docs-version-label">Version <select id="docs-version" aria-label="Documentation version"><option value="0.3.11">0.3.11</option><option value="0.3.10">0.3.10</option><option value="0.3.9">0.3.9</option><option value="0.3.8">0.3.8</option><option value="0.3.7">0.3.7</option><option value="0.3.6">0.3.6</option><option value="0.3.5">0.3.5</option><option value="0.3.4">0.3.4</option><option value="0.3.3">0.3.3</option><option value="0.3.2">0.3.2</option><option value="0.3.1">0.3.1</option><option value="0.3.0">0.3.0</option><option value="0.2.1">0.2.1</option><option value="0.2.0" selected>0.2.0</option><option value="0.1.0">0.1.0</option><option value="main">main</option></select></label></div>
         <div class="navigation-controls">
         <ul class="filter-section filter-section_loading" id="filter-section" aria-label="Target filter">
                 <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true"
@@ -109,7 +112,77 @@
     <h1 class="cover"><span>Connect</span><wbr></wbr><span><span>Bot</span></span> <span><span>Terminal</span></span></h1>
     <div class="platform-hinted UnderCoverText" data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":lib/release"><p class="paragraph">ConnectBot Terminal is a high-performance Jetpack Compose terminal emulator component for Android, providing accurate VT100/ANSI terminal emulation via libvterm.</p><h2 class="">Key Features</h2><ul><li><p class="paragraph"><strong>Pure display component</strong>: Handles terminal emulation and rendering only; caller manages PTY, SSH/Telnet connections, I/O, etc.</p></li><li><p class="paragraph"><strong>Jetpack Compose UI</strong>: Modern declarative UI with Canvas-based rendering</p></li><li><p class="paragraph"><strong>Touch interactions</strong>: Pinch-to-zoom, scrollback, text selection with magnifying glass</p></li><li><p class="paragraph"><strong>Thread-safe</strong>: Mutex-protected libvterm integration with safe callback handling</p></li><li><p class="paragraph"><strong>Efficient rendering</strong>: Batched cell retrieval with format-aware run-length optimization</p></li></ul><h2 class="">Core Components</h2><ul><li><p class="paragraph"><strong>Terminal</strong>: JNI wrapper around libvterm providing input processing and keyboard event generation</p></li><li><p class="paragraph"><strong>TerminalBuffer</strong>: Compose state management for terminal content and scrollback</p></li><li><p class="paragraph"><strong>TermScreen</strong>: Main composable providing rendering and touch interaction</p></li><li><p class="paragraph"><strong>SelectionManager</strong>: Text selection with character/word/line/block modes</p></li><li><p class="paragraph"><strong>KeyboardHandler</strong>: Android KeyEvent to VTerm key mapping</p></li></ul><h2 class="">Usage</h2><p class="paragraph">In your Compose UI:</p><div class="sample-container"><pre><code class="block lang-kotlin" theme="idea">val emulator = TerminalEmulatorFactory.create(<br>    onKeyBoardInput = {<br>        // … send data to PTY/SSH/etc<br>    }<br>)<br><br>// Feed data from PTY/SSH<br>emulator.writeInput(data, offset, length)<br><br>// Render<br>Terminal(<br>    terminalEmulator = emulator<br>)</code></pre><span class="copy-tooltip"><div class="copy-popup-wrapper popup-to-left"><span class="copy-popup-icon"></span><span>Content copied to clipboard</span></div><span class="copy-icon"></span></span></div><h2 class="">Architecture</h2><div class="sample-container"><pre><code class="block lang-kotlin" theme="idea">PTY/SSH → TerminalEmulator.writeInput() → libvterm → Callbacks → TerminalEmulator → Terminal<br>Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() → PTY/SSH</code></pre><span class="copy-tooltip"><div class="copy-popup-wrapper popup-to-left"><span class="copy-popup-icon"></span><span>Content copied to clipboard</span></div><span class="copy-icon"></span></span></div><p class="paragraph"><strong>Important</strong>: Callbacks must not call back into Terminal methods (causes deadlock). Defer work to avoid reentrancy.</p></div></div>
   </div>
-  <h2 class="">Packages</h2>
+  <!-- BEGIN DOCS API CHANGES -->
+<section id="api-changes"><h2>New and changed APIs</h2>
+<p>Changes since 0.1.0.</p>
+<p><a href="https://github.com/connectbot/termlib/compare/0.1.0...0.2.0">Compare source versions</a></p>
+<h3>Terminal</h3>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/index.html"><code class="language-kotlin">org.connectbot.terminal.InlineImageLimits</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/-inline-image-limits.html"><code class="language-kotlin">constructor(encodedBytes: Int = 16 * 1024 * 1024, decodedBytes: Int = 32 * 1024 * 1024, transferBytes: Int = 4 * 1024 * 1024, uploadBytes: Int = 16 * 1024 * 1024, maxDimension: Int, maxPixels: Int = 16 * 1024 * 1024, maxImages: Int = 1024, maxPlacements: Int = 4096, maxFrames: Int = 4096)</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/decoded-bytes.html"><code class="language-kotlin">val decodedBytes: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/encoded-bytes.html"><code class="language-kotlin">val encodedBytes: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/max-dimension.html"><code class="language-kotlin">val maxDimension: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/max-frames.html"><code class="language-kotlin">val maxFrames: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/max-images.html"><code class="language-kotlin">val maxImages: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/max-pixels.html"><code class="language-kotlin">val maxPixels: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/max-placements.html"><code class="language-kotlin">val maxPlacements: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/transfer-bytes.html"><code class="language-kotlin">val transferBytes: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/upload-bytes.html"><code class="language-kotlin">val uploadBytes: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-limits/index.html"><code class="language-kotlin">data class InlineImageLimits(val encodedBytes: Int = 16 * 1024 * 1024, val decodedBytes: Int = 32 * 1024 * 1024, val transferBytes: Int = 4 * 1024 * 1024, val uploadBytes: Int = 16 * 1024 * 1024, val maxDimension: Int, val maxPixels: Int = 16 * 1024 * 1024, val maxImages: Int = 1024, val maxPlacements: Int = 4096, val maxFrames: Int = 4096)</code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-protocol-type/index.html"><code class="language-kotlin">org.connectbot.terminal.InlineImageProtocolType</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-protocol-type/-i-t-e-r-m2/index.html"><code class="language-kotlin">ITERM2</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-protocol-type/-k-i-t-t-y/index.html"><code class="language-kotlin">KITTY</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-protocol-type/index.html"><code class="language-kotlin">enum InlineImageProtocolType : Enum&lt;InlineImageProtocolType&gt; </code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/index.html"><code class="language-kotlin">org.connectbot.terminal.InlineImageRequest</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/-inline-image-request.html"><code class="language-kotlin">constructor(protocol: InlineImageProtocolType, action: String, imageId: Long? = null, imageNumber: Long? = null, name: String? = null, declaredSizeBytes: Long? = null, pixelWidth: Int? = null, pixelHeight: Int? = null)</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/action.html"><code class="language-kotlin">val action: String</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/declared-size-bytes.html"><code class="language-kotlin">val declaredSizeBytes: Long?</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/image-id.html"><code class="language-kotlin">val imageId: Long?</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/image-number.html"><code class="language-kotlin">val imageNumber: Long?</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/name.html"><code class="language-kotlin">val name: String?</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/pixel-height.html"><code class="language-kotlin">val pixelHeight: Int?</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/pixel-width.html"><code class="language-kotlin">val pixelWidth: Int?</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/protocol.html"><code class="language-kotlin">val protocol: InlineImageProtocolType</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-image-request/index.html"><code class="language-kotlin">data class InlineImageRequest(val protocol: InlineImageProtocolType, val action: String, val imageId: Long? = null, val imageNumber: Long? = null, val name: String? = null, val declaredSizeBytes: Long? = null, val pixelWidth: Int? = null, val pixelHeight: Int? = null)</code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/index.html"><code class="language-kotlin">org.connectbot.terminal.InlineImages</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/index.html"><code class="language-kotlin">sealed class InlineImages</code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-ask/index.html"><code class="language-kotlin">org.connectbot.terminal.InlineImages.Ask</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-ask/-ask.html"><code class="language-kotlin">constructor(limits: InlineImageLimits = InlineImageLimits(), confirm: suspend (InlineImageRequest) -&gt; Boolean)</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-ask/confirm.html"><code class="language-kotlin">val confirm: suspend (InlineImageRequest) -&gt; Boolean</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-ask/limits.html"><code class="language-kotlin">val limits: InlineImageLimits</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-ask/index.html"><code class="language-kotlin">data class Ask(val limits: InlineImageLimits = InlineImageLimits(), val confirm: suspend (InlineImageRequest) -&gt; Boolean) : InlineImages</code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-off/index.html"><code class="language-kotlin">org.connectbot.terminal.InlineImages.Off</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-off/index.html"><code class="language-kotlin">data object Off : InlineImages</code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-on/index.html"><code class="language-kotlin">org.connectbot.terminal.InlineImages.On</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-on/-on.html"><code class="language-kotlin">constructor(limits: InlineImageLimits = InlineImageLimits())</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-on/limits.html"><code class="language-kotlin">val limits: InlineImageLimits</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-inline-images/-on/index.html"><code class="language-kotlin">data class On(val limits: InlineImageLimits = InlineImageLimits()) : InlineImages</code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-dimensions/index.html"><code class="language-kotlin">org.connectbot.terminal.TerminalDimensions</code></a></h4><ul>
+<li>Changed: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-dimensions/-terminal-dimensions.html"><code class="language-kotlin">constructor(rows: Int, columns: Int)</code></a></li>
+<li>Changed: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-dimensions/-terminal-dimensions.html"><code class="language-kotlin">constructor(rows: Int, columns: Int, widthPixels: Int, heightPixels: Int)</code></a></li>
+<li>Changed: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-dimensions/copy.html"><code class="language-kotlin">fun copy(rows: Int, columns: Int): TerminalDimensions</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-dimensions/height-pixels.html"><code class="language-kotlin">val heightPixels: Int</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-dimensions/width-pixels.html"><code class="language-kotlin">val widthPixels: Int</code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-emulator/index.html"><code class="language-kotlin">org.connectbot.terminal.TerminalEmulator</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-emulator/paste-text.html"><code class="language-kotlin">abstract fun pasteText(text: String)</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-emulator/set-cell-pixel-size.html"><code class="language-kotlin">abstract fun setCellPixelSize(width: Int, height: Int)</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-emulator/set-inline-images.html"><code class="language-kotlin">abstract fun setInlineImages(inlineImages: InlineImages)</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-emulator/inline-images.html"><code class="language-kotlin">abstract val inlineImages: InlineImages</code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-emulator-factory/-companion/index.html"><code class="language-kotlin">org.connectbot.terminal.TerminalEmulatorFactory.Companion</code></a></h4><ul>
+<li>Changed: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-emulator-factory/-companion/create.html"><code class="language-kotlin">fun create(looper: Looper = Looper.getMainLooper(), initialRows: Int = 24, initialCols: Int = 80, defaultForeground: Color = Color.White, defaultBackground: Color = Color.Black, onKeyboardInput: (ByteArray) -&gt; Unit = {}, onBell: () -&gt; Unit? = null, onResize: (TerminalDimensions) -&gt; Unit? = null, onClipboardCopy: (String) -&gt; Unit? = null, onProgressChange: (ProgressState, Int) -&gt; Unit? = null, autoDetectUrls: Boolean = false, boldAsBright: Boolean = true, inlineImages: InlineImages = InlineImages.Off): TerminalEmulator</code></a></li>
+</ul>
+</section>
+<!-- END DOCS API CHANGES -->
+<h2 class="">Packages</h2>
   <div class="table"><a data-name="846831045%2FPackages%2F-2117867675" anchor-label="org.connectbot.terminal" id="846831045%2FPackages%2F-2117867675" data-filterable-set=":lib/release"></a>
     <div class="table-row table-row_platform-tagged" data-filterable-current=":lib/release" data-filterable-set=":lib/release">
       <div>
