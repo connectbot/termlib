@@ -14,7 +14,7 @@ permissions:
 jobs:
   prepare:
     if: github.event.label.name == 'release:prepare'
-    uses: connectbot/release-action/.github/workflows/prepare-release.yml@main
+    uses: connectbot/actions/.github/workflows/prepare-release.yml@main
     with:
       tag_prefix: ""
       gradle_no_push_prop: "release.noPush"
@@ -22,12 +22,12 @@ jobs:
 
   publish:
     if: github.event.label.name == 'release:publish'
-    uses: connectbot/release-action/.github/workflows/publish-release.yml@main
+    uses: connectbot/actions/.github/workflows/publish-release.yml@main
     with:
       tag_prefix: ""
     secrets: inherit
 
   branch:
     if: github.event.label.name == 'release:branch'
-    uses: connectbot/release-action/.github/workflows/release-branch.yml@main
+    uses: connectbot/actions/.github/workflows/release-branch.yml@main
     secrets: inherit
