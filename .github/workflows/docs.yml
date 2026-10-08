@@ -33,7 +33,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout publisher from main
+      - name: Checkout source from main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
@@ -57,19 +57,14 @@ jobs:
           cmdline-tools-version: '13114758'
           packages: 'platform-tools'
 
-      - name: Validate publisher
-        run: python3 -m unittest discover -s .github/scripts/tests -v
-
       - name: Reconcile and save documentation archive
         id: docs
+        uses: connectbot/actions/docs@main
         env:
-          RETRY_FAILED: ${{ inputs.retry_failed || false }}
-        run: >-
-          python3 .github/scripts/publish-docs.py
-          --output "$RUNNER_TEMP/docs-site"
-          --logs "$RUNNER_TEMP/docs-logs"
-          --retry-failed "$RETRY_FAILED"
-          --publish
+          GH_TOKEN: ${{ github.token }}
+        with:
+          retry-failed: ${{ inputs.retry_failed || false }}
+          publish: 'true'
 
       - name: Preserve build logs
         if: always()

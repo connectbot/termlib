@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "site": {
+    "title": "ConnectBot Terminal",
+    "base_url": "https://termlib.connectbot.org"
+  },
+  "repository": {
+    "slug": "connectbot/termlib"
+  },
+  "tags": {
+    "minimum": "0.1.0"
+  },
+  "build": {
+    "project": "lib",
+    "init_script": ".github/scripts/docs.init.gradle.kts",
+    "inputs": [
+      "lib/dokka/templates"
+    ],
+    "overlays": [
+      {
+        "source": "local.properties",
+        "optional": true
+      }
+    ]
+  },
+  "api": {
+    "lib": "Terminal"
+  }
+}
