@@ -7,7 +7,9 @@ package org.connectbot.terminal
 
 import android.graphics.Bitmap
 import android.graphics.Paint
+import android.graphics.RenderNode
 import android.graphics.Typeface
+import android.os.Bundle
 import android.os.Debug
 import android.util.Log
 import androidx.compose.ui.geometry.Size
@@ -17,6 +19,7 @@ import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -25,6 +28,42 @@ import org.junit.runner.RunWith
 /** Opt in with -Pandroid.testInstrumentationRunnerArguments.renderBenchmark=true. */
 @RunWith(AndroidJUnit4::class)
 class AndroidRenderBenchmarkTest {
+    @Test
+    @SdkSuppress(minSdkVersion = 29)
+    fun shadedBlocksOnRecordingCanvas() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("renderBenchmark") == "true")
+        val revision = InstrumentationRegistry.getArguments().getString("revision") ?: "unknown"
+        val rows = InstrumentationRegistry.getArguments().getString("shadeRows")?.toInt() ?: 48
+        val cols = InstrumentationRegistry.getArguments().getString("shadeCols")?.toInt() ?: 80
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val renderer = TerminalBoxDrawing()
+            val node = RenderNode("terminal-shades")
+            node.setPosition(0, 0, cols * 12, rows * 20)
+            fun frame() {
+                val canvas = node.beginRecording(cols * 12, rows * 20)
+                try {
+                    for (row in 0 until rows) {
+                        for (col in 0 until cols) {
+                            renderer.draw(canvas, "░▒▓"[(row + col) % 3], col * 12f, row * 20f, 12f, 20f, -1, 20f)
+                        }
+                    }
+                } finally {
+                    node.endRecording()
+                }
+            }
+            repeat(5) { frame() }
+            val samples = List(15) {
+                val start = System.nanoTime()
+                frame()
+                System.nanoTime() - start
+            }.sorted()
+            val result = "$revision ${rows}x$cols shades hardware-recording median-ns/frame=${samples[7]} max-ns/frame=${samples.last()}"
+            Log.i("TermRenderBenchmark", result)
+            InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("benchmark", result) })
+            node.discardDisplayList()
+        }
+    }
+
     @Test
     fun repeatedCanvasRendering() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("renderBenchmark") == "true")

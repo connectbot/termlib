@@ -157,6 +157,69 @@ class BoxDrawingGoldenTest {
     }
 
     @Test
+    fun shadedBlocksUseOneDrawCallPerCell() {
+        val bitmap = Bitmap.createBitmap(120, 200, Bitmap.Config.ARGB_8888)
+        var rectangles = 0
+        val canvas = object : android.graphics.Canvas(bitmap) {
+            override fun drawRect(left: Float, top: Float, right: Float, bottom: Float, paint: Paint) {
+                rectangles++
+                super.drawRect(left, top, right, bottom, paint)
+            }
+        }
+        val renderer = TerminalBoxDrawing()
+        for (ch in listOf('░', '▒', '▓')) {
+            rectangles = 0
+            renderer.draw(canvas, ch, 0f, 0f, 120f, 200f, -1, 160f)
+            assertEquals("$ch must not draw every stipple dot separately", 1, rectangles)
+            rectangles = 0
+            renderer.draw(canvas, ch, 120f, 0f, 120f, 200f, -1, 160f)
+            assertEquals("Clipped cells must not issue draw calls", 0, rectangles)
+        }
+    }
+
+    @Test
+    fun stippleShadersPreservePixelsAcrossColorsAndCellSizes() {
+        val renderer = TerminalBoxDrawing()
+        for (width in listOf(9f, 25.5f)) {
+            val height = 13.5f
+            for (color in listOf(-1, 0x8044AAFF.toInt(), android.graphics.Color.RED)) {
+                for (ch in listOf('░', '▒', '▓')) {
+                    val bitmapWidth = kotlin.math.round(width * 3).toInt()
+                    val bitmapHeight = kotlin.math.round(height * 3).toInt()
+                    val actual = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+                    val expected = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+                    actual.eraseColor(android.graphics.Color.BLACK)
+                    expected.eraseColor(android.graphics.Color.BLACK)
+                    val canvas = android.graphics.Canvas(actual)
+                    for (row in 0..2) {
+                        for (col in 0..2) {
+                            renderer.draw(canvas, ch, col * width, row * height, width, height, color, 16f)
+                        }
+                    }
+                    val referenceCanvas = android.graphics.Canvas(expected)
+                    val referencePaint = Paint().apply { this.color = color }
+                    val tile = kotlin.math.max(1, kotlin.math.floor(width / 12).toInt())
+                    for (y in 0 until bitmapHeight step tile) {
+                        for (x in 0 until bitmapWidth step tile) {
+                            val filled = when (ch) {
+                                '░' -> (x / tile) % 2 == 0 && (y / tile) % 2 == 0
+                                '▒' -> ((x + y) / tile) % 2 == 0
+                                else -> (x / tile) % 2 != 0 || (y / tile) % 2 != 0
+                            }
+                            if (filled) referenceCanvas.drawRect(x.toFloat(), y.toFloat(), (x + tile).toFloat(), (y + tile).toFloat(), referencePaint)
+                        }
+                    }
+                    assertTrue("$ch width=$width color=$color", actual.sameAs(expected))
+                    renderer.draw(canvas, '█', 0f, 0f, width, height, android.graphics.Color.GREEN, 16f)
+                    assertEquals(android.graphics.Color.GREEN, actual.getPixel(0, 0))
+                    actual.recycle()
+                    expected.recycle()
+                }
+            }
+        }
+    }
+
+    @Test
     fun complementaryRegionsAndShadeCoverage() {
         for (width in listOf(7, 12, 17)) {
             for (height in listOf(13, 20, 25)) {
