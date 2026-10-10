@@ -1,0 +1,12 @@
+//[ConnectBot Terminal](../../../../index.md)/[org.connectbot.terminal](../../index.md)/[TerminalEmulatorFactory](../index.md)/[Companion](index.md)
+
+# Companion
+
+[release]\
+object [Companion](index.md)
+
+## Functions
+
+| Name | Summary |
+|---|---|
+| [create](create.md) | [release]<br>fun [create](create.md)(looper: [Looper](https://developer.android.com/reference/kotlin/android/os/Looper.html) = Looper.getMainLooper(), initialRows: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 24, initialCols: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html) = 80, defaultForeground: [Color](https://developer.android.com/reference/kotlin/androidx/compose/ui/graphics/Color.html) = Color.White, defaultBackground: [Color](https://developer.android.com/reference/kotlin/androidx/compose/ui/graphics/Color.html) = Color.Black, onKeyboardInput: ([ByteArray](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-byte-array/index.html)) -&gt; [Unit](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html) = {}, onBell: () -&gt; [Unit](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html)? = null, onResize: ([TerminalDimensions](../../-terminal-dimensions/index.md)) -&gt; [Unit](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html)? = null, onClipboardCopy: ([String](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html)) -&gt; [Unit](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html)? = null, onProgressChange: ([ProgressState](../../-progress-state/index.md), [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html)) -&gt; [Unit](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-unit/index.html)? = null, autoDetectUrls: [Boolean](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html) = false, boldAsBright: [Boolean](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html) = true, inlineImages: [InlineImages](../../-inline-images/index.md) = InlineImages.Off): [TerminalEmulator](../../-terminal-emulator/index.md)<br>Creates the default implementation of TerminalEmulator. |
