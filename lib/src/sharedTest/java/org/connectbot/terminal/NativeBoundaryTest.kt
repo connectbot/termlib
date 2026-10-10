@@ -78,6 +78,27 @@ class NativeBoundaryTest {
         assertEquals(0x3FFFF, buffer.getInt(CellData.FLAGS))
     }
 
+    @Test
+    fun repeatedNarrowAndTallResizesPreserveNativeState() {
+        val callbacks = Callbacks()
+        TerminalNative(callbacks).use { terminal ->
+            terminal.resize(24, 80)
+            terminal.writeInput(("wrapped界e\u0301".repeat(30) + "\r\n").repeat(30).toByteArray())
+            val sizes = listOf(3 to 1, 1 to 2, 48 to 80, 8 to 160, 24 to 80)
+            repeat(20) { iteration ->
+                for ((rows, cols) in sizes) {
+                    terminal.resize(rows, cols)
+                    terminal.writeInput("\r\noutput-$iteration\r\n".toByteArray())
+                    val transfer = ScreenTransfer()
+                    var cells = 0
+                    val ranges = IntArray(rows * 2) { index -> if (index % 2 == 0) 0 else cols }
+                    transfer.fetch(terminal, ranges) { _, _, count, _, _, _ -> cells += count }
+                    assertEquals(rows * cols, cells)
+                }
+            }
+        }
+    }
+
     private open class Callbacks : TerminalCallbacks {
         data class CursorEvent(
             val row: Int,
