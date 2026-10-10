@@ -253,22 +253,22 @@ internal fun AccessibilityOverlay(
  */
 private fun buildSemanticAnnotatedString(line: TerminalLine): AnnotatedString = buildAnnotatedString {
     var lastEndCol = 0
+    val columns = line.cells.size
 
     for (segment in line.semanticSegments.sortedBy { it.startCol }) {
+        val start = segment.startCol.coerceIn(0, columns).coerceAtLeast(lastEndCol)
+        val end = segment.endCol.coerceIn(0, columns)
+        if (end < start || (end == start && segment.semanticType != SemanticType.COMMAND_FINISHED)) continue
+
+        // Semantic offsets are cell columns, not UTF-16 offsets into line.text.
         // Add any gap text before this segment
-        if (segment.startCol > lastEndCol) {
-            val gapText = line.text.substring(
-                lastEndCol,
-                segment.startCol.coerceAtMost(line.text.length),
-            )
+        if (start > lastEndCol) {
+            val gapText = line.cells.text(lastEndCol, start)
             append(gapText)
         }
 
         // Get text for this segment
-        val segmentText = line.text.substring(
-            segment.startCol.coerceAtMost(line.text.length),
-            segment.endCol.coerceAtMost(line.text.length),
-        )
+        val segmentText = line.cells.text(start, end)
 
         // Append text with semantic annotation
         when (segment.semanticType) {
@@ -318,12 +318,12 @@ private fun buildSemanticAnnotatedString(line: TerminalLine): AnnotatedString = 
             append(" ")
         }
 
-        lastEndCol = segment.endCol
+        lastEndCol = end
     }
 
     // Add any remaining text after last segment
-    if (lastEndCol < line.text.length) {
-        val remainingText = line.text.substring(lastEndCol)
+    if (lastEndCol < columns) {
+        val remainingText = line.cells.text(lastEndCol, columns)
         append(remainingText)
     }
 }
