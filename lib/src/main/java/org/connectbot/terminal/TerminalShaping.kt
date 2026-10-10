@@ -191,15 +191,29 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
             data class UnitCell(val col: Int, val width: Int, val visual: Int)
             val units = ArrayList<UnitCell>()
             if (lineStarts[row] < lineEnds[row]) {
-                val lineBidi = bidi.createLineBidi(lineStarts[row], lineEnds[row])
+                // Unicode paragraph separators can occur inside one terminal row.
+                // ICU requires each line range to stay inside a single bidi paragraph.
+                val lineVisual = IntArray(lineEnds[row] - lineStarts[row])
+                val lineLevels = ByteArray(lineVisual.size)
+                var segmentStart = lineStarts[row]
+                while (segmentStart < lineEnds[row]) {
+                    val segmentEnd = minOf(lineEnds[row], bidi.getParagraph(segmentStart).limit)
+                    val lineBidi = bidi.createLineBidi(segmentStart, segmentEnd)
+                    val offset = segmentStart - lineStarts[row]
+                    for (index in 0 until segmentEnd - segmentStart) {
+                        lineVisual[offset + index] = offset + lineBidi.getVisualIndex(index)
+                        lineLevels[offset + index] = lineBidi.getLevelAt(index)
+                    }
+                    segmentStart = segmentEnd
+                }
                 for (col in cells.indices) {
                     val start = starts[row][col]
                     if (start < 0 || cells.width(col) == 0) continue
                     val localStart = start - lineStarts[row]
                     val localEnd = ends[row][col] - lineStarts[row]
                     var visual = Int.MAX_VALUE
-                    for (index in localStart until localEnd) visual = minOf(visual, lineBidi.getVisualIndex(index))
-                    val level = lineBidi.getLevelAt(localStart)
+                    for (index in localStart until localEnd) visual = minOf(visual, lineVisual[index])
+                    val level = lineLevels[localStart]
                     levels[col] = level
                     if (level.toInt() and 1 != 0) {
                         val cp = Character.codePointAt(cells.text(col, col + 1), 0)

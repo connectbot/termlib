@@ -116,6 +116,44 @@ abstract class TerminalShapingChecks {
     }
 
     @Test
+    fun paragraphSeparatorsInsideTerminalRowsKeepBidiRangesValid() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        for (separator in listOf('\u2029', '\u0085')) {
+            val value = "Aنص${separator}حكيمZ"
+            val cells = cells(value)
+            val state = TerminalScreenState(
+                TerminalSnapshot.empty(1, cells.size).copy(lines = listOf(TerminalLine(0, cells))),
+            )
+            val layout = paint().layout(state, 0, 12f)!!
+            for (col in cells.indices) assertEquals(col, layout.logicalColumn(layout.visualColumn(col)))
+            assertEquals(0, layout.visualColumn(0))
+            assertEquals(cells.lastIndex, layout.visualColumn(cells.lastIndex))
+            assertTrue(layout.resolvedRtl(value.indexOf('ن')))
+            assertTrue(layout.resolvedRtl(value.indexOf('ح')))
+        }
+    }
+
+    @Test
+    fun paragraphSeparatorsFromTerminalOutputSurviveSoftWrapping() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val terminal = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 6) as TerminalEmulatorImpl
+        terminal.writeInput("Aنص\u2029حكيمZ".toByteArray())
+        terminal.processPendingUpdates()
+        val state = TerminalScreenState(terminal.snapshot.value)
+        assertTrue(state.snapshot.lines.any { '\u2029' in it.text })
+        assertTrue(state.snapshot.lines.any { it.softWrapped })
+        val paint = paint()
+        var shapedRows = 0
+        for (row in 0 until state.snapshot.rows) {
+            val layout = paint.layout(state, row, 12f) ?: continue
+            shapedRows++
+            val cells = state.getVisibleLine(row).cells
+            for (col in cells.indices) assertEquals(col, layout.logicalColumn(layout.visualColumn(col)))
+        }
+        assertTrue("The separator must reach the shaping path through normal terminal output", shapedRows > 0)
+    }
+
+    @Test
     fun paragraphBidiReordersArabicWordsFromLogicalInput() {
         assumeTrue(Build.VERSION.SDK_INT >= 31)
         val value = "Aنص حكيم له سر قاطعZ"
