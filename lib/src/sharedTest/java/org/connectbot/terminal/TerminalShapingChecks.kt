@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import org.junit.Assert.assertEquals
@@ -34,6 +35,265 @@ abstract class TerminalShapingChecks {
     )
 
     private fun paint() = TerminalTextPaint(Typeface.MONOSPACE, 20f)
+
+    @Test
+    fun foregroundPicturesPreserveBlendingClipsAndTransforms() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val source = paint()
+        for (color in listOf(Color.White, Color.Red, Color(0x8044AAFF))) {
+            val packed = PackedCells.from(cells("┌─┼┐ نص (حكيم) ░▒▓ 123").map { it.copy(fgColor = color) })
+            val line = TerminalLine(0, packed)
+            val state = TerminalScreenState(TerminalSnapshot.empty(1, packed.size).copy(lines = listOf(line)))
+            val layout = source.layout(state, 0, 12f)!!
+            for (scale in listOf(1f, 1.25f)) {
+                for (background in listOf(android.graphics.Color.BLACK, 0xFFAA2244.toInt())) {
+                    val actual = Bitmap.createBitmap(400, 100, Bitmap.Config.ARGB_8888)
+                    val expected = Bitmap.createBitmap(400, 100, Bitmap.Config.ARGB_8888)
+                    actual.eraseColor(background)
+                    expected.eraseColor(background)
+                    for ((bitmap, textPaint) in listOf(actual to source, expected to TextPaint(source))) {
+                        val canvas = android.graphics.Canvas(bitmap)
+                        canvas.translate(0.25f, 0.25f)
+                        canvas.scale(scale, scale)
+                        canvas.clipRect(3.25f, 9.25f, 300.75f, 79.75f)
+                        CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(canvas), Size(400f, 100f)) {
+                            drawLine(line, 1, 12f, 24f, 20f, textPaint, Paint(), Color.White, Color.Black, null, backgroundsOnly = false, shapedLine = layout)
+                        }
+                    }
+                    assertTrue("color=$color scale=$scale background=$background", actual.sameAs(expected))
+                    actual.recycle()
+                    expected.recycle()
+                }
+            }
+        }
+        assertTrue(source.foregroundRows.retainedBytes in 1..TerminalForegroundRows.MAX_BYTES)
+        source.clearShaping()
+        assertEquals(0, source.foregroundRows.retainedBytes)
+    }
+
+    @Test
+    fun boxRowPixelsHaveABoundedBudgetAndReleaseOnDisposal() {
+        val source = paint()
+        val bitmap = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        source.boxDrawing.prepareDraw(canvas)
+        source.boxDrawing.drawRow(canvas, cells("┼"), "┼", null, null, 0f, 129f, 129f, 20f)
+        assertEquals(0, source.boxDrawing.retainedRowPixelBytes)
+        source.boxDrawing.drawRow(canvas, cells("┼"), "┼", null, null, 0f, 12f, 24f, 20f)
+        assertTrue(source.boxDrawing.retainedRowPixelBytes in 1..TerminalBoxRows.MAX_PIXEL_BYTES)
+        source.clearShaping()
+        assertEquals(0, source.boxDrawing.retainedRowPixelBytes)
+        bitmap.recycle()
+    }
+
+    @Test
+    fun paragraphResolutionReusesTextButSeparatesWrappedContext() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val source = paint()
+        val engine = TerminalShaping(source)
+        val first = TerminalLine(0, cells("ABC نص (حكيم) 123"))
+        val second = TerminalLine(0, cells("DEF حكيم [نص] 456"))
+        val state = TerminalScreenState(TerminalSnapshot.empty(1, first.cells.size).copy(lines = listOf(first)))
+        val original = engine.layout(state, 0, 12f)
+        assertEquals(1, engine.paragraphResolveCount)
+        state.updateSnapshot(state.snapshot.copy(lines = listOf(second), sequenceNumber = 1))
+        engine.layout(state, 0, 12f)
+        assertEquals(2, engine.paragraphResolveCount)
+        state.updateSnapshot(state.snapshot.copy(lines = listOf(first), sequenceNumber = 2))
+        val reused = engine.layout(state, 0, 12f)!!
+        assertSame("Exact-context layouts survive paragraph changes", original, reused)
+        assertEquals(2, engine.paragraphResolveCount)
+        val fresh = TerminalShaping(source).layout(state, 0, 12f)!!
+        for (col in first.cells.indices) {
+            assertEquals(fresh.visualColumn(col), reused.visualColumn(col))
+            assertEquals(fresh.resolvedRtl(col), reused.resolvedRtl(col))
+            assertEquals(fresh.mirroredCodePoint(col), reused.mirroredCodePoint(col))
+        }
+        val wrapped = listOf(first.copy(softWrapped = true), TerminalLine(1, cells(" אבג XYZ")))
+        val wrappedState = TerminalScreenState(TerminalSnapshot.empty(2, first.cells.size).copy(lines = wrapped))
+        val wrappedResult = engine.layout(wrappedState, 0, 12f)!!
+        assertTrue("Paragraph and row bounds must participate in the key", engine.paragraphResolveCount > 2)
+        val wrappedFresh = TerminalShaping(source).layout(wrappedState, 0, 12f)!!
+        for (col in first.cells.indices) assertEquals(wrappedFresh.visualColumn(col), wrappedResult.visualColumn(col))
+        assertTrue(engine.retainedBytes <= 1024 * 1024)
+        engine.clear()
+        assertEquals(0, engine.retainedBytes)
+    }
+
+    @Test
+    fun boxRowPixelsMatchGeometryAcrossColorsClipsAndTransforms() {
+        for (width in listOf(9f, 12f, 25.5f)) {
+            for (scale in listOf(1f, 1.25f)) {
+                for (translation in listOf(0f, 0.25f)) {
+                    val renderer = TerminalBoxDrawing()
+                    val reference = TerminalBoxDrawing(cacheRows = false)
+                    for (color in listOf(-1, 0xFF44AAFF.toInt(), 0x8044AAFF.toInt())) {
+                        val actual = Bitmap.createBitmap(700, 200, Bitmap.Config.ARGB_8888)
+                        val expected = Bitmap.createBitmap(700, 200, Bitmap.Config.ARGB_8888)
+                        actual.eraseColor(android.graphics.Color.BLACK)
+                        expected.eraseColor(android.graphics.Color.BLACK)
+                        val canvas = android.graphics.Canvas(actual)
+                        val referenceCanvas = android.graphics.Canvas(expected)
+                        for (target in listOf(canvas, referenceCanvas)) {
+                            target.translate(translation, translation)
+                            target.scale(scale, scale)
+                            target.clipRect(1f, 2f, width * 20 - 1f, 139f)
+                        }
+                        renderer.prepareDraw(canvas)
+                        reference.prepareDraw(referenceCanvas)
+                        val rows = List(8) { row ->
+                            PackedCells.from(List(20) { col -> TerminalLine.Cell((0x2500 + row * 20 + col).toChar(), fgColor = Color(color), bgColor = Color.Black) })
+                        }
+                        for (row in rows.indices) {
+                            val cells = rows[row]
+                            val above = rows.getOrNull(row - 1)
+                            val below = rows.getOrNull(row + 1)
+                            val cached = renderer.drawRow(canvas, cells, cells.text(), above, below, row * 17.5f, width, 17.5f, 16f)
+                            if (!cached) renderer.beginBatch(canvas, color)
+                            for (col in cells.indices) {
+                                val x = col * width
+                                val y = row * 17.5f
+                                val neighbors = TerminalBoxRows.neighboringDashes(cells, col, above, below)
+                                val ch = cells.boxCodePoint(col).toChar()
+                                if (!cached) renderer.draw(canvas, ch, x, y, width, 17.5f, color, 16f, neighbors, clipPrepared = true)
+                                reference.draw(referenceCanvas, ch, x, y, width, 17.5f, color, 16f, neighbors, clipPrepared = true)
+                            }
+                            if (!cached) renderer.endBatch()
+                        }
+                        assertTrue("width=$width scale=$scale translation=$translation color=$color", actual.sameAs(expected))
+                        actual.recycle()
+                        expected.recycle()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun repeatedScriptRunsReuseGlyphsWithoutLosingStyleOrJoiningContext() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val source = paint()
+        val engine = TerminalShaping(source)
+        engine.resize(8)
+        engine.layout(cells("نص حكيم"), 12f)
+        val initial = engine.glyphShapeCount
+        val reordered = cells("حكيم نص")
+        val reused = engine.layout(reordered, 12f)
+        assertEquals(initial, engine.glyphShapeCount)
+        val fresh = TerminalShaping(source).layout(reordered, 12f)
+        fun pixels(layout: ShapedLine, row: PackedCells): Bitmap {
+            val bitmap = Bitmap.createBitmap(row.size * 12, 40, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            source.color = android.graphics.Color.WHITE
+            source.isFakeBoldText = false
+            source.textSkewX = 0f
+            layout.prepareDraw(canvas)
+            for (col in row.indices) {
+                if (!layout.drawCell(canvas, col, 28f, source, 12f, 1)) {
+                    row.draw(canvas, col, layout.visualColumn(col) * 12f, 28f, source, 12f)
+                }
+            }
+            return bitmap
+        }
+        val actual = pixels(reused, reordered)
+        val expected = pixels(fresh, reordered)
+        assertTrue(actual.sameAs(expected))
+        actual.recycle()
+        expected.recycle()
+        val bold = PackedCells.from(reordered.map { it.copy(bold = true) })
+        engine.layout(bold, 12f)
+        assertTrue(engine.glyphShapeCount > initial)
+        val afterBold = engine.glyphShapeCount
+        engine.layout(cells("نصحكيم"), 12f)
+        assertTrue("Joining context must participate in the cache key", engine.glyphShapeCount > afterBold)
+        assertTrue(engine.retainedBytes <= 1024 * 1024)
+        engine.clear()
+        assertEquals(0, engine.retainedBytes)
+    }
+
+    @Test
+    fun independentParagraphRowsReuseExactTextButKeepWrapContext() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val rows = List(8) { row ->
+            TerminalLine(row, PackedCells.from(cells("Aنص (حكيم) 123 Z").map { it.copy(fgColor = if (row % 2 == 0) Color.Red else Color.White) }))
+        }
+        val state = TerminalScreenState(TerminalSnapshot.empty(rows.size, rows[0].cells.size).copy(lines = rows))
+        val engine = TerminalShaping(paint())
+        val first = engine.layout(state, 0, 12f)!!
+        for (row in 1 until rows.size) assertSame(first, engine.layout(state, row, 12f))
+        assertEquals(1, engine.shapeCount)
+        assertEquals(1, engine.cachedRows)
+
+        val changed = rows.toMutableList().apply { this[1] = TerminalLine(1, cells("Aنص [حكيم] 123 Z")) }
+        state.updateSnapshot(state.snapshot.copy(lines = changed, sequenceNumber = 1))
+        assertNotSame(engine.layout(state, 0, 12f), engine.layout(state, 1, 12f))
+
+        val wrapped = listOf(TerminalLine(0, cells("بب"), softWrapped = true), TerminalLine(1, cells("بب")))
+        val wrappedState = TerminalScreenState(TerminalSnapshot.empty(2, 2).copy(lines = wrapped))
+        assertNotSame(engine.layout(wrappedState, 0, 12f), engine.layout(wrappedState, 1, 12f))
+        assertTrue(engine.retainedBytes <= 1024 * 1024)
+    }
+
+    @Test
+    fun batchedGlyphRunsMatchPerCellClippingAcrossColorsAndSelection() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        for (text in listOf("AسلامZ", "Aक्षिZ", "Aنص (حكيم)Z", "Aنص١٢حكيمZ")) {
+            for (colored in listOf(false, true)) {
+                val cells = PackedCells.from(
+                    cells(text).mapIndexed { col, cell ->
+                        if (colored && col % 3 == 0) cell.copy(fgColor = Color.Red, reverse = true) else cell
+                    },
+                )
+                val line = TerminalLine(0, cells)
+                val state = TerminalScreenState(TerminalSnapshot.empty(1, cells.size).copy(lines = listOf(line)))
+                val paint = paint()
+                val layout = paint.layout(state, 0, 12f)!!
+                for (selected in listOf(false, true)) {
+                    val selection = if (selected) {
+                        SelectionManager().apply {
+                            startSelection(0, 2, cells.size)
+                            updateSelection(0, minOf(4, cells.lastIndex))
+                        }
+                    } else {
+                        null
+                    }
+                    fun bitmap() = Bitmap.createBitmap(cells.size * 12, 40, Bitmap.Config.ARGB_8888)
+                    val actual = bitmap()
+                    val expected = bitmap()
+                    fun backgrounds(bitmap: Bitmap) {
+                        CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(bitmap.asImageBitmap()), Size(bitmap.width.toFloat(), 40f)) {
+                            drawLine(line, 0, 12f, 40f, 28f, paint, Paint(), Color.White, Color.Black, selection, selectionBackgroundColor = Color(0xFFB3D7FF), backgroundsOnly = true, shapedLine = layout)
+                        }
+                    }
+                    backgrounds(actual)
+                    backgrounds(expected)
+                    CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(actual.asImageBitmap()), Size(actual.width.toFloat(), 40f)) {
+                        drawLine(line, 0, 12f, 40f, 28f, paint, Paint(), Color.White, Color.Black, selection, selectionBackgroundColor = Color(0xFFB3D7FF), backgroundsOnly = false, shapedLine = layout)
+                    }
+                    val canvas = android.graphics.Canvas(expected)
+                    layout.prepareDraw(canvas)
+                    for (col in cells.indices) {
+                        val flags = cells.flags(col)
+                        paint.color = if (selection?.isCellSelected(0, col, line) == true) {
+                            android.graphics.Color.BLACK
+                        } else if (flags and 32 != 0) {
+                            cells.background(col).toArgb()
+                        } else {
+                            cells.foreground(col).toArgb()
+                        }
+                        paint.isFakeBoldText = flags and 1 != 0
+                        paint.textSkewX = if (flags and 8 != 0) -0.25f else 0f
+                        if (!layout.drawCell(canvas, col, 28f, paint, 12f, 1)) {
+                            cells.draw(canvas, col, layout.visualColumn(col) * 12f, 28f, paint, 12f)
+                        }
+                    }
+                    assertTrue("$text colored=$colored selected=$selected", actual.sameAs(expected))
+                    actual.recycle()
+                    expected.recycle()
+                }
+            }
+        }
+    }
 
     @Test
     fun ordinaryScriptsKeepTheirPixelsAndAvoidShaping() {
@@ -212,6 +472,35 @@ abstract class TerminalShapingChecks {
     }
 
     @Test
+    fun repeatedIndependentRowsKeepChangingLayoutsAcrossTallViewports() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        for (count in listOf(64, 128, 256)) {
+            val frames = listOf("ABC نص (حكيم) له سر قاطع 123 ", "DEF حكيم (نص) سر له قاطع 456 ").mapIndexed { index, text ->
+                val repeated = text.repeat(count * 80 / text.length + 2)
+                TerminalSnapshot.empty(count, 80).copy(
+                    lines = List(count) { row -> TerminalLine(row, cells(repeated.substring(row * 80, (row + 1) * 80))) },
+                    sequenceNumber = index.toLong(),
+                )
+            }
+            val engine = TerminalShaping(paint())
+            val state = TerminalScreenState(frames.first())
+            fun layouts(frame: TerminalSnapshot): List<ShapedLine> {
+                state.updateSnapshot(frame)
+                return List(count) { engine.layout(state, it, 12f)!! }
+            }
+            val expected = frames.map(::layouts)
+            val shapes = engine.shapeCount
+            repeat(3) {
+                frames.forEachIndexed { frame, snapshot ->
+                    layouts(snapshot).forEachIndexed { row, layout -> assertSame(expected[frame][row], layout) }
+                }
+            }
+            assertEquals("rows=$count", shapes, engine.shapeCount)
+            assertTrue(engine.retainedBytes <= 1024 * 1024)
+        }
+    }
+
+    @Test
     fun cacheScalesPast64RowsAndReusesColorChanges() {
         assumeTrue(Build.VERSION.SDK_INT >= 31)
         for (count in listOf(64, 128, 256)) {
@@ -226,7 +515,7 @@ abstract class TerminalShapingChecks {
                 rows.forEachIndexed { index, row -> assertSame(layouts[index], engine.layout(row, 12f)) }
             }
             assertEquals(count, engine.shapeCount)
-            assertTrue(engine.retainedBytes <= 256 * 1024)
+            assertTrue(engine.retainedBytes <= 1024 * 1024)
             val recolored = PackedCells.from(rows[0].map { it.copy(fgColor = Color.Red) })
             assertSame(layouts[0], engine.layout(recolored, 12f))
             assertEquals(count, engine.shapeCount)

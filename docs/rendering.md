@@ -77,6 +77,9 @@ and bold entries. Complex clusters still use normal platform shaping. This
 avoids repeating text measurement just because row contents/colors changed.
 Regular glyphs use direct Canvas drawing; only
 oversized glyphs require a canvas transform.
+Shaped script runs draw once per consecutive span with the same foreground
+and font style, clipped to its visual columns. Selection and reverse colors
+split those spans; decorations still follow individual terminal cells.
 
 On API 31 and newer, right-to-left presentation follows terminal-wg's
 implicit-LTR level-1 model. Hard-newline-delimited paragraphs are passed to
@@ -96,6 +99,33 @@ cell-relative Canvas geometry instead of font outlines. Integer row metrics
 remain unchanged. Shared rounded boundaries keep full blocks, fractional
 blocks, quadrants, and box junctions continuous across cells. Straight edges
 are drawn without antialiasing; arcs and diagonals are antialiased.
+Rectangular geometry uses absolute coordinates and clips its boundaries
+numerically, avoiding per-cell Canvas transforms. Curves retain Canvas clipping.
+At unit scale with integer translation, complete box/block rows with one
+opaque foreground color reuse aliased row pixels. Transparent holes preserve
+the underlying scene; arcs and diagonals remain vector draws with their original
+edge blending. Keys include row text, metrics, font size, neighbor dash styles,
+foreground color, and the global pattern phase. The renderer retains at most
+256 row images and 8 MiB of pixel data. Selection, decorations, images, shaped
+rows, translucent colors, transformed canvases, and oversized rows retain
+the per-cell renderer. Disposal releases the row images and renderer caches.
+Complex-script foregrounds reuse native `Picture` commands for repeated row
+content and paragraph layouts. The cache keys include colors, styles, cell
+metrics, clipping bounds, and adjacent dash patterns. Commands preserve vector
+edge blending and glyph overhang. Images, decorations, selection recoloring,
+and automatic link detection use direct drawing. The renderer retains at most
+512 records within 8 MiB of conservative command/data accounting; platform font
+memory is separate. Disposal releases the records.
+Opaque cells reuse at most 256 rectangle-union paths per paint, with rectangle
+coordinate data capped at 32 KiB. Dashed geometry includes both global origin
+phases and neighbor dash styles in its key. Cell metrics or text-size changes
+replace that cache. Translucent arms remain
+separate draws to preserve their overlapping source-over blend. Each shade
+reuses its configured shader paint across same-color cells.
+Consecutive box cells batch their rectangles into aliased horizontal line
+segments with matching stroke widths and shade paints. The batches flush before
+text, curves, decorations, and color changes; reusable float data is capped at
+32 KiB per paint, with additional small group metadata.
 Light/heavy Unicode variants control line weight independently of SGR bold or
 italic. Selection and reverse video still determine the drawing color.
 Shades use fine repeating stipples with approximately 25%, 50%, and 75%

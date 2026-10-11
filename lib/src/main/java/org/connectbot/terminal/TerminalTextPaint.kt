@@ -18,6 +18,7 @@ import android.text.TextPaint
 internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() {
     private val glyphAdvances = FloatArray(512) { Float.NaN }
     val boxDrawing = TerminalBoxDrawing()
+    val foregroundRows = TerminalForegroundRows()
     private var shaping: TerminalShaping? = null
     private var screen: TerminalScreenState? = null
 
@@ -27,6 +28,8 @@ internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() 
     }
 
     fun clearShaping() {
+        boxDrawing.clearCaches()
+        foregroundRows.clear()
         shaping?.clear()
         shaping = null
         screen = null

@@ -180,6 +180,72 @@ class BoxDrawingGoldenTest {
     }
 
     @Test
+    fun cachedDashedGeometryKeepsBothGlobalOriginPhases() {
+        for (width in listOf(9f, 12f, 25.5f)) {
+            val height = 17.5f
+            val actual = Bitmap.createBitmap((width * 14).toInt(), 140, Bitmap.Config.ARGB_8888)
+            val expected = Bitmap.createBitmap(actual.width, actual.height, Bitmap.Config.ARGB_8888)
+            val renderer = TerminalBoxDrawing()
+            val canvas = android.graphics.Canvas(actual)
+            val reference = android.graphics.Canvas(expected)
+            for (row in 0 until 8) {
+                renderer.prepareDraw(canvas)
+                renderer.beginBatch(canvas, -1)
+                for ((col, ch) in "┄┆┈┊╌╎─│┼═║╬".withIndex()) {
+                    val x = col * width + row % 3
+                    val y = row * height
+                    val neighbors = if (col >= 6) 0xAA else 0
+                    renderer.draw(canvas, ch, x, y, width, height, -1, 16f, neighbors, clipPrepared = true)
+                    TerminalBoxDrawing(cacheRows = false).draw(reference, ch, x, y, width, height, -1, 16f, neighbors)
+                }
+                renderer.endBatch()
+            }
+            assertTrue("Cached dash phases at width=$width", actual.sameAs(expected))
+            actual.recycle()
+            expected.recycle()
+        }
+    }
+
+    @Test
+    fun batchedRectanglesMatchIndividualCellsWithFractionalMetricsAndAlpha() {
+        for (width in listOf(9f, 12f, 25.5f)) {
+            for (color in listOf(-1, 0x8044AAFF.toInt(), android.graphics.Color.RED)) {
+                val height = 17.5f
+                val actual = Bitmap.createBitmap(kotlin.math.round(width * 40).toInt(), 70, Bitmap.Config.ARGB_8888)
+                val expected = Bitmap.createBitmap(actual.width, actual.height, Bitmap.Config.ARGB_8888)
+                actual.eraseColor(android.graphics.Color.BLACK)
+                expected.eraseColor(android.graphics.Color.BLACK)
+                val renderer = TerminalBoxDrawing()
+                val canvas = android.graphics.Canvas(actual)
+                val referenceCanvas = android.graphics.Canvas(expected)
+                for (row in 0..3) {
+                    renderer.prepareDraw(canvas)
+                    renderer.beginBatch(canvas, color)
+                    for (col in 0 until 40) {
+                        val ch = (0x2500 + row * 40 + col).toChar()
+                        // Include rounded corners adjoining dashes, which use the
+                        // clipped rectangular fallback rather than a curved stroke.
+                        val neighborDashes = if (col % 3 == 0) 0x55 else 0
+                        renderer.draw(canvas, ch, col * width, row * height, width, height, color, 16f, neighborDashes, clipPrepared = true)
+                        // A fresh renderer cannot accidentally share a cached
+                        // dash phase with a preceding cell.
+                        TerminalBoxDrawing(cacheRows = false).draw(referenceCanvas, ch, col * width, row * height, width, height, color, 16f, neighborDashes)
+                    }
+                    renderer.endBatch()
+                }
+                if (!actual.sameAs(expected)) {
+                    val first = (0 until actual.height).flatMap { y -> (0 until actual.width).map { x -> x to y } }
+                        .first { (x, y) -> actual.getPixel(x, y) != expected.getPixel(x, y) }
+                    val (x, y) = first
+                    assertEquals("width=$width color=$color at $x,$y", expected.getPixel(x, y), actual.getPixel(x, y))
+                }
+                actual.recycle()
+                expected.recycle()
+            }
+        }
+    }
+
+    @Test
     fun stippleShadersPreservePixelsAcrossColorsAndCellSizes() {
         val renderer = TerminalBoxDrawing()
         for (width in listOf(9f, 25.5f)) {
