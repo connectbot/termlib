@@ -986,6 +986,30 @@ internal fun TerminalWithAccessibility(
                 widthPixels != dimensions.widthPixels ||
                 heightPixels != dimensions.heightPixels
             ) {
+                // Rotating back to portrait with the soft keyboard up measures
+                // the window at its full height for one frame — the new
+                // configuration's height arrives before the IME inset
+                // re-dispatches — so the row count is a phantom grow (e.g. 40
+                // rows where the settled keyboard-up grid is 23). Resizing to
+                // it makes the shell repaint its prompt for the oversized
+                // grid, and the later shrink strands that repaint at the top
+                // row as a duplicate prompt. A full-height measurement and a
+                // visible IME are mutually exclusive, so when the IME should
+                // be shown but its inset reads hidden, hold the grow until the
+                // inset re-arrives — its arrival re-runs this effect with the
+                // real (smaller) height and cancels the held pass. Bounded: if
+                // the inset never comes back the hide is genuine and the grow
+                // is applied rather than stranding the grid too small.
+                if (isRotationTransientRows(shouldShowIme, imeVisible, newRows > dimensions.rows)) {
+                    // Hold the phantom grow. When the IME inset re-arrives it
+                    // changes availableHeight, which re-runs this effect and
+                    // cancels the held pass before the delay completes — so the
+                    // real (smaller) height is what reaches the emulator. If
+                    // the delay does complete, the inset never came back and
+                    // the hide is genuine: fall through and resize rather than
+                    // strand the grid at the old, too-small size.
+                    delay(ROTATION_INSET_SETTLE_MS)
+                }
                 terminalEmulator.commands.execute {
                     if (!resizePaused.get() && resizeGeneration.get() == generation) {
                         val current = terminalEmulator.dimensions
@@ -2939,3 +2963,41 @@ private fun findOptimalFontSize(
 }
 
 private fun charsPerDimension(pixels: Int, charPixels: Float) = (pixels / charPixels).toInt().coerceAtLeast(1)
+
+/**
+ * How long to hold a rotation's phantom row grow waiting for the IME inset to
+ * re-dispatch after the new configuration's height arrives. Device-verified on
+ * a Pixel-class phone the inset re-arrives well inside this window; the hold
+ * only ever bites the transient (a genuine hide flips [shouldShowIme] false, so
+ * nothing is held), so no real path pays the latency.
+ */
+internal const val ROTATION_INSET_SETTLE_MS = 500L
+
+/**
+ * Whether a rotation's transient oversized row sample must be held back from
+ * the emulator + PTY.
+ *
+ * Rotating back to portrait with the soft keyboard up measures the window at
+ * its full height for one frame — the new configuration's height arrives
+ * before the IME inset re-dispatches — so the sizing path computes a row count
+ * that is too large. That transient reaches the emulator grid AND the PTY; the
+ * server repaints its prompt for the oversized grid, and the later shrink
+ * strands that repaint at the top row while the real prompt sits at the
+ * bottom — a duplicate prompt pinned to the top.
+ *
+ * The sample is untrustworthy exactly when the IME is supposed to be shown
+ * ([shouldShowIme]) but its inset reads hidden ([imeVisible]) — a full-height
+ * window and a visible IME are mutually exclusive, so the hidden inset is one
+ * that has not re-arrived yet — and the measurement would GROW the grid
+ * ([growingRows]) into that phantom space. A genuine keyboard hide also reads
+ * [imeVisible] == false, but then [shouldShowIme] is false, so it is never
+ * held; a physical keyboard keeps [shouldShowIme] false for the same reason.
+ * Width changes are never held — the rotation reflow they trigger is wanted.
+ *
+ * Pure so the policy is testable without a device.
+ */
+internal fun isRotationTransientRows(
+    shouldShowIme: Boolean,
+    imeVisible: Boolean,
+    growingRows: Boolean,
+): Boolean = shouldShowIme && !imeVisible && growingRows
