@@ -54,6 +54,11 @@ internal class ComposeMode {
         buffer += text
     }
 
+    /** Replace locally edited text without sending any terminal input. */
+    fun replaceText(text: String) {
+        if (isActive) buffer = text
+    }
+
     fun deleteLastChar() {
         if (!isActive || buffer.isEmpty()) return
         buffer = buffer.dropLast(1)
