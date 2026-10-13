@@ -22,4 +22,9 @@ internal class TerminalAccessibleText(val line: TerminalLine) {
     }
 
     fun column(offset: Int): Int = columns.getOrElse(offset) { line.cells.size }
+
+    fun offset(column: Int): Int {
+        val leading = if (column in line.cells.indices && line.cells.width(column) == 0 && column > 0) column - 1 else column
+        return columns.indexOfFirst { it >= leading }.let { if (it < 0) text.length else it }
+    }
 }

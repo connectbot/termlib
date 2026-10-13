@@ -18,12 +18,32 @@ The controls below the terminal also appear as accessibility actions:
 - **Return to input** resumes the terminal and restores direct keyboard input.
 - **Search output** searches the frozen document, including across soft-wrapped rows.
   Previous/next match controls reveal the matching row and report its position in the results.
-- **Copy line**, text selection/copy, and **Describe line** act on the row being inspected.
+- **Previous line**, **Next line**, and **Start/End of output** navigate the entire frozen
+  document and reveal the destination automatically. Character and word reading also cross
+  row and viewport boundaries. Words join across soft wraps; paragraph movement follows
+  hard line breaks.
+- **Start selection** anchors a selection at the review cursor. Subsequent navigation,
+  including row focus, extends it through retained history. **Stop selection** stops extending
+  the range; **Switch selection endpoint** changes which end moves. **Clear selection** stays
+  in review. **Select all output** selects the frozen screen and retained history.
+- **Copy selection** joins soft wraps and preserves hard breaks and blank lines, omitting
+  trailing grid spaces before copied hard breaks. **Copy line** still copies one row.
+- **Describe formatting** reports terminal foreground/background colors (hexadecimal), bold,
+  italic, underline style, strikethrough, blink, and reverse video. It uses the review cursor
+  or selection, reporting mixed attributes where applicable. Formatting is spoken only on
+  request; **Describe line** reports row position and semantic labels.
+
+These actions are also available in the **Review actions** menu. Android 37 and later expose
+native selections spanning virtual rows on the terminal's parent node; older Android versions use the same app-managed
+selection through review actions and keyboard commands.
 
 With a physical keyboard focused on the review surface, Up/Down move between rows,
-Left/Right read characters, Ctrl+Left/Right read words, Shift extends selection within a row,
-Page Up/Down scroll, and Home/End move to the document boundaries. Ctrl+C copies a selection.
-Escape returns to input. Other character keys in review are not sent to the remote application.
+Left/Right read characters, Ctrl+Left/Right read words, and Shift extends selection across
+rows. Page Up/Down move the review cursor by a viewport; Home/End move to the document
+boundaries. Up/Down retain the preferred terminal column through shorter rows.
+Ctrl+Shift+M toggles mark mode, which extends selections without holding Shift.
+Ctrl+Shift+X switches the active endpoint, Ctrl+A selects all output, and Ctrl+C copies.
+Escape clears review and returns to input. Other character keys in review are not sent to the remote application.
 Tab moves to the controls. TalkBack's own keyboard shortcuts remain service-controlled.
 
 The snapshot retains the original terminal grid. Changing the view size changes how many
@@ -103,3 +123,33 @@ Before release, record Android and TalkBack versions and test on the minimum sup
 and a recent device, with blind users. Exercise swipe traversal across viewport boundaries,
 touch exploration, two-finger scrolling, reading controls, Bluetooth keyboards, composition,
 continuous output, history eviction, alternate-screen apps, resize, and returning to input.
+
+The opt-in device test `TerminalAccessibilityDeviceTest#talkBackSwipesNavigateIntoScrollbackAndBack`
+uses the emulator's virtual touchscreen with TalkBack enabled. First run
+`tools/talkback-touch-bridge.py --sdk <sdk-path> --emulator-ini <running-emulator-ini>`
+in a Python environment containing `grpcio` and `grpcio-tools`, then run the device test
+with instrumentation argument `talkback=true`. The emulator startup log identifies its INI.
+The bridge uses local authenticated gRPC and never prints the emulator token. It exits after
+five minutes by default (`--seconds` changes the limit).
+
+UiAutomation reads the resulting accessibility focus without suppressing TalkBack. Shell
+`input swipe` and UiObject2 gesture injection do not exercise the accessibility input filter;
+they must not be used as evidence of TalkBack swipe navigation. Direct accessibility-node
+action tests separately cover scrolling, granular movement, and selection.
+The API 37 extended-selection test runs only on a compatible device.
+
+To run the framework action tests on a particular device without the opt-in swipe test:
+
+```sh
+ANDROID_SERIAL=localhost:5556 ./gradlew :lib:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=org.connectbot.terminal.TerminalAccessibilityDeviceTest \
+  -Pandroid.testInstrumentationRunnerArguments.notClass=org.connectbot.terminal.TerminalAccessibilityDeviceTest#talkBackSwipesNavigateIntoScrollbackAndBack
+```
+
+For the swipe test, select only its method and target the emulator connected to the bridge:
+
+```sh
+ANDROID_SERIAL=emulator-5554 ./gradlew :lib:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=org.connectbot.terminal.TerminalAccessibilityDeviceTest#talkBackSwipesNavigateIntoScrollbackAndBack \
+  -Pandroid.testInstrumentationRunnerArguments.talkback=true
+```

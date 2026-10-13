@@ -30,6 +30,7 @@ internal class TerminalReviewDocument(val snapshot: TerminalSnapshot) {
     val cursorIndex = (if (snapshot.alternateScreen) 0 else snapshot.scrollback.size) + snapshot.cursorRow
     private val textRows = mutableMapOf<Int, TerminalAccessibleText>()
     fun text(row: Int): TerminalAccessibleText = textRows.getOrPut(row) { TerminalAccessibleText(lines[row]) }
+    val selection by lazy { TerminalReviewSelection(this) }
 
     fun prompt(from: Int, forward: Boolean): Int? {
         val currentId = lines.getOrNull(from)?.semanticSegments?.firstOrNull { it.semanticType == SemanticType.PROMPT }?.promptId
@@ -96,6 +97,7 @@ internal class TerminalReviewSession(private val latest: () -> TerminalSnapshot)
         if (isReviewing) return
         document = TerminalReviewDocument(snapshot)
         focusedRow = row ?: document!!.cursorIndex.coerceIn(document!!.lines.indices)
+        document!!.selection.move(ReviewPosition(focusedRow!!, document!!.text(focusedRow!!).offset(if (row == null) snapshot.cursorCol else 0)))
         firstRow = top ?: (focusedRow!! - viewportRows + 1).coerceAtLeast(0)
         firstColumn = 0
         syncViewport()
