@@ -1,0 +1,49 @@
+<resources>
+    <string name="terminal_a11y_review">Review output</string>
+    <string name="terminal_a11y_output">Terminal output</string>
+    <string name="terminal_a11y_blank">Blank line</string>
+    <string name="terminal_a11y_refresh">Refresh review</string>
+    <string name="terminal_a11y_resume">Resume live output</string>
+    <string name="terminal_a11y_input">Return to input</string>
+    <string name="terminal_a11y_search">Search output</string>
+    <string name="terminal_a11y_compose">Compose command</string>
+    <string name="terminal_a11y_copy_line">Copy line</string>
+    <string name="terminal_a11y_last_output">Read last command output</string>
+    <string name="terminal_a11y_copy_output">Copy last command output</string>
+    <string name="terminal_a11y_previous_prompt">Previous prompt</string>
+    <string name="terminal_a11y_next_prompt">Next prompt</string>
+    <string name="terminal_a11y_describe">Describe line</string>
+    <string name="terminal_a11y_open_link">Open link</string>
+    <string name="terminal_a11y_line_number">Line %1$d of %2$d</string>
+    <string name="terminal_a11y_prompt">Prompt</string>
+    <string name="terminal_a11y_command">Command</string>
+    <string name="terminal_a11y_finished">Command finished</string>
+    <string name="terminal_a11y_finished_code">Command finished with exit code %1$s</string>
+    <string name="terminal_a11y_link">Link</string>
+    <string name="terminal_a11y_annotation">Annotation</string>
+    <string name="terminal_a11y_text">Text</string>
+    <string name="terminal_a11y_paused">Reviewing a frozen snapshot. New output speech is paused.</string>
+    <string name="terminal_a11y_live">Live output</string>
+    <string name="terminal_a11y_overflow">More output arrived than can be announced. Review retained output to read it.</string>
+    <string name="terminal_a11y_cancel">Cancel</string>
+    <string name="terminal_a11y_send">Send text</string>
+    <string name="terminal_a11y_send_enter">Send and Enter</string>
+    <string name="terminal_a11y_search_query">Text to find</string>
+    <string name="terminal_a11y_search_results">Match %1$d of %2$d</string>
+    <string name="terminal_a11y_search_none">No matches</string>
+    <string name="terminal_a11y_previous_match">Previous match</string>
+    <string name="terminal_a11y_next_match">Next match</string>
+    <item name="terminal_a11y_review" type="id" />
+    <item name="terminal_a11y_refresh" type="id" />
+    <item name="terminal_a11y_resume" type="id" />
+    <item name="terminal_a11y_input" type="id" />
+    <item name="terminal_a11y_search" type="id" />
+    <item name="terminal_a11y_compose" type="id" />
+    <item name="terminal_a11y_copy_line" type="id" />
+    <item name="terminal_a11y_last_output" type="id" />
+    <item name="terminal_a11y_copy_output" type="id" />
+    <item name="terminal_a11y_previous_prompt" type="id" />
+    <item name="terminal_a11y_next_prompt" type="id" />
+    <item name="terminal_a11y_describe" type="id" />
+    <item name="terminal_a11y_open_link" type="id" />
+</resources>

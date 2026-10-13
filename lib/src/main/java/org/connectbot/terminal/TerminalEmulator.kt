@@ -460,6 +460,19 @@ internal class TerminalEmulatorImpl(
     // Sequence number for ordering snapshots
     private var sequenceNumber = 0L
 
+    private var accessibilityReaders = 0
+    private var outputJournal: TerminalOutputJournal? = null
+
+    internal fun observeAccessibleOutput(): Unit = synchronized(damageLock) {
+        if (accessibilityReaders++ == 0) outputJournal = TerminalOutputJournal(_snapshot.value)
+    }
+
+    internal fun stopObservingAccessibleOutput(): Unit = synchronized(damageLock) {
+        if (accessibilityReaders > 0 && --accessibilityReaders == 0) outputJournal = null
+    }
+
+    internal fun drainAccessibleOutput(): TerminalOutputBatch? = synchronized(damageLock) { outputJournal?.drain() }
+
     // Terminal dimensions
     override val dimensions: TerminalDimensions
         get() = publishedDimensions
@@ -700,6 +713,7 @@ internal class TerminalEmulatorImpl(
         // sb_pushline before moverect, so the scrollback callback cannot infer
         // this region without using stale information from the previous scroll.
         synchronized(damageLock) {
+            outputJournal?.move(dest, src, cols)
             if (
                 dest.startCol == 0 && src.startCol == 0 &&
                 dest.endCol == cols && src.endCol == cols &&
@@ -842,6 +856,8 @@ internal class TerminalEmulatorImpl(
 
             val line = TerminalLine(row = -1, cells = cellList, softWrapped = softWrapped, semanticSegments = line0Segments)
 
+            outputJournal?.push(line)
+
             scrollback.add(line)
             if (scrollback.size > maxScrollbackLines) {
                 scrollback.removeFirst()
@@ -981,6 +997,7 @@ internal class TerminalEmulatorImpl(
         promptId: Int,
     ) {
         synchronized(damageLock) {
+            if (semanticType == SemanticType.COMMAND_FINISHED) outputJournal?.complete(promptId, metadata)
             // Apply immediately to currentLines so segments are shifted correctly during scroll
             if (row < 0 || row >= currentLines.size) {
                 return
@@ -1093,6 +1110,7 @@ internal class TerminalEmulatorImpl(
 
         // Build and emit new snapshot
         val newSnapshot = buildSnapshot()
+        outputJournal?.update(newSnapshot)
         _snapshot.value = newSnapshot
     }
 

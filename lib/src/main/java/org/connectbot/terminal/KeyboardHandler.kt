@@ -105,12 +105,15 @@ internal class KeyboardHandler(
     var pendingDeadChar: Int by mutableStateOf(0)
         internal set
 
+    internal var inputEnabled = true
+
     /**
      * Process a Compose KeyEvent and send to terminal.
      * Returns true if the event was handled.
      */
     @Suppress("DEPRECATION")
     fun onKeyEvent(event: ComposeKeyEvent): Boolean {
+        if (!inputEnabled) return true
         if (onInterceptKey?.invoke(event) == true) {
             return true
         }
@@ -313,6 +316,7 @@ internal class KeyboardHandler(
      * This is called for printable characters.
      */
     fun onCharacterInput(char: Char, ctrl: Boolean = false, alt: Boolean = false): Boolean {
+        if (!inputEnabled) return true
         val modifiers = buildModifierMask(ctrl, alt, false)
         val compose = composeMode
         if (compose != null && compose.isActive) {
@@ -338,6 +342,7 @@ internal class KeyboardHandler(
      * This handles multi-byte UTF-8 text from the software keyboard.
      */
     fun onTextInput(bytes: ByteArray) {
+        if (!inputEnabled) return
         if (bytes.isEmpty()) return
 
         val raw = bytes.toString(Charsets.UTF_8)
@@ -368,6 +373,7 @@ internal class KeyboardHandler(
      * immediately rather than staying attached to the sticky compose buffer.
      */
     fun onCommittedText(text: String) {
+        if (!inputEnabled) return
         if (text.isEmpty()) return
 
         val normalized = if (Normalizer.isNormalized(text, Normalizer.Form.NFC)) {
@@ -394,6 +400,7 @@ internal class KeyboardHandler(
      * still follows [delKeyMode] so it matches the erase character expected by the connection.
      */
     fun onImeDeleteBackward() {
+        if (!inputEnabled) return
         if (delKeyMode is DelKeyMode.Backspace) {
             terminalEmulator.dispatchCharacter(0, 0x08)
         } else {
