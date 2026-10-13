@@ -1771,7 +1771,7 @@ internal fun TerminalWithAccessibility(
                         view.onSearch = { searchRequested = true }
                         view.onCompose = if (keyboardEnabled) ({ composeController.startComposeMode() }) else null
                         view.onLink = currentOnHyperlinkClick
-                        view.visualColumn = { row, column -> textPaint.visualColumn(screenState, row, column, baseCharWidth) }
+                        view.visualColumn = { row, column -> textPaint.visualColumn(if (review.isReviewing) review.screenState else liveScreenState, row, column, baseCharWidth) }
                         view.update(liveScreenState.snapshot, liveScreenState.scrollbackPosition, baseCharWidth, baseCharHeight)
                     },
                     modifier = Modifier.fillMaxSize(),

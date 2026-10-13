@@ -9,11 +9,14 @@ import android.text.TextUtils
 import android.view.View
 import android.widget.TextView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -23,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -32,6 +36,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** Identity distinguishes repeated feedback with identical text. */
 internal class TerminalAccessibilityMessage(val text: String)
@@ -52,6 +57,7 @@ internal fun TerminalAccessibilityControls(
     modifier: Modifier = Modifier,
 ) {
     val resources = LocalResources.current
+    val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var searchText by remember { mutableStateOf("") }
     val matches = remember(review.document, query) { review.document?.search(query).orEmpty() }
@@ -92,6 +98,36 @@ internal fun TerminalAccessibilityControls(
                 review.startReview()
                 onSearchRequested(true)
             }) { Text(stringResource(R.string.terminal_a11y_search)) }
+            if (review.isReviewing) {
+                var menuOpen by remember { mutableStateOf(false) }
+                Box {
+                    TextButton(onClick = { menuOpen = true }) { Text(stringResource(R.string.terminal_a11y_review_actions)) }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        val actions = listOf(
+                            R.id.terminal_a11y_previous_line to R.string.terminal_a11y_previous_line,
+                            R.id.terminal_a11y_next_line to R.string.terminal_a11y_next_line,
+                            R.id.terminal_a11y_start_output to R.string.terminal_a11y_start_output,
+                            R.id.terminal_a11y_end_output to R.string.terminal_a11y_end_output,
+                            R.id.terminal_a11y_mark to if (view?.isMarking == true) R.string.terminal_a11y_stop_mark else R.string.terminal_a11y_mark,
+                            R.id.terminal_a11y_switch_endpoint to R.string.terminal_a11y_switch_endpoint,
+                            R.id.terminal_a11y_select_all to R.string.terminal_a11y_select_all,
+                            androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_COPY to R.string.terminal_a11y_copy_selection,
+                            R.id.terminal_a11y_clear_selection to R.string.terminal_a11y_clear_selection,
+                            R.id.terminal_a11y_formatting to R.string.terminal_a11y_formatting,
+                        )
+                        actions.forEach { (action, label) ->
+                            DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = {
+                                menuOpen = false
+                                scope.launch {
+                                    // Detach the popup before transferring accessibility focus.
+                                    delay(100)
+                                    if (review.isReviewing) view?.reviewAction(action)
+                                }
+                            })
+                        }
+                    }
+                }
+            }
             if (matches.isNotEmpty()) {
                 TextButton(onClick = { showMatch(matchIndex - 1) }) { Text(stringResource(R.string.terminal_a11y_previous_match)) }
                 TextButton(onClick = { showMatch(matchIndex + 1) }) { Text(stringResource(R.string.terminal_a11y_next_match)) }

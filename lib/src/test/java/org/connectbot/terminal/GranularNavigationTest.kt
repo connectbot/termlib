@@ -31,5 +31,6 @@ class GranularNavigationTest {
         val text = TerminalAccessibleText(TerminalLine(0, cells))
         assertEquals("界e\u0301x", text.text)
         assertEquals(listOf(0, 2, 2, 3), text.text.indices.map(text::column))
+        assertEquals(listOf(0, 0, 1, 3, 4), (0..4).map(text::offset))
     }
 }

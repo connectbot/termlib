@@ -46,4 +46,41 @@
     <item name="terminal_a11y_next_prompt" type="id" />
     <item name="terminal_a11y_describe" type="id" />
     <item name="terminal_a11y_open_link" type="id" />
+    <string name="terminal_a11y_previous_line">Previous line</string>
+    <string name="terminal_a11y_next_line">Next line</string>
+    <string name="terminal_a11y_start_output">Start of output</string>
+    <string name="terminal_a11y_end_output">End of output</string>
+    <string name="terminal_a11y_mark">Start selection</string>
+    <string name="terminal_a11y_switch_endpoint">Switch selection endpoint</string>
+    <string name="terminal_a11y_select_all">Select all output</string>
+    <string name="terminal_a11y_clear_selection">Clear selection</string>
+    <string name="terminal_a11y_formatting">Describe formatting</string>
+    <string name="terminal_a11y_stop_mark">Stop selection</string>
+    <string name="terminal_a11y_review_actions">Review actions</string>
+    <string name="terminal_a11y_copy_selection">Copy selection</string>
+    <string name="terminal_a11y_no_formatting">No character formatting at this position</string>
+    <string name="terminal_a11y_foreground">Foreground</string>
+    <string name="terminal_a11y_background">Background</string>
+    <string name="terminal_a11y_bold">Bold</string>
+    <string name="terminal_a11y_italic">Italic</string>
+    <string name="terminal_a11y_underline">Underline</string>
+    <string name="terminal_a11y_strike">Strikethrough</string>
+    <string name="terminal_a11y_blink">Blink</string>
+    <string name="terminal_a11y_reverse">Reverse video</string>
+    <string name="terminal_a11y_mixed">mixed</string>
+    <string name="terminal_a11y_single">single</string>
+    <string name="terminal_a11y_double">double</string>
+    <string name="terminal_a11y_curly">curly</string>
+    <string name="terminal_a11y_off">off</string>
+    <string name="terminal_a11y_on">on</string>
+    <string name="terminal_a11y_attribute">%1$s: %2$s</string>
+    <item name="terminal_a11y_previous_line" type="id" />
+    <item name="terminal_a11y_next_line" type="id" />
+    <item name="terminal_a11y_start_output" type="id" />
+    <item name="terminal_a11y_end_output" type="id" />
+    <item name="terminal_a11y_mark" type="id" />
+    <item name="terminal_a11y_switch_endpoint" type="id" />
+    <item name="terminal_a11y_select_all" type="id" />
+    <item name="terminal_a11y_clear_selection" type="id" />
+    <item name="terminal_a11y_formatting" type="id" />
 </resources>
