@@ -38,6 +38,19 @@ class AccessibilityOverlayTest {
         view.update(snapshot, 0, 10f, 20f)
     }
 
+    @Test fun resumeFocusSurvivesLiveOutputAndProviderRefresh() {
+        view.focusRow(12)
+        assertTrue(view.reviewAction(R.id.terminal_a11y_resume))
+        val host = AccessibilityNodeProviderCompat.HOST_VIEW_ID
+        assertFalse(review.isReviewing)
+        assertTrue(view.provider.createAccessibilityNodeInfo(host)!!.isAccessibilityFocused)
+        snapshot = accessibilitySnapshot(1000)
+        view.update(snapshot, 0, 10f, 20f)
+        assertEquals("Terminal output", view.provider.findFocus(Node.FOCUS_ACCESSIBILITY)!!.contentDescription)
+        assertTrue(view.provider.performAction(host, Node.ACTION_CLEAR_ACCESSIBILITY_FOCUS, null))
+        assertNull(view.provider.findFocus(Node.FOCUS_ACCESSIBILITY))
+    }
+
     @Test fun standardScrollActionsReachOldestAndNewestRows() {
         val provider = view.provider
         val host = AccessibilityNodeProviderCompat.HOST_VIEW_ID
@@ -95,6 +108,35 @@ class AccessibilityOverlayTest {
         assertFalse(view.provider.performAction(view.id(0), Node.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY, args))
     }
 
+    @Test fun longClickStartsAtReviewCursorAndStopsWithoutClearingTheRange() {
+        view.focusRow(12, 2)
+        val id = view.id(12)
+        val info = view.provider.createAccessibilityNodeInfo(id)!!
+        assertTrue(info.isLongClickable)
+        assertEquals("Start selection", info.actionList.single { it.id == Node.ACTION_LONG_CLICK }.label)
+        assertTrue(view.provider.performAction(id, Node.ACTION_LONG_CLICK, null))
+        val model = review.document!!.selection
+        assertTrue(model.marking)
+        assertEquals(ReviewPosition(12, 2), model.anchor)
+        val args = Bundle().apply { putInt(Node.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT, Node.MOVEMENT_GRANULARITY_CHARACTER) }
+        assertTrue(view.provider.performAction(id, Node.ACTION_NEXT_AT_MOVEMENT_GRANULARITY, args))
+        assertEquals("r", model.copyText())
+        assertEquals("Stop selection", view.provider.createAccessibilityNodeInfo(id)!!.actionList.single { it.id == Node.ACTION_LONG_CLICK }.label)
+        assertTrue(view.provider.performAction(id, Node.ACTION_LONG_CLICK, null))
+        assertFalse(model.marking)
+        assertEquals("r", model.copyText())
+        assertTrue(view.provider.performAction(id, Node.ACTION_COPY, null))
+        assertEquals("r", view.context.getSystemService(android.content.ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString())
+    }
+
+    @Test fun longClickOnLiveHostFreezesAndStartsAtTerminalCursor() {
+        assertFalse(review.isReviewing)
+        assertTrue(view.reviewAction(Node.ACTION_LONG_CLICK))
+        assertTrue(review.isReviewing)
+        assertTrue(review.document!!.selection.marking)
+        assertEquals(ReviewPosition(snapshot.scrollback.size + snapshot.cursorRow, snapshot.cursorCol), review.document!!.selection.anchor)
+    }
+
     @Test fun markSelectionSurvivesScrollResizeAndNewOutput() {
         view.focusRow(11, 8)
         assertTrue(view.reviewAction(R.id.terminal_a11y_mark))
@@ -148,6 +190,7 @@ class AccessibilityOverlayTest {
         view.provider.performAction(id, R.id.terminal_a11y_refresh, null)
         assertNull(view.provider.createAccessibilityNodeInfo(id))
         assertFalse(view.provider.performAction(id, R.id.terminal_a11y_resume, null))
+        assertFalse(view.provider.performAction(id, Node.ACTION_LONG_CLICK, null))
     }
 
     @Test fun controllerRefreshRejectsOldSelectionBeforeNextViewUpdate() {

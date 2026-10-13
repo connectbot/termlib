@@ -2,6 +2,10 @@
     <string name="terminal_a11y_review">Review output</string>
     <string name="terminal_a11y_output">Terminal output</string>
     <string name="terminal_a11y_blank">Blank line</string>
+    <plurals name="terminal_a11y_blank_lines">
+        <item quantity="one">%d blank line</item>
+        <item quantity="other">%d blank lines</item>
+    </plurals>
     <string name="terminal_a11y_refresh">Refresh review</string>
     <string name="terminal_a11y_resume">Resume live output</string>
     <string name="terminal_a11y_input">Return to input</string>
@@ -56,6 +60,8 @@
     <string name="terminal_a11y_clear_selection">Clear selection</string>
     <string name="terminal_a11y_formatting">Describe formatting</string>
     <string name="terminal_a11y_stop_mark">Stop selection</string>
+    <string name="terminal_a11y_selection_started">Selection started. Move by characters, words, or lines to extend it.</string>
+    <string name="terminal_a11y_selection_stopped">Selection stopped.</string>
     <string name="terminal_a11y_review_actions">Review actions</string>
     <string name="terminal_a11y_copy_selection">Copy selection</string>
     <string name="terminal_a11y_no_formatting">No character formatting at this position</string>
@@ -83,4 +89,13 @@
     <item name="terminal_a11y_select_all" type="id" />
     <item name="terminal_a11y_clear_selection" type="id" />
     <item name="terminal_a11y_formatting" type="id" />
+    <string name="terminal_a11y_start_line">Start of line</string>
+    <item name="terminal_a11y_start_line" type="id" />
+    <string name="terminal_a11y_end_line">End of line</string>
+    <item name="terminal_a11y_end_line" type="id" />
+    <string name="terminal_a11y_previous_link">Previous link</string>
+    <item name="terminal_a11y_previous_link" type="id" />
+    <string name="terminal_a11y_next_link">Next link</string>
+    <item name="terminal_a11y_next_link" type="id" />
+    <string name="terminal_a11y_link_position">%1$s. %2$s. Link %3$d of %4$d</string>
 </resources>

@@ -75,7 +75,7 @@ def main():
                         continue
                     previous = request
                     identifier, action, *coordinates = request.split()
-                    if not identifier.isdigit() or action not in ("tap", "swipe"):
+                    if not identifier.isdigit() or action not in ("tap", "swipe", "explore", "longpress"):
                         raise ValueError("Invalid touchscreen request")
                     points = list(map(int, coordinates))
                     x, y = points[:2]
@@ -83,13 +83,27 @@ def main():
                         if action == "tap" and len(points) == 2:
                             touch(x, y, 800)
                             time.sleep(0.15)
-                        elif action == "swipe" and len(points) == 5:
+                        elif action == "longpress" and len(points) == 2:
+                            # TalkBack's double-tap-and-hold gesture, through hardware.
+                            touch(x, y, 800)
+                            time.sleep(0.06)
+                            touch(x, y, 0)
+                            time.sleep(0.08)
+                            touch(x, y, 800)
+                            time.sleep(1.2)
+                        elif action in ("swipe", "explore") and len(points) == 5:
+                            if action == "explore":
+                                # Let TalkBack's gesture detector enter touch exploration.
+                                touch(x, y, 800)
+                                time.sleep(0.8)
                             end_x, end_y, duration = points[2:]
                             for step in range(17):
                                 x = round(points[0] + (end_x - points[0]) * step / 16)
                                 y = round(points[1] + (end_y - points[1]) * step / 16)
                                 touch(x, y, 800)
                                 time.sleep(duration / 16000)
+                            if action == "explore":
+                                time.sleep(0.4)
                         else:
                             raise ValueError("Invalid touchscreen coordinates")
                     finally:

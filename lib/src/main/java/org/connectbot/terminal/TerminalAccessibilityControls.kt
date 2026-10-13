@@ -55,6 +55,7 @@ internal fun TerminalAccessibilityControls(
     message: TerminalAccessibilityMessage?,
     onMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
+    feedbackEnabled: Boolean = true,
 ) {
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
@@ -81,14 +82,18 @@ internal fun TerminalAccessibilityControls(
     }
     Column(modifier.background(MaterialTheme.colorScheme.surface)) {
         FlowRow {
-            if (review.isReviewing) {
-                TextButton(onClick = { review.refreshReview() }) { Text(stringResource(R.string.terminal_a11y_refresh)) }
-                TextButton(onClick = { review.resumeLiveOutput() }) { Text(stringResource(R.string.terminal_a11y_resume)) }
-            } else {
-                TextButton(onClick = {
+            // Preserve the focused semantics node when returning to live output.
+            // Removing the Resume button makes TalkBack recover focus outside the terminal.
+            TextButton(onClick = {
+                if (review.isReviewing) {
+                    review.resumeLiveOutput()
+                } else {
                     review.startReview()
                     view?.focusRow(review.focusedRow ?: 0)
-                }) { Text(stringResource(R.string.terminal_a11y_review)) }
+                }
+            }) { Text(stringResource(if (review.isReviewing) R.string.terminal_a11y_resume else R.string.terminal_a11y_review)) }
+            if (review.isReviewing) {
+                TextButton(onClick = { review.refreshReview() }) { Text(stringResource(R.string.terminal_a11y_refresh)) }
             }
             if (keyboardEnabled) {
                 TextButton(onClick = { review.returnToInput() }) { Text(stringResource(R.string.terminal_a11y_input)) }
@@ -106,6 +111,11 @@ internal fun TerminalAccessibilityControls(
                         val actions = listOf(
                             R.id.terminal_a11y_previous_line to R.string.terminal_a11y_previous_line,
                             R.id.terminal_a11y_next_line to R.string.terminal_a11y_next_line,
+                            R.id.terminal_a11y_start_line to R.string.terminal_a11y_start_line,
+                            R.id.terminal_a11y_end_line to R.string.terminal_a11y_end_line,
+                            R.id.terminal_a11y_previous_link to R.string.terminal_a11y_previous_link,
+                            R.id.terminal_a11y_next_link to R.string.terminal_a11y_next_link,
+                            R.id.terminal_a11y_open_link to R.string.terminal_a11y_open_link,
                             R.id.terminal_a11y_start_output to R.string.terminal_a11y_start_output,
                             R.id.terminal_a11y_end_output to R.string.terminal_a11y_end_output,
                             R.id.terminal_a11y_mark to if (view?.isMarking == true) R.string.terminal_a11y_stop_mark else R.string.terminal_a11y_mark,
@@ -145,6 +155,7 @@ internal fun TerminalAccessibilityControls(
                 }
             },
             update = {
+                it.accessibilityLiveRegion = if (feedbackEnabled) View.ACCESSIBILITY_LIVE_REGION_POLITE else View.ACCESSIBILITY_LIVE_REGION_NONE
                 it.setTextColor(color)
                 if (it.tag !== message || it.text.toString() != status) {
                     it.tag = message

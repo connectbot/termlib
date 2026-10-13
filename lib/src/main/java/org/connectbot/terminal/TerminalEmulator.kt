@@ -1260,152 +1260,9 @@ internal class TerminalEmulatorImpl(
         }
     }
 
-    private fun extractUrls(lines: List<TerminalLine>): List<TerminalUrl> {
-        val seenUrls = linkedSetOf<String>()
-        val urls = mutableListOf<TerminalUrl>()
-
-        lines.forEachIndexed { row, line ->
-            for (url in extractUrls(lines, row, line)) {
-                if (seenUrls.add(url.url)) {
-                    urls.add(url)
-                }
-            }
-        }
-
-        return urls
-    }
-
-    private fun extractUrls(lines: List<TerminalLine>, row: Int, line: TerminalLine): List<TerminalUrl> {
-        val osc8Segments = line.getSegmentsOfType(SemanticType.HYPERLINK)
-        val osc8Urls = osc8Segments
-            .mapNotNull { segment ->
-                val url = segment.metadata
-                if (url.isNullOrEmpty() || segment.startCol < 0 || segment.endCol <= segment.startCol) {
-                    null
-                } else {
-                    segment.startCol to TerminalUrl(
-                        url = url,
-                        source = TerminalUrlSource.Osc8,
-                    )
-                }
-            }
-
-        val autoDetectedUrls = line.autoDetectedUrls
-            .mapNotNull { (startCol, endCol, url) ->
-                val spans = buildWrappedUrlSpans(lines, row, startCol)
-                val detectedUrl = readWrappedUrl(lines, spans) ?: url
-                val firstSpan = spans[row] ?: (startCol until endCol)
-                if (spansOverlapOsc8(lines, spans.ifEmpty { mapOf(row to firstSpan) })) {
-                    null
-                } else {
-                    startCol to TerminalUrl(
-                        url = detectedUrl,
-                        source = TerminalUrlSource.AutoDetected,
-                    )
-                }
-            }
-
-        return (osc8Urls + autoDetectedUrls).sortedWith(
-            compareBy<Pair<Int, TerminalUrl>> { it.first }
-                .thenBy { it.second.source.priority },
-        ).map { it.second }
-    }
-
-    private val TerminalUrlSource.priority: Int
-        get() = when (this) {
-            TerminalUrlSource.Osc8 -> 0
-            TerminalUrlSource.AutoDetected -> 1
-        }
-
-    private fun buildWrappedUrlSpans(lines: List<TerminalLine>, anchorRow: Int, anchorCol: Int): Map<Int, IntRange> {
-        val spans = linkedMapOf<Int, IntRange>()
-        var row = anchorRow
-        var startCol = anchorCol
-
-        while (row < lines.size && (row - anchorRow) < MAX_URL_SCAN_CONTINUATION_ROWS) {
-            val text = lines[row].columnText
-            if (startCol !in text.indices || !text[startCol].isUrlSafe()) break
-
-            var endCol = startCol
-            while (endCol < text.length && text[endCol].isUrlSafe()) {
-                endCol++
-            }
-
-            val nextStart = continuationStart(lines, row, endCol)
-            if (nextStart != null) {
-                spans[row] = startCol until endCol
-                row++
-                startCol = nextStart
-            } else {
-                val trimmed = text.substring(startCol, endCol).trimDetectedUrl()
-                if (trimmed.isNotEmpty()) {
-                    spans[row] = startCol until (startCol + trimmed.length)
-                }
-                break
-            }
-        }
-
-        return spans
-    }
-
-    private fun continuationStart(lines: List<TerminalLine>, previousRow: Int, previousEndCol: Int): Int? {
-        if (previousRow + 1 >= lines.size) return null
-
-        val previousLine = lines[previousRow]
-        val previousText = previousLine.columnText
-        val previousTrimmedEnd = previousText.indexOfLast { it != '\u0000' && !it.isWhitespace() } + 1
-        if (previousTrimmedEnd <= 0 || previousEndCol < previousTrimmedEnd) return null
-
-        val rowFilled = previousEndCol >= previousLine.cells.size || previousLine.softWrapped
-        val nextText = lines[previousRow + 1].columnText
-        val start = firstUrlSafeAfterPrefix(nextText) ?: return null
-
-        var end = start
-        while (end < nextText.length && nextText[end].isUrlSafe()) {
-            end++
-        }
-        val run = nextText.substring(start, end)
-        if (run.trimDetectedUrl().isEmpty()) return null
-
-        val prevEndsWithDelimiter = previousEndCol > 0 && previousText[previousEndCol - 1] in "/?&=#"
-        val nextStartsWithQueryOrFragment = run.isNotEmpty() && run[0] in "?&#"
-        val previousRun = previousText.substring(0, previousEndCol)
-        val previousWouldTrim = previousRun.trimDetectedUrl().length < previousRun.length
-        val rowFilledContinuation = rowFilled &&
-            (!previousWouldTrim || prevEndsWithDelimiter || nextStartsWithQueryOrFragment)
-        val continues = rowFilledContinuation || prevEndsWithDelimiter || nextStartsWithQueryOrFragment
-
-        return if (continues) start else null
-    }
-
-    private fun firstUrlSafeAfterPrefix(text: String): Int? {
-        for (index in text.indices) {
-            val ch = text[index]
-            if (ch == '\u0000' || ch.isWhitespace()) continue
-            if (ch.isUrlPrefixDecoration()) continue
-            return if (ch.isUrlSafe()) index else null
-        }
-        return null
-    }
-
-    private fun readWrappedUrl(lines: List<TerminalLine>, spans: Map<Int, IntRange>): String? {
-        if (spans.isEmpty()) return null
-        val joined = buildString {
-            for ((spanRow, span) in spans.toSortedMap()) {
-                val text = lines[spanRow].columnText
-                val end = (span.last + 1).coerceAtMost(text.length)
-                if (span.first < end) append(text.substring(span.first, end))
-            }
-        }
-        return TerminalLine.URL_REGEX.findAll(joined).firstOrNull()?.value?.trimDetectedUrl()?.takeIf { it.isNotEmpty() }
-    }
-
-    private fun spansOverlapOsc8(lines: List<TerminalLine>, spans: Map<Int, IntRange>): Boolean = spans.any { (row, span) ->
-        val endCol = span.last + 1
-        lines.getOrNull(row)?.getSegmentsOfType(SemanticType.HYPERLINK)?.any {
-            it.startCol < endCol && span.first < it.endCol
-        } == true
-    }
+    private fun extractUrls(lines: List<TerminalLine>): List<TerminalUrl> = resolveTerminalLinks(lines, autoDetect = true)
+        .distinctBy { it.url }
+        .map { TerminalUrl(it.url, it.source) }
 
     // ================================================================================
     // Helper methods
@@ -1556,7 +1413,6 @@ internal class TerminalEmulatorImpl(
 
     companion object {
         private const val TAG = "TerminalEmulatorImpl"
-        private const val MAX_URL_SCAN_CONTINUATION_ROWS = 6
     }
 }
 
