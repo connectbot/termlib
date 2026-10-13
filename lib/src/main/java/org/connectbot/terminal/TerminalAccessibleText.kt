@@ -1,0 +1,25 @@
+/*
+ * ConnectBot Terminal
+ * Copyright 2026 Kenny Root
+ * SPDX-License-Identifier: Apache-2.0
+ */
+package org.connectbot.terminal
+
+/** Accessibility offsets use UTF-16; terminal geometry uses cells. */
+internal class TerminalAccessibleText(val line: TerminalLine) {
+    val text = line.text
+    private val columns = IntArray(text.length)
+
+    init {
+        var offset = 0
+        var column = 0
+        while (column < line.cells.size) {
+            val width = line.cells.width(column).coerceAtLeast(1)
+            val length = line.cells.text(column, (column + width).coerceAtMost(line.cells.size)).length
+            repeat(length) { if (offset < columns.size) columns[offset++] = column }
+            column += width
+        }
+    }
+
+    fun column(offset: Int): Int = columns.getOrElse(offset) { line.cells.size }
+}
