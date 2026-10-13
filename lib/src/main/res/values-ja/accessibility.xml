@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">出力を確認</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">端末出力</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">空白行</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="other">空行%d行</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">出力の確認内容を更新</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">リアルタイムの出力に戻る</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">端末入力に戻る</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">端末出力を検索</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">コマンドを作成</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">行をコピー</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">直前のコマンドの出力を読み上げる</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">最後のコマンド出力をコピーする</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">前のシェルプロンプト</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">次のシェルプロンプト</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">この行のテキストについて説明してください</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">ハイパーリンクを開く</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">%2$d の %1$d 行目</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">シェルプロンプト</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">コマンド</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">コマンドが終了しました</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">コマンドは終了コード %1$s で終了しました</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">ハイパーリンク</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">注釈</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">テキスト</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">端末出力のスナップショットを確認中です。新しい出力の読み上げは一時停止しています。</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">リアルタイムの端末出力</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">読み上げきれない量の出力が届きました。出力確認を開くと、保持されている出力を読めます。</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">キャンセル</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">テキストを送信</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">テキストを送信して Enter キーを押す</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">検索するテキスト</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">検索結果 %2$d中 %1$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">検索結果がありません</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">前回の検索結果</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">次の検索結果</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">前の行</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">次の行</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">出力の先頭に移動</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">出力の末尾に移動</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">テキスト選択の開始</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">テキスト選択のもう一方の端に切り替えます</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">すべての出力を選択</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">テキストの選択をクリアする</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">テキストの書式設定を説明する</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">選択範囲の拡張を停止する</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">セレクションが始まりました。文字、単語、または行ごとに移動して拡張します。</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">選択範囲の拡張を停止しました。</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">出力確認メニュー</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">選択範囲をコピー</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">この位置にはテキストの書式設定がありません</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">文字の色</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">背景色</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">太字</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">イタリック体</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">下線</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">取り消し線</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">点滅するテキスト</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">色の反転</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">混在</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">一重線</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">二重線</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">波線</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">オフ</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">オン</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s：%2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">行の先頭に移動</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">列の最後尾に行く</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">前のハイパーリンク</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">次のハイパーリンク</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s。%2$s。%4$d 件中 %3$d 件目のリンク。</string>
+</resources>

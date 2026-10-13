@@ -13,7 +13,18 @@ import androidx.compose.runtime.setValue
 data class TerminalAccessibilityOptions(
     val announceOutput: Boolean = true,
     val announceCursor: Boolean = true,
-)
+    /** One initial focus request per view, when the hosting screen is ready. */
+    val requestInitialFocus: Boolean = false,
+) {
+    // Retain the original JVM signatures, including Kotlin default-argument
+    // bridges, for clients compiled before initial focus was configurable.
+    constructor(announceOutput: Boolean = true, announceCursor: Boolean = true) : this(announceOutput, announceCursor, false)
+
+    fun copy(
+        announceOutput: Boolean = this.announceOutput,
+        announceCursor: Boolean = this.announceCursor,
+    ): TerminalAccessibilityOptions = TerminalAccessibilityOptions(announceOutput, announceCursor, requestInitialFocus)
+}
 
 /** Main-thread controls for inspecting a frozen copy of terminal output. */
 interface TerminalAccessibilityController {
@@ -22,15 +33,92 @@ interface TerminalAccessibilityController {
     fun refreshReview()
     fun resumeLiveOutput()
     fun returnToInput()
+
+    /** Focus the current reading position without changing review or selection. */
+    fun requestAccessibilityFocus() {}
+}
+
+/**
+ * Main-thread, in-memory review state for one terminal session. Hoist this alongside
+ * the emulator to retain frozen text, selection and reading position across views.
+ * Contains no views, callbacks or accessibility node IDs. Do not share between terminals.
+ */
+class TerminalAccessibilityState {
+    internal var document by mutableStateOf<TerminalReviewDocument?>(null)
+    internal var firstRow by mutableStateOf(0)
+    internal var firstColumn by mutableStateOf(0)
+    internal var focusedRow by mutableStateOf<Int?>(null)
+    private var owner: TerminalEmulator? = null
+
+    internal fun bindTo(emulator: TerminalEmulator) {
+        if (owner != null && owner !== emulator) {
+            document = null
+            firstRow = 0
+            firstColumn = 0
+            focusedRow = null
+        }
+        owner = emulator
+    }
 }
 
 /** A bounded, immutable document. Indices are stable for its entire review lifetime. */
 internal class TerminalReviewDocument(val snapshot: TerminalSnapshot) {
     val lines = if (snapshot.alternateScreen) snapshot.lines else snapshot.scrollback + snapshot.lines
     val cursorIndex = (if (snapshot.alternateScreen) 0 else snapshot.scrollback.size) + snapshot.cursorRow
+
+    // One virtual item per blank run, including runs crossing viewport boundaries.
+    // The physical lines remain intact for rendering, selection, and copying.
+    private val blankRuns by lazy {
+        arrayOfNulls<IntRange>(lines.size).also { runs ->
+            var row = 0
+            while (row < lines.size) {
+                if (!lines[row].text.isBlank()) {
+                    row++
+                    continue
+                }
+                val first = row
+                while (row < lines.size && lines[row].text.isBlank()) row++
+                val range = first until row
+                for (index in range) runs[index] = range
+            }
+        }
+    }
+    fun accessibleRows(row: Int): IntRange = blankRuns[row] ?: (row..row)
+
+    private val groupedText = mutableMapOf<Int, String>()
+    fun accessibleText(row: Int): String {
+        val range = accessibleRows(row)
+        if (range.first == range.last) return lines[row].text
+        return groupedText.getOrPut(range.first) { range.joinToString("\n") { lines[it].text } }
+    }
+
+    fun accessibleOffset(position: ReviewPosition): Int = (accessibleRows(position.row).first until position.row).sumOf { lines[it].text.length + 1 } + position.offset
+
+    fun accessiblePosition(row: Int, offset: Int): ReviewPosition? {
+        if (offset < 0) return null
+        var remaining = offset
+        for (index in accessibleRows(row)) {
+            val length = lines[index].text.length
+            if (remaining <= length) return ReviewPosition(index, remaining)
+            remaining -= length + 1
+        }
+        return null
+    }
+
+    fun accessibleSelection(row: Int): Pair<Int, Int>? {
+        val range = accessibleRows(row)
+        if (selection.end.row < range.first || selection.start.row > range.last) return null
+        val first = maxOf(selection.start, ReviewPosition(range.first, 0))
+        val last = minOf(selection.end, ReviewPosition(range.last, lines[range.last].text.length))
+        return accessibleOffset(first) to accessibleOffset(last)
+    }
+
     private val textRows = mutableMapOf<Int, TerminalAccessibleText>()
     fun text(row: Int): TerminalAccessibleText = textRows.getOrPut(row) { TerminalAccessibleText(lines[row]) }
     val selection by lazy { TerminalReviewSelection(this) }
+    private val explicitLinks by lazy { resolveLinks(false) }
+    private val detectedLinks by lazy { resolveLinks(true) }
+    fun links(autoDetect: Boolean): List<TerminalReviewLink> = if (autoDetect) detectedLinks else explicitLinks
 
     fun prompt(from: Int, forward: Boolean): Int? {
         val currentId = lines.getOrNull(from)?.semanticSegments?.firstOrNull { it.semanticType == SemanticType.PROMPT }?.promptId
@@ -71,21 +159,38 @@ internal class TerminalReviewDocument(val snapshot: TerminalSnapshot) {
     }
 }
 
-internal class TerminalReviewSession(private val latest: () -> TerminalSnapshot) : TerminalAccessibilityController {
-    var document by mutableStateOf<TerminalReviewDocument?>(null)
-        private set
+internal class TerminalReviewSession(
+    private val state: TerminalAccessibilityState = TerminalAccessibilityState(),
+    private val latest: () -> TerminalSnapshot,
+) : TerminalAccessibilityController {
+    var document: TerminalReviewDocument?
+        get() = state.document
+        private set(value) {
+            state.document = value
+        }
     override val isReviewing: Boolean get() = document != null
-    var firstRow by mutableStateOf(0)
-        private set
-    var firstColumn by mutableStateOf(0)
-        private set
-    var focusedRow by mutableStateOf<Int?>(null)
-        private set
+    var firstRow: Int
+        get() = state.firstRow
+        private set(value) {
+            state.firstRow = value
+        }
+    var firstColumn: Int
+        get() = state.firstColumn
+        private set(value) {
+            state.firstColumn = value
+        }
+    var focusedRow: Int?
+        get() = state.focusedRow
+        private set(value) {
+            state.focusedRow = value
+        }
     var viewportRows = 1
         private set
     var viewportColumns = 1
         private set
-    val screenState = TerminalScreenState(latest())
+    val screenState = TerminalScreenState(document?.snapshot ?: latest())
+    var onAccessibilityFocusRequested: () -> Unit = {}
+    override fun requestAccessibilityFocus() = onAccessibilityFocusRequested()
     var onReturnToInput: () -> Unit = {}
     var onDocumentChanged: () -> Unit = {}
 

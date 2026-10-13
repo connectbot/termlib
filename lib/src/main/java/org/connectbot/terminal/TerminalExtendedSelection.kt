@@ -21,7 +21,7 @@ internal class TerminalExtendedSelection(
 ) {
     fun populate(node: AccessibilityNodeInfoCompat) {
         val selection = document().selection
-        fun position(point: ReviewPosition) = AccessibilityNodeInfo.SelectionPosition(view, id(point.row), point.offset)
+        fun position(point: ReviewPosition) = AccessibilityNodeInfo.SelectionPosition(view, id(point.row), document().accessibleOffset(point))
         node.unwrap().selection = AccessibilityNodeInfo.Selection(position(selection.anchor), position(selection.active))
         node.unwrap().addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_EXTENDED_SELECTION)
     }
@@ -37,7 +37,7 @@ internal class TerminalExtendedSelection(
         fun resolve(position: AccessibilityNodeInfo.SelectionPosition): ReviewPosition? {
             if (position.view !== view) return null
             val index = row(position.virtualDescendantId) ?: return null
-            return ReviewPosition(index, position.offset).takeIf(model::valid)
+            return document().accessiblePosition(index, position.offset)?.takeIf(model::valid)
         }
         val start = resolve(selection.start) ?: return false
         val end = resolve(selection.end) ?: return false

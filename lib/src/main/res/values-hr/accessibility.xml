@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Pregledaj izlaz terminala</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Izlaz iz terminala</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Prazan redak</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d prazan redak</item>
+        <item quantity="few">%d prazna retka</item>
+        <item quantity="other">%d praznih redaka</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Osvježi pregled</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Vrati se na trenutačni izlaz</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Povratak na ulaz terminala</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Traži u izlazu terminala</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Napišite terminalsku naredbu</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Kopiraj liniju</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Pročitajte naglas posljednji izlaz naredbe</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Kopiraj posljednji izlaz naredbe</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Prethodni odzivnik ljuske</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Sljedeći odzivnik ljuske</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Opišite ovaj redak teksta</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Otvori hipervezu</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">Redak %1$d od %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Odzivnik ljuske</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Naredba</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Naredba završena</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Naredba je završena s izlaznim kodom %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Hiperveza</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Anotacija</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Tekst</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Pregledavanje zamrznute kopije izlaza terminala. Najave za novi izlaz su pauzirane.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Izlaz terminala uživo</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Previše je novih rezultata za najavu. Otvorite pregled izlaza za čitanje izlaza koji je spremljen.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Odustani</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Pošalji tekst</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Pošaljite tekst i pritisnite Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Traži tekst</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Rezultat pretraživanja %1$d od %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Nema rezultata pretraživanja</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Prethodni rezultat pretraživanja</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Sljedeći rezultat pretraživanja</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Prethodni redak</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Sljedeći red</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Idite na početak izlaza terminala</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Idi na kraj izlaza terminala</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Započni odabir teksta</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Prijeđite na drugi kraj odabira teksta</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Odaberite sve izlaze terminala</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Čisti odabir teksta</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Opišite oblikovanje teksta</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Zaustavite proširenje odabira</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">Odabir je započeo. Pomičite se po znakovima, riječima ili redovima da biste ga proširili.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">Zaustavljeno proširenje odabira.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Izbornik za pregled izlaza terminala</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Odabir kopije</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">Nema oblikovanja teksta na ovoj poziciji</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Boja teksta</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Boja pozadine</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Podebljano</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">kurziv</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Podcrtavanje</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Precrtano</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Trepćući tekst</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Inverzija boja</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">mješovito</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">jednostruko</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">dvostruko</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">valovito</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">isključeno</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">uključeno</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Idi na početak retka</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Idite do kraja retka</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Prethodna hiperveza</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Sljedeća hiperveza</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Hiperveza %3$d od %4$d</string>
+</resources>

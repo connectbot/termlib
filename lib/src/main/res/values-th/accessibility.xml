@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">ตรวจสอบเอาต์พุตเทอร์มินัล</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">เอาต์พุตเทอร์มินัล</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">บรรทัดว่าง</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="other">%d บรรทัดว่าง</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">รีเฟรชการตรวจสอบเอาต์พุต</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">กลับสู่เอาต์พุตปัจจุบัน</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">กลับไปที่อินพุตเทอร์มินัล</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">ค้นหาในเอาต์พุตเทอร์มินัล</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">เขียนคำสั่งเทอร์มินัล</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">คัดลอกบรรทัด</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">อ่านเอาต์พุตของคำสั่งล่าสุดออกเสียง</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">คัดลอกเอาต์พุตคำสั่งสุดท้าย</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">พรอมต์เชลล์ก่อนหน้า</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">พรอมต์เชลล์ถัดไป</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">อธิบายข้อความบรรทัดนี้</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">เปิดไฮเปอร์ลิงก์</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">บรรทัด %1$d จาก %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">พรอมต์เชลล์</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">คำสั่ง</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">คำสั่งเสร็จสิ้น</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">คำสั่งเสร็จสิ้นด้วยรหัสออก %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">ไฮเปอร์ลิงก์</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">คำอธิบายประกอบ</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">ข้อความ</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">การตรวจสอบสำเนาที่ค้างของเอาต์พุตเทอร์มินัล ประกาศสำหรับเอาต์พุตใหม่ถูกหยุดชั่วคราว</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">เอาต์พุตปัจจุบันของเทอร์มินัล</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">มีผลงานใหม่มากเกินไปที่จะประกาศ เปิดการตรวจสอบผลลัพธ์เพื่ออ่านผลลัพธ์ที่บันทึกไว้</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">ยกเลิก</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">ส่งข้อความ</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">ส่งข้อความแล้วกด Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">ข้อความที่ต้องการค้นหา</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">ผลการค้นหา %1$d จาก %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">ไม่มีผลการค้นหา</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">ผลการค้นหาก่อนหน้า</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">ผลการค้นหาถัดไป</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">บรรทัดก่อนหน้า</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">บรรทัดถัดไป</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">ไปที่จุดเริ่มต้นของเอาต์พุตเทอร์มินัล</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">ไปที่จุดสิ้นสุดของเอาต์พุตเทอร์มินัล</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">เริ่มการเลือกข้อความ</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">สลับไปที่ปลายอีกด้านของการเลือกข้อความ</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">เลือกเอาต์พุตเทอร์มินัลทั้งหมด</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">ล้างการเลือกข้อความ</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">อธิบายการจัดรูปแบบข้อความ</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">หยุดขยายส่วนที่เลือก</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">การคัดเลือกเริ่มต้นขึ้น เลื่อนไปตามอักขระ คำ หรือบรรทัดเพื่อขยาย</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">หยุดการขยายการเลือก</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">เมนูตรวจสอบเอาต์พุตเทอร์มินัล</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">การเลือกสำเนา</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">ไม่มีการจัดรูปแบบข้อความในตำแหน่งนี้</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">สีข้อความ</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">สีพื้นหลัง</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">ตัวหนา</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">ตัวเอียง</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">ขีดเส้นใต้</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">ขีดทับ</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">ข้อความกะพริบ</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">การกลับสี</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">ผสม</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">เส้นเดี่ยว</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">เส้นคู่</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">เส้นหยัก</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">ปิด</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">เปิด</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">ไปที่จุดเริ่มต้นของบรรทัด</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">ไปที่จุดสิ้นสุดของบรรทัด</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">ไฮเปอร์ลิงก์ก่อนหน้า</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">ไฮเปอร์ลิงก์ถัดไป</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. ไฮเปอร์ลิงก์ %3$d จาก %4$d</string>
+</resources>

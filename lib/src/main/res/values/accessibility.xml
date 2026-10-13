@@ -1,37 +1,76 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <!-- Button and screen reader action that freezes the current terminal output for review. Also the accessibility label of the frozen view. Keep it short. -->
     <string name="terminal_a11y_review">Review output</string>
+    <!-- Accessibility label of the live terminal view. Also identifies a line containing shell command output. -->
     <string name="terminal_a11y_output">Terminal output</string>
+    <!-- Spoken description of an empty terminal line. Also used when the cursor moves to a blank position. -->
     <string name="terminal_a11y_blank">Blank line</string>
+    <!-- Spoken description of consecutive empty terminal lines represented by one accessibility item. %d is the number of lines. -->
+    <plurals name="terminal_a11y_blank_lines">
+        <item quantity="one">%d blank line</item>
+        <item quantity="other">%d blank lines</item>
+    </plurals>
+    <!-- Button and screen reader action that replaces the frozen review with a new copy of the latest output. -->
     <string name="terminal_a11y_refresh">Refresh review</string>
+    <!-- Button and screen reader action that leaves frozen review and goes back to the live terminal view. -->
     <string name="terminal_a11y_resume">Resume live output</string>
+    <!-- Button and screen reader action that leaves review, focuses the terminal input, and may reopen the software keyboard. -->
     <string name="terminal_a11y_input">Return to input</string>
+    <!-- Button, screen reader action, and dialog title for searching terminal output in frozen review. -->
     <string name="terminal_a11y_search">Search output</string>
+    <!-- Button, screen reader action, and dialog title for writing a shell command in a separate editor before sending it. -->
     <string name="terminal_a11y_compose">Compose command</string>
+    <!-- Screen reader action that copies the current terminal line to the clipboard. -->
     <string name="terminal_a11y_copy_line">Copy line</string>
+    <!-- Screen reader action that reads aloud the output of the most recent completed shell command. -->
     <string name="terminal_a11y_last_output">Read last command output</string>
+    <!-- Screen reader action that copies the output of the most recent completed shell command to the clipboard. -->
     <string name="terminal_a11y_copy_output">Copy last command output</string>
+    <!-- Screen reader action that moves to the previous shell prompt in terminal output. -->
     <string name="terminal_a11y_previous_prompt">Previous prompt</string>
+    <!-- Screen reader action that moves to the next shell prompt in terminal output. -->
     <string name="terminal_a11y_next_prompt">Next prompt</string>
+    <!-- Screen reader action that announces the current line number and the kind of text on that line. -->
     <string name="terminal_a11y_describe">Describe line</string>
+    <!-- Menu and screen reader action that follows the current hyperlink. -->
     <string name="terminal_a11y_open_link">Open link</string>
+    <!-- Spoken position in terminal output. %1$d is the current line number and %2$d is the total number of lines. -->
     <string name="terminal_a11y_line_number">Line %1$d of %2$d</string>
+    <!-- Spoken text type for a shell prompt, the text a command interpreter displays before the user's command. -->
     <string name="terminal_a11y_prompt">Prompt</string>
+    <!-- Label of the shell command editor field. Also the spoken text type for a line containing a shell command. -->
     <string name="terminal_a11y_command">Command</string>
+    <!-- Spoken shell command completion with no exit code available. Also identifies a command completion marker in review. -->
     <string name="terminal_a11y_finished">Command finished</string>
+    <!-- Spoken shell command completion. %1$s is the exit code, such as 0 or 127. -->
     <string name="terminal_a11y_finished_code">Command finished with exit code %1$s</string>
+    <!-- Spoken text type for a line containing a hyperlink. -->
     <string name="terminal_a11y_link">Link</string>
+    <!-- Spoken text type for a terminal annotation supplied by shell integration. -->
     <string name="terminal_a11y_annotation">Annotation</string>
+    <!-- Spoken text type for ordinary terminal text. -->
     <string name="terminal_a11y_text">Text</string>
+    <!-- Visible and spoken status in frozen review. New output still arrives and its announcements pause. The visible status has two lines. -->
     <string name="terminal_a11y_paused">Reviewing a frozen snapshot. New output speech is paused.</string>
+    <!-- Visible and spoken status while the terminal is showing current output. The visible status has two lines. -->
     <string name="terminal_a11y_live">Live output</string>
+    <!-- Spoken notification that output was too fast to announce in full. The review action opens output the terminal still retains. -->
     <string name="terminal_a11y_overflow">More output arrived than can be announced. Review retained output to read it.</string>
+    <!-- Button that closes the search or command editor dialog. -->
     <string name="terminal_a11y_cancel">Cancel</string>
+    <!-- Command editor button that sends the entered text to the terminal without adding a final Enter keypress. -->
     <string name="terminal_a11y_send">Send text</string>
+    <!-- Command editor button that sends the entered text and then sends the Enter key to the shell. Enter is the keyboard key. -->
     <string name="terminal_a11y_send_enter">Send and Enter</string>
+    <!-- Label of the text field for a terminal-output search. -->
     <string name="terminal_a11y_search_query">Text to find</string>
+    <!-- Position within the search matches. %1$d is the current match number and %2$d is the total number of matches. -->
     <string name="terminal_a11y_search_results">Match %1$d of %2$d</string>
+    <!-- Spoken and visible status when the search found no matches. -->
     <string name="terminal_a11y_search_none">No matches</string>
+    <!-- Button that moves to the preceding search result. -->
     <string name="terminal_a11y_previous_match">Previous match</string>
+    <!-- Button that moves to the following search result. -->
     <string name="terminal_a11y_next_match">Next match</string>
     <item name="terminal_a11y_review" type="id" />
     <item name="terminal_a11y_refresh" type="id" />
@@ -46,33 +85,65 @@
     <item name="terminal_a11y_next_prompt" type="id" />
     <item name="terminal_a11y_describe" type="id" />
     <item name="terminal_a11y_open_link" type="id" />
+    <!-- Menu and screen reader action that moves one terminal line backward in review. -->
     <string name="terminal_a11y_previous_line">Previous line</string>
+    <!-- Menu and screen reader action that moves one terminal line forward in review. -->
     <string name="terminal_a11y_next_line">Next line</string>
+    <!-- Menu and screen reader action that moves to the oldest retained terminal output. -->
     <string name="terminal_a11y_start_output">Start of output</string>
+    <!-- Menu and screen reader action that moves to the end of the retained terminal output. -->
     <string name="terminal_a11y_end_output">End of output</string>
+    <!-- Menu and screen reader action that starts extending a text selection as the reading position moves. -->
     <string name="terminal_a11y_mark">Start selection</string>
+    <!-- Menu and screen reader action that changes which end of the text selection moves. -->
     <string name="terminal_a11y_switch_endpoint">Switch selection endpoint</string>
+    <!-- Menu and screen reader action that selects all retained terminal output in review. -->
     <string name="terminal_a11y_select_all">Select all output</string>
+    <!-- Menu and screen reader action that removes the current text selection. -->
     <string name="terminal_a11y_clear_selection">Clear selection</string>
+    <!-- Menu and screen reader action that announces colors and text styles at the reading position or in the selection. -->
     <string name="terminal_a11y_formatting">Describe formatting</string>
+    <!-- Menu and screen reader action that stops extending the selection and keeps the selected text. -->
     <string name="terminal_a11y_stop_mark">Stop selection</string>
+    <!-- Spoken confirmation that moving the reading position extends the selection. -->
+    <string name="terminal_a11y_selection_started">Selection started. Move by characters, words, or lines to extend it.</string>
+    <!-- Spoken confirmation that selection extension has ended. The current selection remains available to copy. -->
+    <string name="terminal_a11y_selection_stopped">Selection stopped.</string>
+    <!-- Short label of the menu button that opens the list of available actions in frozen output review. -->
     <string name="terminal_a11y_review_actions">Review actions</string>
+    <!-- Menu action that copies the selected terminal text to the clipboard. -->
     <string name="terminal_a11y_copy_selection">Copy selection</string>
+    <!-- Spoken status when color and style are unavailable at the current reading position. -->
     <string name="terminal_a11y_no_formatting">No character formatting at this position</string>
+    <!-- Label for the text color in a spoken formatting description. Its value is a hexadecimal color or mixed. -->
     <string name="terminal_a11y_foreground">Foreground</string>
+    <!-- Label for the background color in a spoken formatting description. Its value is a hexadecimal color or mixed. -->
     <string name="terminal_a11y_background">Background</string>
+    <!-- Label for the bold text style in a spoken formatting description. Its value is on, off, or mixed. -->
     <string name="terminal_a11y_bold">Bold</string>
+    <!-- Label for the italic text style in a spoken formatting description. Its value is on, off, or mixed. -->
     <string name="terminal_a11y_italic">Italic</string>
+    <!-- Label for the underline text style in a spoken formatting description. Its value is an underline style, off, or mixed. -->
     <string name="terminal_a11y_underline">Underline</string>
+    <!-- Label for the strikethrough text style in a spoken formatting description. Its value is on, off, or mixed. -->
     <string name="terminal_a11y_strike">Strikethrough</string>
+    <!-- Label for the blinking text style in a spoken formatting description. Its value is on, off, or mixed. -->
     <string name="terminal_a11y_blink">Blink</string>
+    <!-- Label for the terminal text style that exchanges foreground and background colors. Its value is on, off, or mixed. -->
     <string name="terminal_a11y_reverse">Reverse video</string>
+    <!-- Spoken formatting value when the selected cells have different values for this setting. -->
     <string name="terminal_a11y_mixed">mixed</string>
+    <!-- Spoken underline value for a single straight underline. -->
     <string name="terminal_a11y_single">single</string>
+    <!-- Spoken underline value for two straight underlines. -->
     <string name="terminal_a11y_double">double</string>
+    <!-- Spoken underline value for a wavy underline. -->
     <string name="terminal_a11y_curly">curly</string>
+    <!-- Spoken formatting value indicating that the text style is disabled. -->
     <string name="terminal_a11y_off">off</string>
+    <!-- Spoken formatting value indicating that the text style is enabled. -->
     <string name="terminal_a11y_on">on</string>
+    <!-- Spoken formatting pair. %1$s is the attribute name, such as Underline, and %2$s is its value, such as single. -->
     <string name="terminal_a11y_attribute">%1$s: %2$s</string>
     <item name="terminal_a11y_previous_line" type="id" />
     <item name="terminal_a11y_next_line" type="id" />
@@ -83,4 +154,18 @@
     <item name="terminal_a11y_select_all" type="id" />
     <item name="terminal_a11y_clear_selection" type="id" />
     <item name="terminal_a11y_formatting" type="id" />
+    <!-- Menu and screen reader action that moves to the beginning of the current terminal line. -->
+    <string name="terminal_a11y_start_line">Start of line</string>
+    <item name="terminal_a11y_start_line" type="id" />
+    <!-- Menu and screen reader action that moves to the end of the current terminal line. -->
+    <string name="terminal_a11y_end_line">End of line</string>
+    <item name="terminal_a11y_end_line" type="id" />
+    <!-- Menu and screen reader action that moves to the preceding hyperlink in terminal output. -->
+    <string name="terminal_a11y_previous_link">Previous link</string>
+    <item name="terminal_a11y_previous_link" type="id" />
+    <!-- Menu and screen reader action that moves to the following hyperlink in terminal output. -->
+    <string name="terminal_a11y_next_link">Next link</string>
+    <item name="terminal_a11y_next_link" type="id" />
+    <!-- Spoken hyperlink navigation result. %1$s is the link label, %2$s is the URL, %3$d is its position, and %4$d is the total number of links. -->
+    <string name="terminal_a11y_link_position">%1$s. %2$s. Link %3$d of %4$d</string>
 </resources>

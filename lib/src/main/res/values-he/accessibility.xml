@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">סקור פלט מסוף</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">פלט מהמסוף</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">שורה ריקה</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d שורה ריקה</item>
+        <item quantity="two">שתי שורות ריקות</item>
+        <item quantity="other">%d שורות ריקות</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">רענון סקירת הפלט</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">חזרה לפלט בזמן אמת</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">חזור לקלט מסוף</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">חיפוש בפלט המסוף</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">כתוב פקודה מסוף</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">העתק שורה</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">קרא את פלט הפקודה האחרונה בקול רם</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">העתק פלט הפקודה האחרונה</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">הנחיה קודמת של מעטפת</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">הנחית המעטפת הבאה</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">תאר את שורת הטקסט הזו</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">פתח היפר קישור</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">שורה %1$d מתוך %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">הנחיה של מעטפת</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">פקודה</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">הפקודה הסתיימה</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">הפקודה הסתיימה עם קוד יציאה %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">היפר קישור</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">ביאור</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">טקסט</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">סקירת עותק קפוא של פלט הטרמינל. הודעות על פלט חדש מושהות.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">פלט מסוף בזמן אמת</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">יש יותר מדי פלט חדש מכדי להכריז. פתח את סקירת הפלט כדי לקרוא את הפלט שנשמר.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">בטל</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">שלח טקסט</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">שלח טקסט והקש Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">טקסט לחיפוש</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">תוצאת חיפוש %1$d מתוך %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">אין תוצאות חיפוש</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">תוצאת חיפוש קודמת</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">תוצאת החיפוש הבאה</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">שורה קודמת</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">השורה הבאה</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">עבור לתחילת פלט המסוף</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">עבור לסוף פלט המסוף</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">התחל את בחירת הטקסט</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">עבור לקצה השני של בחירת הטקסט</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">בחר את כל פלט המסוף</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">נקה בחירת טקסט</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">תאר עיצוב טקסט</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">הפסק להרחיב את הבחירה</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">הבחירה החלה. הזז לפי תווים, מילים או שורות כדי להרחיב אותו.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">הרחבת הבחירה הופסקה.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">תפריט סקירת פלט מסוף</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">העתק את הבחירה</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">אין עיצוב טקסט במיקום זה</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">צבע טקסט</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">צבע רקע</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">מודגש</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">נטוי</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">קו תחתון</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">קו חוצה</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">טקסט מהבהב</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">היפוך צבע</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">מעורב</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">יחיד</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">כפול</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">גלי</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">כבוי</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">מופעל</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">עבור לתחילת הקו</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">לך לסוף השורה</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">היפר קישור קודם</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">ההיפר קישור הבא</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. היפר קישור %3$d מתוך %4$d</string>
+</resources>

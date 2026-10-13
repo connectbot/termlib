@@ -100,8 +100,9 @@ internal class TerminalReviewSelection(private val document: TerminalReviewDocum
 
     fun next(unit: ReviewUnit, forward: Boolean): ReviewPosition? {
         if (unit == ReviewUnit.LINE) {
-            val row = active.row + if (forward) 1 else -1
-            return row.takeIf { it in document.lines.indices }?.let { ReviewPosition(it, 0) }
+            val range = document.accessibleRows(active.row)
+            val row = if (forward) range.last + 1 else range.first - 1
+            return row.takeIf { it in document.lines.indices }?.let { ReviewPosition(document.accessibleRows(it).first, 0) }
         }
         var paragraph = paragraph(active.row)
         if (unit == ReviewUnit.PARAGRAPH) {

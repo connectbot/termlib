@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Tarkastele päätteen tulostetta</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Päätteen tuloste</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Tyhjä rivi</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d tyhjä rivi</item>
+        <item quantity="other">%d tyhjää riviä</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Päivitä tulosteen tarkastelu</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Palaa reaaliaikaiseen tulosteeseen</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Palaa terminaalin tuloon</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Hae päätteen tulosteesta</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Kirjoita terminaalin komento</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Kopioi rivi</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Lue viimeisimmän komennon tuloste ääneen</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Kopioi viimeisen komennon tulos</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Edellinen shell-kehote</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Seuraava kuori kehottaa</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Kuvaile tätä tekstiriviä</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Avaa hyperlinkki</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">Rivi %1$d / %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Shell-kehote</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Komento</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Komento suoritettu</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Komento päättyi poistumiskoodilla %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Hyperlinkki</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Annotaatio</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Teksti</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Tarkastellaan päätteen tulosteen pysäytettyä kopiota. Uuden tulosteen lukeminen ääneen on keskeytetty.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Päätteen reaaliaikainen tuloste</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Uutta tulostetta tuli liikaa ääneen luettavaksi. Avaa tulosteen tarkastelu lukeaksesi säilytetyn tulosteen.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Peruuta</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Lähetä tekstiä</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Lähetä teksti ja paina Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Haettava teksti</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Hakutulos %1$d / %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Ei hakutuloksia</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Edellinen hakutulos</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Seuraava hakutulos</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Edellinen rivi</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Seuraava rivi</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Siirry terminaalin lähdön alkuun</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Siirry terminaalin ulostulon loppuun</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Aloita tekstin valinta</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Vaihda tekstivalinnan toiseen päähän</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Valitse kaikki terminaalin lähtö</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Tyhjennä tekstivalinta</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Kuvaile tekstin muotoilua</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Lopeta valinnan laajentaminen</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">Valinta alkoi. Laajenna sitä siirtymällä merkkien, sanojen tai rivien mukaan.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">Valinnan laajentaminen lopetettiin.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Tulosteen tarkasteluvalikko</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Kopioi valinta</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">Ei tekstin muotoilua tässä kohdassa</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Tekstin väri</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Taustaväri</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Lihavoitu</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">Kursiivi</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Alleviivaus</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Yliviivattu</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Vilkkuvaa tekstiä</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Käänteiset värit</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">vaihteleva</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">yksinkertainen</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">kaksinkertainen</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">aaltoileva</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">pois päältä</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">päällä</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Siirry rivin alkuun</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Mene rivin loppuun</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Edellinen hyperlinkki</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Seuraava hyperlinkki</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Hyperlinkki %3$d/%4$d</string>
+</resources>

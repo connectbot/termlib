@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Examinați ieșirea terminalului</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Ieșirea terminalului</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Linie goală</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d rând gol</item>
+        <item quantity="few">%d rânduri goale</item>
+        <item quantity="other">%d de rânduri goale</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Actualizează examinarea</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Revino la ieșirea în timp real</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Reveniți la intrarea terminalului</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Caută în ieșirea terminalului</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Scrieți o comandă de terminal</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Copiați linia</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Citește cu voce tare rezultatul ultimei comenzi</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Copiați ultima ieșire de comandă</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Promptul shell anterior</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Următorul prompt shell</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Descrieți această linie de text</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Deschide hyperlink</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">Linia %1$d din %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Prompt Shell</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Comandă</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Comanda s-a încheiat.</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Comanda terminată cu codul de ieșire %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Hyperlink</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Adnotare</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Text</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Revizuirea unei copii înghețate a ieșirii terminalului. Anunțurile pentru noi rezultate sunt întrerupte.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Ieșirea terminalului în timp real</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Există prea multe rezultate noi de anunțat. Deschideți examinarea rezultatelor pentru a citi rezultatul care a fost salvat.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Anulează</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Trimite text</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Trimiteți text și apăsați Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Text de căutat</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Rezultatul căutării %1$d din %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Niciun rezultat al căutării</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Rezultatul căutării anterioare</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Următorul rezultat al căutării</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Linia anterioară</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Rândul următor</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Mergeți la începutul ieșirii terminalului</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Mergeți la sfârșitul ieșirii terminalului</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Începeți selecția textului</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Comutați la celălalt capăt al selecției de text</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Selectați toate ieșirile terminale</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Ștergeți selecția textului</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Descrieți formatarea textului</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Nu mai extindeți selecția</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">A început selecția. Mutați după caractere, cuvinte sau rânduri pentru a o extinde.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">S-a oprit extinderea selecției.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Meniul de revizuire a ieșirii terminalului</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Copiați selecția</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">Nu se formatează text în această poziție</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Culoarea textului</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Culoare de fundal</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Aldin</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">cursiv</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Subliniere</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Tăiere cu o linie</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Text care clipește</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Inversarea culorii</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">mixt</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">simplă</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">dublă</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">ondulată</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">dezactivat</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">activat</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Mergeți la începutul liniei</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Du-te la sfârșitul liniei</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Hyperlink anterior</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Următorul hyperlink</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Hyperlink %3$d din %4$d</string>
+</resources>
