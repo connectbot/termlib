@@ -12,7 +12,6 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
-import android.icu.text.BreakIterator
 import android.os.Build
 import android.os.Bundle
 import android.view.GestureDetector
@@ -40,8 +39,6 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
     private val idRows = mutableMapOf<Int, Int>()
     private var focused = INVALID
     private var hovered = INVALID
-    private var selectionStart = 0
-    private var selectionEnd = 0
     private var lastTop = 0
     private var lastColumn = 0
     private var wasReviewing = false
@@ -81,6 +78,7 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
     )
 
     private val document: TerminalReviewDocument get() = review.document ?: live
+    private val selection get() = document.selection
     private val firstVisibleRow: Int get() = if (review.isReviewing) review.firstRow else liveTop
     private val column: Int get() = if (review.isReviewing) review.firstColumn else 0
     private val visibleRows: Int get() = (height / charHeight).toInt().coerceAtLeast(1)
@@ -133,6 +131,7 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
 
     internal val provider = object : AccessibilityNodeProviderCompat() {
         override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfoCompat? {
+            ensureDocumentGeneration()
             if (virtualViewId == HOST) {
                 return AccessibilityNodeInfoCompat.obtain(this@TerminalAccessibilityView).apply {
                     setSource(this@TerminalAccessibilityView)
@@ -157,6 +156,7 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
                     if (column > 0) addAction(AccessibilityActionCompat.ACTION_SCROLL_LEFT)
                     if (column + visibleColumns < document.snapshot.cols) addAction(AccessibilityActionCompat.ACTION_SCROLL_RIGHT)
                     actions(this)
+                    if (Build.VERSION.SDK_INT >= 37) extendedSelection().populate(this)
                 }
             }
             val row = idRows[virtualViewId] ?: return null
@@ -187,7 +187,8 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
                 movementGranularities = GRANULARITIES
                 isTextSelectable = true
                 if (Build.VERSION.SDK_INT >= 26) availableExtraData = listOf(CHARACTER_LOCATION)
-                if (focused == virtualViewId) setTextSelection(selectionStart, selectionEnd)
+                this@TerminalAccessibilityView.selection.intersection(row)?.let { (start, end) -> setTextSelection(start, end) }
+                if (row > firstVisibleRow && row < firstVisibleRow + visibleRows) setTraversalAfter(this@TerminalAccessibilityView, id(row - 1))
                 actions(this)
                 addAction(AccessibilityActionCompat(R.id.terminal_a11y_copy_line, context.getString(R.string.terminal_a11y_copy_line)))
                 addAction(AccessibilityActionCompat(R.id.terminal_a11y_describe, context.getString(R.string.terminal_a11y_describe)))
@@ -197,9 +198,13 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
             }
         }
 
-        override fun findFocus(focus: Int): AccessibilityNodeInfoCompat? = if (focus == AccessibilityNodeInfoCompat.FOCUS_ACCESSIBILITY && focused != INVALID) createAccessibilityNodeInfo(focused) else null
+        override fun findFocus(focus: Int): AccessibilityNodeInfoCompat? {
+            ensureDocumentGeneration()
+            return if (focus == AccessibilityNodeInfoCompat.FOCUS_ACCESSIBILITY && focused != INVALID) createAccessibilityNodeInfo(focused) else null
+        }
 
         override fun addExtraDataToAccessibilityNodeInfo(virtualViewId: Int, info: AccessibilityNodeInfoCompat, extraDataKey: String, arguments: Bundle?) {
+            ensureDocumentGeneration()
             if (Build.VERSION.SDK_INT < 26 || extraDataKey != CHARACTER_LOCATION || arguments == null) return
             val row = idRows[virtualViewId] ?: return
             val text = document.text(row)
@@ -220,13 +225,22 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
             info.extras.putParcelableArray(CHARACTER_LOCATION, rectangles)
         }
 
-        override fun findAccessibilityNodeInfosByText(text: String, virtualViewId: Int): List<AccessibilityNodeInfoCompat> = document.search(text).map { it.first }.distinct().mapNotNull { row -> createAccessibilityNodeInfo(id(row)) }
+        override fun findAccessibilityNodeInfosByText(text: String, virtualViewId: Int): List<AccessibilityNodeInfoCompat> {
+            ensureDocumentGeneration()
+            return document.search(text).map { it.first }.distinct().mapNotNull { row -> createAccessibilityNodeInfo(id(row)) }
+        }
 
         override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
+            ensureDocumentGeneration()
             val row = idRows[virtualViewId]
             if (virtualViewId != HOST && row == null) return false
+            if (Build.VERSION.SDK_INT >= 37 && action == android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_EXTENDED_SELECTION.id) {
+                if (virtualViewId != HOST) return false
+                freeze()
+                return extendedSelection().perform(arguments).also { if (it) showSelection() }
+            }
             when (action) {
-                AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS -> return row?.let { focusRow(it) } ?: false
+                AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS -> return row?.let { focusRow(it, preserveSelection = !selection.isEmpty && !selection.marking) } ?: false
 
                 AccessibilityNodeInfoCompat.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> {
                     if (focused != virtualViewId) return false
@@ -267,17 +281,15 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
                     val end = arguments.getInt(AccessibilityNodeInfoCompat.ACTION_ARGUMENT_SELECTION_END_INT, -1)
                     val length = document.lines[row].text.length
                     if (start !in 0..length || end !in 0..length) return false
-                    focusRow(row)
-                    selectionStart = start
-                    selectionEnd = end
-                    revealOffset(row, end)
-                    selectionEvent()
+                    freeze()
+                    selection.set(ReviewPosition(row, start), ReviewPosition(row, end))
+                    showSelection()
                     return true
                 }
 
                 AccessibilityNodeInfoCompat.ACTION_COPY -> {
-                    if (row == null || focused != virtualViewId || selectionStart == selectionEnd) return false
-                    copy(document.lines[row].text.substring(minOf(selectionStart, selectionEnd), maxOf(selectionStart, selectionEnd)))
+                    if (selection.isEmpty) return false
+                    copy(selection.copyText())
                     return true
                 }
 
@@ -349,6 +361,57 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
                     return true
                 }
 
+                R.id.terminal_a11y_previous_line, R.id.terminal_a11y_next_line -> {
+                    freeze()
+                    if (row != null && row != selection.active.row) selection.move(ReviewPosition(row, 0))
+                    val next = selection.next(ReviewUnit.LINE, action == R.id.terminal_a11y_next_line) ?: return false
+                    selection.move(next)
+                    showSelection()
+                    return true
+                }
+
+                R.id.terminal_a11y_start_output, R.id.terminal_a11y_end_output -> {
+                    freeze()
+                    selection.move(if (action == R.id.terminal_a11y_start_output) ReviewPosition(0, 0) else selection.last)
+                    showSelection()
+                    return true
+                }
+
+                R.id.terminal_a11y_mark -> {
+                    freeze()
+                    if (!selection.marking) selection.clear()
+                    selection.marking = !selection.marking
+                    showSelection()
+                    onMessage(context.getString(if (selection.marking) R.string.terminal_a11y_mark else R.string.terminal_a11y_stop_mark))
+                    return true
+                }
+
+                R.id.terminal_a11y_switch_endpoint -> {
+                    freeze()
+                    selection.switchEndpoint()
+                    showSelection()
+                    return true
+                }
+
+                R.id.terminal_a11y_select_all -> {
+                    freeze()
+                    selection.selectAll()
+                    showSelection()
+                    return true
+                }
+
+                R.id.terminal_a11y_clear_selection -> {
+                    selection.clear()
+                    showSelection()
+                    return true
+                }
+
+                R.id.terminal_a11y_formatting -> {
+                    freeze()
+                    onMessage(describeReviewFormatting(context, document))
+                    return true
+                }
+
                 R.id.terminal_a11y_open_link -> {
                     val link = row?.let { document.lines[it].semanticSegments.firstOrNull { segment -> segment.semanticType == SemanticType.HYPERLINK }?.metadata } ?: return false
                     onLink(link)
@@ -379,6 +442,18 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
         }
         add(R.id.terminal_a11y_input, R.string.terminal_a11y_input)
         add(R.id.terminal_a11y_search, R.string.terminal_a11y_search)
+        add(R.id.terminal_a11y_previous_line, R.string.terminal_a11y_previous_line)
+        add(R.id.terminal_a11y_next_line, R.string.terminal_a11y_next_line)
+        add(R.id.terminal_a11y_start_output, R.string.terminal_a11y_start_output)
+        add(R.id.terminal_a11y_end_output, R.string.terminal_a11y_end_output)
+        add(R.id.terminal_a11y_mark, if (selection.marking) R.string.terminal_a11y_stop_mark else R.string.terminal_a11y_mark)
+        add(R.id.terminal_a11y_select_all, R.string.terminal_a11y_select_all)
+        add(R.id.terminal_a11y_formatting, R.string.terminal_a11y_formatting)
+        if (!selection.isEmpty) {
+            add(R.id.terminal_a11y_switch_endpoint, R.string.terminal_a11y_switch_endpoint)
+            add(R.id.terminal_a11y_clear_selection, R.string.terminal_a11y_clear_selection)
+            node.addAction(AccessibilityActionCompat.ACTION_COPY)
+        }
         if (onCompose != null) add(R.id.terminal_a11y_compose, R.string.terminal_a11y_compose)
         if (document.lastOutput() != null) {
             add(R.id.terminal_a11y_last_output, R.string.terminal_a11y_last_output)
@@ -388,6 +463,18 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
 
     private fun freeze() {
         review.begin(live.snapshot, top = liveTop)
+        if (lastReviewDocument == null) lastReviewDocument = review.document
+    }
+
+    /** Controller calls can replace review before Compose delivers the next view update. */
+    private fun ensureDocumentGeneration() {
+        if (documentSnapshot !== document.snapshot || (lastReviewDocument != null && lastReviewDocument !== review.document)) {
+            clearFocusNode()
+            resetDocument()
+            if (review.isReviewing) focusRow(review.focusedRow ?: 0, preserveSelection = true)
+        } else if (review.isReviewing) {
+            lastReviewDocument = review.document
+        }
     }
 
     private fun resetDocument() {
@@ -401,30 +488,41 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
         event(HOST, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
     }
 
-    internal fun focusRow(row: Int, offset: Int? = null): Boolean {
+    internal fun focusRow(row: Int, offset: Int? = null, preserveSelection: Boolean = false): Boolean {
         if (row !in document.lines.indices) return false
         freeze()
         val target = id(row)
-        if (focused != target) {
-            clearFocusNode()
-            selectionStart = (offset ?: 0).coerceIn(0, document.lines[row].text.length)
-            selectionEnd = selectionStart
-            focused = target
-            review.focus(row)
-            if (lastTop != firstVisibleRow) scrolled()
-            event(target, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
-        } else {
-            review.focus(row)
-            if (offset != null) {
-                selectionStart = offset.coerceIn(0, document.lines[row].text.length)
-                selectionEnd = selectionStart
-                selectionEvent()
-            }
+        val changed = focused != target
+        if (!preserveSelection && ((changed && selection.active.row != row) || offset != null)) {
+            selection.move(ReviewPosition(row, (offset ?: 0).coerceIn(0, document.lines[row].text.length)))
         }
+        if (changed) clearFocusNode()
+        focused = target
+        review.focus(row)
+        if (lastTop != firstVisibleRow) scrolled()
         if (offset != null) revealOffset(row, offset)
+        if (changed) event(target, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+        if (!preserveSelection && selection.marking) {
+            selectionEvent()
+            event(HOST, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
         invalidate()
         return true
     }
+
+    private fun showSelection() {
+        focusRow(selection.active.row, selection.active.offset, preserveSelection = true)
+        selectionEvent()
+        event(HOST, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        invalidate()
+    }
+
+    @androidx.annotation.RequiresApi(37)
+    private fun extendedSelection() = TerminalExtendedSelection(this, { document }, ::id, { idRows[it] })
+
+    internal val isMarking get() = selection.marking
+
+    internal fun reviewAction(action: Int): Boolean = provider.performAction(HOST, action, null)
 
     private fun revealOffset(row: Int, offset: Int) {
         val cell = document.text(row).column(offset).coerceAtMost(document.snapshot.cols - 1)
@@ -464,6 +562,7 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
     private fun scrolled() {
         lastTop = firstVisibleRow
         lastColumn = column
+        event(HOST, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         event(HOST, AccessibilityEvent.TYPE_VIEW_SCROLLED) {
             fromIndex = firstVisibleRow
             toIndex = minOf(firstVisibleRow + visibleRows, document.lines.size) - 1
@@ -493,40 +592,64 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
     override fun performClick(): Boolean = super.performClick()
 
     private fun traverse(row: Int, action: Int, arguments: Bundle?): Boolean {
-        val text = document.lines[row].text
         val granularity = arguments?.getInt(AccessibilityNodeInfoCompat.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT) ?: return false
-        val forward = action == AccessibilityNodeInfoCompat.ACTION_NEXT_AT_MOVEMENT_GRANULARITY
-        focusRow(row)
-        val iterator = when (granularity) {
-            AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_CHARACTER -> BreakIterator.getCharacterInstance()
-            AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_WORD -> BreakIterator.getWordInstance()
-            AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_LINE, AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_PARAGRAPH -> null
+        val unit = when (granularity) {
+            AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_CHARACTER -> ReviewUnit.CHARACTER
+            AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_WORD -> ReviewUnit.WORD
+            AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_LINE -> ReviewUnit.LINE
+            AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_PARAGRAPH -> ReviewUnit.PARAGRAPH
             else -> return false
         }
-        iterator?.setText(text)
-        val previous = selectionEnd
-        val next = if (forward) iterator?.following(previous) ?: text.length else iterator?.preceding(previous) ?: 0
-        if (next == BreakIterator.DONE || next == previous) return false
-        selectionEnd = next
-        if (!arguments.getBoolean(AccessibilityNodeInfoCompat.ACTION_ARGUMENT_EXTEND_SELECTION_BOOLEAN)) selectionStart = next
-        selectionEvent()
-        revealOffset(row, next)
-        event(focused, AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY) {
-            this.text.add(text)
-            fromIndex = minOf(previous, next)
-            toIndex = maxOf(previous, next)
-            this.action = action
-            movementGranularity = granularity
+        freeze()
+        if (selection.active.row != row) selection.move(ReviewPosition(row, 0), selection.marking || arguments.getBoolean(AccessibilityNodeInfoCompat.ACTION_ARGUMENT_EXTEND_SELECTION_BOOLEAN))
+        val previous = selection.active
+        val forward = action == AccessibilityNodeInfoCompat.ACTION_NEXT_AT_MOVEMENT_GRANULARITY
+        val next = selection.next(unit, forward) ?: return false
+        selection.move(next, selection.marking || arguments.getBoolean(AccessibilityNodeInfoCompat.ACTION_ARGUMENT_EXTEND_SELECTION_BOOLEAN))
+        showSelection()
+        if (unit == ReviewUnit.LINE || unit == ReviewUnit.PARAGRAPH) {
+            if (previous.row == next.row) onMessage(document.lines[next.row].text)
+            return true
+        }
+        // Each event's offsets address its source row. A word spanning a soft wrap
+        // is spoken as one unit through the existing feedback region instead.
+        var start = minOf(previous, next)
+        var end = maxOf(previous, next)
+        if (start.row != end.row && !document.lines[start.row].softWrapped) {
+            if (forward) start = ReviewPosition(end.row, 0) else end = ReviewPosition(start.row, document.lines[start.row].text.length)
+        }
+        val pieces = (start.row..end.row).mapNotNull { index ->
+            val text = document.lines[index].text
+            val first = if (index == start.row) start.offset else 0
+            val last = if (index == end.row) end.offset else text.length
+            if (first == last) null else Triple(index, first, last)
+        }
+        if (pieces.size > 1) {
+            onMessage(pieces.joinToString("") { (index, first, last) -> document.lines[index].text.substring(first, last) })
+        } else {
+            pieces.firstOrNull()?.let { (index, first, last) ->
+                event(id(index), AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY) {
+                    text.add(document.lines[index].text)
+                    fromIndex = first
+                    toIndex = last
+                    this.action = action
+                    movementGranularity = granularity
+                }
+            }
         }
         return true
     }
 
-    private fun selectionEvent() = event(focused, AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED) {
-        val row = idRows[focused] ?: return@event
-        text.add(document.lines[row].text)
-        fromIndex = selectionStart
-        toIndex = selectionEnd
-        itemCount = document.lines[row].text.length
+    private fun selectionEvent() {
+        for (row in firstVisibleRow until minOf(firstVisibleRow + visibleRows, document.lines.size)) {
+            val range = selection.intersection(row)
+            event(id(row), AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED) {
+                text.add(document.lines[row].text)
+                fromIndex = range?.first ?: -1
+                toIndex = range?.second ?: -1
+                itemCount = document.lines[row].text.length
+            }
+        }
     }
 
     private fun copy(text: String) {
@@ -536,34 +659,44 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
     fun reviewKey(event: KeyEvent): Boolean {
         if (!review.isReviewing) return false
         if (event.action != KeyEvent.ACTION_DOWN) return true
-        val row = idRows[focused] ?: review.focusedRow ?: firstVisibleRow
+        val row = selection.active.row
+        val extend = selection.marking || event.isShiftPressed
         when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> focusRow((row - 1).coerceAtLeast(0))
-
-            KeyEvent.KEYCODE_DPAD_DOWN -> focusRow((row + 1).coerceAtMost(document.lines.lastIndex))
-
-            KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_PAGE_DOWN -> {
-                review.scroll(rows = visibleRows * if (event.keyCode == KeyEvent.KEYCODE_PAGE_UP) -1 else 1)
-                focusRow(review.firstRow)
-                scrolled()
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_PAGE_DOWN,
+            -> {
+                val rows = when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_UP -> -1
+                    KeyEvent.KEYCODE_DPAD_DOWN -> 1
+                    KeyEvent.KEYCODE_PAGE_UP -> -visibleRows
+                    else -> visibleRows
+                }
+                if (selection.vertical(rows, extend)) showSelection()
             }
 
-            KeyEvent.KEYCODE_MOVE_HOME -> focusRow(0)
-
-            KeyEvent.KEYCODE_MOVE_END -> focusRow(document.lines.lastIndex)
+            KeyEvent.KEYCODE_MOVE_HOME, KeyEvent.KEYCODE_MOVE_END -> {
+                selection.move(if (event.keyCode == KeyEvent.KEYCODE_MOVE_HOME) ReviewPosition(0, 0) else selection.last, extend)
+                showSelection()
+            }
 
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> traverse(
                 row,
                 if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) AccessibilityNodeInfoCompat.ACTION_NEXT_AT_MOVEMENT_GRANULARITY else AccessibilityNodeInfoCompat.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY,
                 Bundle().apply {
                     putInt(AccessibilityNodeInfoCompat.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT, if (event.isCtrlPressed) AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_WORD else AccessibilityNodeInfoCompat.MOVEMENT_GRANULARITY_CHARACTER)
-                    putBoolean(AccessibilityNodeInfoCompat.ACTION_ARGUMENT_EXTEND_SELECTION_BOOLEAN, event.isShiftPressed)
+                    putBoolean(AccessibilityNodeInfoCompat.ACTION_ARGUMENT_EXTEND_SELECTION_BOOLEAN, extend)
                 },
             )
 
             KeyEvent.KEYCODE_ESCAPE -> review.returnToInput()
 
-            KeyEvent.KEYCODE_C -> if (event.isCtrlPressed) provider.performAction(focused, AccessibilityNodeInfoCompat.ACTION_COPY, null)
+            KeyEvent.KEYCODE_C -> if (event.isCtrlPressed) reviewAction(AccessibilityNodeInfoCompat.ACTION_COPY) else return false
+
+            KeyEvent.KEYCODE_A -> if (event.isCtrlPressed) reviewAction(R.id.terminal_a11y_select_all) else return false
+
+            KeyEvent.KEYCODE_M -> if (event.isCtrlPressed && event.isShiftPressed) reviewAction(R.id.terminal_a11y_mark) else return false
+
+            KeyEvent.KEYCODE_X -> if (event.isCtrlPressed && event.isShiftPressed) reviewAction(R.id.terminal_a11y_switch_endpoint) else return false
 
             else -> return false
         }
@@ -574,17 +707,20 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val row = idRows[focused] ?: return
-        if (row in firstVisibleRow until firstVisibleRow + visibleRows) canvas.drawRect(0f, (row - firstVisibleRow) * charHeight, width.toFloat(), (row - firstVisibleRow + 1) * charHeight, focusPaint)
-        if (selectionStart != selectionEnd && row in firstVisibleRow until firstVisibleRow + visibleRows) {
-            val text = document.text(row)
-            var lastCell = -1
-            for (offset in minOf(selectionStart, selectionEnd) until maxOf(selectionStart, selectionEnd)) {
-                val cell = text.column(offset)
-                if (cell == lastCell) continue
-                lastCell = cell
-                val x = (visualColumn(row - firstVisibleRow, cell) - column) * charWidth
-                canvas.drawRect(x, (row - firstVisibleRow) * charHeight, x + text.line.cells.width(cell).coerceAtLeast(1) * charWidth, (row - firstVisibleRow + 1) * charHeight, focusPaint)
+        val row = idRows[focused]
+        if (row != null && row in firstVisibleRow until firstVisibleRow + visibleRows) canvas.drawRect(0f, (row - firstVisibleRow) * charHeight, width.toFloat(), (row - firstVisibleRow + 1) * charHeight, focusPaint)
+        if (!selection.isEmpty) {
+            for (selectedRow in firstVisibleRow until minOf(firstVisibleRow + visibleRows, document.lines.size)) {
+                val (start, end) = selection.intersection(selectedRow) ?: continue
+                val text = document.text(selectedRow)
+                var lastCell = -1
+                for (offset in start until end) {
+                    val cell = text.column(offset)
+                    if (cell == lastCell) continue
+                    lastCell = cell
+                    val x = (visualColumn(selectedRow - firstVisibleRow, cell) - column) * charWidth
+                    canvas.drawRect(x, (selectedRow - firstVisibleRow) * charHeight, x + text.line.cells.width(cell).coerceAtLeast(1) * charWidth, (selectedRow - firstVisibleRow + 1) * charHeight, focusPaint)
+                }
             }
         }
     }

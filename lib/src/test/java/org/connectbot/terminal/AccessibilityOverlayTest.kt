@@ -22,6 +22,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat as Node
 
+@org.robolectric.annotation.Config(sdk = [24, 34])
 @RunWith(AndroidJUnit4::class)
 class AccessibilityOverlayTest {
     private lateinit var review: TerminalReviewSession
@@ -82,6 +83,63 @@ class AccessibilityOverlayTest {
         assertFalse(provider.performAction(id, Node.ACTION_SET_SELECTION, selection))
     }
 
+    @Test fun characterNavigationCrossesViewportIntoOlderHistory() {
+        view.focusRow(12, 0)
+        val args = Bundle().apply { putInt(Node.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT, Node.MOVEMENT_GRANULARITY_CHARACTER) }
+        assertTrue(view.provider.performAction(view.id(12), Node.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY, args))
+        assertEquals(11, review.focusedRow)
+        assertEquals(11, review.firstRow)
+        assertEquals("History 11", view.provider.findFocus(Node.FOCUS_ACCESSIBILITY)!!.text.toString())
+        assertEquals(9, view.provider.findFocus(Node.FOCUS_ACCESSIBILITY)!!.textSelectionEnd)
+        view.reviewAction(R.id.terminal_a11y_start_output)
+        assertFalse(view.provider.performAction(view.id(0), Node.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY, args))
+    }
+
+    @Test fun markSelectionSurvivesScrollResizeAndNewOutput() {
+        view.focusRow(11, 8)
+        assertTrue(view.reviewAction(R.id.terminal_a11y_mark))
+        assertTrue(view.provider.performAction(view.id(12), Node.ACTION_ACCESSIBILITY_FOCUS, null))
+        assertEquals("11\n", review.document!!.selection.copyText())
+        val original = review.document
+        snapshot = accessibilitySnapshot(0, 1).copy(alternateScreen = true)
+        view.update(snapshot, 0, 10f, 20f)
+        view.layout(0, 0, 100, 40)
+        assertEquals(original, review.document)
+        assertTrue(view.reviewAction(Node.ACTION_SCROLL_BACKWARD))
+        assertEquals("11\n", review.document!!.selection.copyText())
+        assertTrue(view.reviewAction(R.id.terminal_a11y_switch_endpoint))
+        assertEquals(ReviewPosition(11, 8), review.document!!.selection.active)
+        assertTrue(view.reviewAction(Node.ACTION_COPY))
+        assertEquals("11\n", view.context.getSystemService(android.content.ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString())
+    }
+
+    @Test fun keyboardSelectionExtendsAcrossRowsAndSwitchesEndpoints() {
+        fun key(code: Int, meta: Int = 0) = view.reviewKey(android.view.KeyEvent(0, 0, android.view.KeyEvent.ACTION_DOWN, code, 0, meta))
+        view.focusRow(12, 2)
+        assertTrue(key(android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.META_SHIFT_ON))
+        assertEquals(ReviewPosition(12, 2), review.document!!.selection.anchor)
+        assertEquals(ReviewPosition(11, 2), review.document!!.selection.active)
+        assertTrue(key(android.view.KeyEvent.KEYCODE_X, android.view.KeyEvent.META_CTRL_ON or android.view.KeyEvent.META_SHIFT_ON))
+        assertEquals(ReviewPosition(12, 2), review.document!!.selection.active)
+        assertTrue(key(android.view.KeyEvent.KEYCODE_A, android.view.KeyEvent.META_CTRL_ON))
+        assertEquals(ReviewPosition(0, 0), review.document!!.selection.anchor)
+        assertEquals(review.document!!.selection.last, review.document!!.selection.active)
+        assertTrue(view.reviewAction(R.id.terminal_a11y_clear_selection))
+        assertTrue(review.isReviewing)
+        assertTrue(review.document!!.selection.isEmpty)
+    }
+
+    @Test fun lineActionsReachBothEndsWithoutLeavingReview() {
+        view.focusRow(12)
+        repeat(12) { assertTrue(view.reviewAction(R.id.terminal_a11y_previous_line)) }
+        assertEquals(0, review.firstRow)
+        assertFalse(view.reviewAction(R.id.terminal_a11y_previous_line))
+        repeat(14) { assertTrue(view.reviewAction(R.id.terminal_a11y_next_line)) }
+        assertEquals(14, review.focusedRow)
+        assertEquals(12, review.firstRow)
+        assertFalse(view.reviewAction(R.id.terminal_a11y_next_line))
+    }
+
     @Test fun staleIdsAfterRefreshAreRejected() {
         val id = view.id(12)
         view.provider.performAction(id, Node.ACTION_ACCESSIBILITY_FOCUS, null)
@@ -90,5 +148,18 @@ class AccessibilityOverlayTest {
         view.provider.performAction(id, R.id.terminal_a11y_refresh, null)
         assertNull(view.provider.createAccessibilityNodeInfo(id))
         assertFalse(view.provider.performAction(id, R.id.terminal_a11y_resume, null))
+    }
+
+    @Test fun controllerRefreshRejectsOldSelectionBeforeNextViewUpdate() {
+        view.focusRow(12, 3)
+        val oldId = view.id(12)
+        review.refreshReview()
+        val range = Bundle().apply {
+            putInt(Node.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+            putInt(Node.ACTION_ARGUMENT_SELECTION_END_INT, 2)
+        }
+        assertFalse(view.provider.performAction(oldId, Node.ACTION_SET_SELECTION, range))
+        assertNull(view.provider.createAccessibilityNodeInfo(oldId))
+        assertTrue(review.document!!.selection.isEmpty)
     }
 }
