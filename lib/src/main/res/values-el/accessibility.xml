@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Ελέγξτε την έξοδο τερματικού</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Έξοδος από το τερματικό</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Κενή γραμμή</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d κενή γραμμή</item>
+        <item quantity="other">%d κενές γραμμές</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Ανανέωση προβολής εξόδου</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Επιστροφή στην τρέχουσα έξοδο</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Επιστρέψτε στην είσοδο τερματικού</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Αναζήτηση στην έξοδο τερματικού</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Γράψτε μια εντολή τερματικού</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Αντιγραφή γραμμής</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Διαβάστε δυνατά την έξοδο της τελευταίας εντολής</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Αντιγράψτε την έξοδο της τελευταίας εντολής</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Προηγούμενη προτροπή κελύφους</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Επόμενη προτροπή κελύφους</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Περιγράψτε αυτή τη γραμμή κειμένου</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Άνοιγμα υπερσυνδέσμου</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">Γραμμή %1$d από %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Προτροπή κελύφους</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Εντολή</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Η εντολή ολοκληρώθηκε</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Η εντολή ολοκληρώθηκε με κωδικό εξόδου %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Υπερσύνδεσμος</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Σχολιασμός</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Κείμενο</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Έλεγχος παγωμένου αντιγράφου της εξόδου τερματικού. Οι ανακοινώσεις για νέα έξοδο έχουν τεθεί σε παύση.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Ζωντανή έξοδος τερματικού</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Υπάρχουν πάρα πολλά νέα αποτελέσματα για να ανακοινωθούν. Ανοίξτε την αναθεώρηση εξόδου για να διαβάσετε το αποτέλεσμα που αποθηκεύτηκε.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Ακύρωση</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Αποστολή κειμένου</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Στείλτε κείμενο και πατήστε Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Αναζήτηση κειμένου</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Αποτέλεσμα αναζήτησης %1$d από %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Δεν υπάρχουν αποτελέσματα αναζήτησης</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Προηγούμενο αποτέλεσμα αναζήτησης</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Επόμενο αποτέλεσμα αναζήτησης</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Προηγούμενη γραμμή</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Επόμενη γραμμή</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Μεταβείτε στην αρχή της εξόδου τερματικού</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Μεταβείτε στο τέλος της εξόδου τερματικού</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Έναρξη επιλογής κειμένου</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Μεταβείτε στο άλλο άκρο της επιλογής κειμένου</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Επιλέξτε όλη την έξοδο τερματικού</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Εκκαθάριση επιλογής κειμένου</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Περιγράψτε τη μορφοποίηση κειμένου</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Σταματήστε την επέκταση της επιλογής</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">Η επιλογή ξεκίνησε. Μετακινηθείτε κατά χαρακτήρες, λέξεις ή γραμμές για να το επεκτείνετε.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">Σταμάτησε η επέκταση της επιλογής.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Μενού ελέγχου εξόδου τερματικού</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Αντιγραφή επιλογής</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">Δεν υπάρχει μορφοποίηση κειμένου σε αυτήν τη θέση</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Χρώμα κειμένου</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Χρώμα φόντου</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Έντονη γραφή</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">Πλάγια γραφή</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Υπογράμμιση</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Διακριτή διαγραφή</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Κείμενο που αναβοσβήνει</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Αντιστροφή χρώματος</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">μεικτό</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">μονή</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">διπλή</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">κυματιστή</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">ανενεργό</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">ενεργό</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Πηγαίνετε στην αρχή της γραμμής</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Πηγαίνετε στο τέλος της γραμμής</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Προηγούμενος υπερσύνδεσμος</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Επόμενος υπερσύνδεσμος</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Υπερσύνδεσμος %3$d από %4$d</string>
+</resources>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Terminalausgabe prüfen</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Terminalausgabe</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Leerzeile</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d Leerzeile</item>
+        <item quantity="other">%d Leerzeilen</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Ausgabeprüfung aktualisieren</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Zur aktuellen Ausgabe zurückkehren</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Zurück zur Terminaleingabe</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Terminalausgabe durchsuchen</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Terminalbefehl verfassen</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Zeile kopieren</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Ausgabe des letzten Befehls vorlesen</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Kopieren Sie die letzte Befehlsausgabe</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Vorherige Shell-Eingabeaufforderung</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Nächste Shell-Eingabeaufforderung</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Beschreiben Sie diese Textzeile</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Hyperlink öffnen</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">Linie %1$d von %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Shell-Eingabeaufforderung</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Befehl</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Befehl beendet</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Befehl mit Exit-Code %1$s beendet</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Hyperlink</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Anmerkung</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Text</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Die eingefrorene Terminalausgabe wird angezeigt. Die Sprachausgabe für neue Ausgaben ist pausiert.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Live-Terminalausgabe</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Es gibt mehr neue Ausgabe, als vorgelesen werden kann. Öffnen Sie die Ausgabeprüfung, um die noch vorhandene Ausgabe zu lesen.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Abbrechen</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Text senden</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Text senden und Eingabetaste drücken</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Suchtext</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Suchergebnis %1$d von %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Keine Suchergebnisse</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Vorheriger Treffer</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Nächster Treffer</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Vorherige Zeile</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Nächste Zeile</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Zum Anfang der Ausgabe</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Zum Ende der Ausgabe</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Textauswahl starten</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Wechseln Sie zum anderen Ende der Textauswahl</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Wählen Sie alle Terminalausgaben aus</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Klare Textauswahl</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Beschreiben Sie die Textformatierung</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Erweitern der Auswahl beenden</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">Auswahl gestartet. Bewegen Sie sich um Zeichen, Wörter oder Zeilen, um es zu erweitern.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">Die Erweiterung der Auswahl wurde gestoppt.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Aktionen zur Ausgabeprüfung</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Auswahl kopieren</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">An dieser Stelle ist keine Textformatierung vorhanden</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Textfarbe</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Hintergrundfarbe</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Fett</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">Kursiv</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Unterstrichen</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Durchgestrichen</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Blinkender Text</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Farbumkehr</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">gemischt</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">einfach</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">doppelt</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">wellig</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">aus</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">an</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Gehen Sie zum Anfang der Zeile</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Gehen Sie zum Ende der Zeile</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Vorheriger Hyperlink</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Nächster Hyperlink</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Hyperlink %3$d von %4$d</string>
+</resources>

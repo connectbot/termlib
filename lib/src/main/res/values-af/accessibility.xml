@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Hersien terminaaluitvoer</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Terminaaluitvoer</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Leë reël</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d leë reël</item>
+        <item quantity="other">%d leë reëls</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Verfris uitvoerhersiening</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Keer terug na regstreekse terminaaluitvoer</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Keer terug na terminale invoer</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Soek in terminaaluitvoer</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Skryf \'n terminale opdrag</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Kopieer reël</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Lees die uitvoer van die laaste opdrag hardop</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Kopieer laaste opdrag afvoer</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Vorige shell-aanwysing</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Volgende shell-aanwysing</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Beskryf hierdie teksreël</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Maak hiperskakel oop</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">Reël %1$d van %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Shell-aanwysing</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Opdrag</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Opdrag voltooi</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Opdrag is klaar met uitgangkode %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Hiperskakel</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Aantekening</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Teks</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Hersien \'n gevriesde kopie van die terminale afvoer. Aankondigings vir nuwe uitset word onderbreek.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Regstreekse terminaaluitvoer</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Daar is te veel nuwe uitset om aan te kondig. Maak uitvoeroorsig oop om die afvoer wat gestoor is, te lees.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Kanselleer</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Stuur teks</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Stuur teks en druk Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Soek teks</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Soekresultaat %1$d van %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Geen soekresultate nie</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Vorige soekresultaat</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Volgende soekresultaat</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Vorige reël</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Volgende reël</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Gaan na die begin van terminale uitset</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Gaan na die einde van terminale uitset</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Begin tekskeuse</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Skakel oor na die ander kant van die tekskeuse</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Kies alle terminale uitset</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Vee tekskeuse uit</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Beskryf teksformatering</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Hou op om die keuse uit te brei</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">Keuring het begin. Beweeg volgens karakters, woorde of reëls om dit uit te brei.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">Opgehou om die keuse uit te brei.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Kieslys vir uitvoerhersiening</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Kopieer seleksie</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">Geen teksformatering by hierdie posisie nie</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Teks kleur</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Agtergrond kleur</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Vet</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">Kursief</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Onderstreping</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Deurstreep</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Knipperende teks</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Kleur inversie</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">gemeng</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">enkel</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">dubbel</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">golwend</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">af</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">aan</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Gaan na die begin van die lyn</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Gaan na die einde van die lyn</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Vorige hiperskakel</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Volgende hiperskakel</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Hiperskakel %3$d van %4$d</string>
+</resources>

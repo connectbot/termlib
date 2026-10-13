@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">مراجعة الإخراج الطرفي</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">مخرجات الطرفية</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">سطر فارغ</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="zero">لا توجد أسطر فارغة</item>
+        <item quantity="one">سطر فارغ واحد</item>
+        <item quantity="two">سطران فارغان</item>
+        <item quantity="few">%d أسطر فارغة</item>
+        <item quantity="many">%d سطرًا فارغًا</item>
+        <item quantity="other">%d سطر فارغ</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">تحديث مراجعة المخرجات</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">العودة إلى مخرجات الطرفية الحالية</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">العودة إلى المدخلات الطرفية</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">البحث في مخرجات الطرفية</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">كتابة أمر للطرفية</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">خط النسخ</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">اقرأ إخراج الأمر الأخير بصوت عالٍ</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">انسخ إخراج الأمر الأخير</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">محثّ الصدفة السابق</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">محثّ الصدفة التالي</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">وصف هذا السطر من النص</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">فتح الارتباط التشعبي</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">السطر %1$d من %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">محثّ الصدفة</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">أمر</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">اكتمل تنفيذ الأمر</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">انتهى الأمر برمز الخروج %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">الارتباط التشعبي</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">تعليق توضيحي</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">نص</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">تتم مراجعة نسخة ثابتة من مخرجات الطرفية. قراءة المخرجات الجديدة متوقفة مؤقتًا.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">مخرجات الطرفية الحالية</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">وصلت مخرجات أكثر مما يمكن قراءته. افتح مراجعة المخرجات لقراءة ما تم الاحتفاظ به.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">إلغاء</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">إرسال النص</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">إرسال النص والضغط على Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">النص المطلوب البحث عنه</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">نتيجة البحث %1$d من %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">لا توجد نتائج بحث</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">نتيجة البحث السابقة</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">نتيجة البحث التالية</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">السطر السابق</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">السطر التالي</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">انتقل إلى بداية الإخراج الطرفي</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">انتقل إلى نهاية الإخراج الطرفي</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">بدء اختيار النص</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">قم بالتبديل إلى الطرف الآخر من تحديد النص</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">حدد كل الإخراج الطرفي</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">مسح تحديد النص</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">وصف تنسيق النص</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">توقف عن توسيع التحديد</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">بدأ الاختيار. يمكنك التنقل حسب الأحرف أو الكلمات أو السطور لتوسيعها.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">توقف عن توسيع التحديد.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">قائمة مراجعة الإخراج الطرفي</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">نسخ التحديد</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">لا يوجد تنسيق نص في هذا الموضع</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">لون النص</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">لون الخلفية</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">خط عريض</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">مائل</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">تسطير</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">يتوسطه خط</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">نص وامض</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">انعكاس اللون</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">مختلط</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">مفرد</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">مزدوج</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">متموج</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">معطّل</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">مفعّل</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">انتقل إلى بداية السطر</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">انتقل إلى نهاية السطر</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">الارتباط التشعبي السابق</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">الارتباط التشعبي التالي</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. الارتباط التشعبي %3$d من %4$d</string>
+</resources>

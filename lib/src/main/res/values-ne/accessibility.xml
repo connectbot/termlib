@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">टर्मिनल आउटपुट समीक्षा गर्नुहोस्</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">टर्मिनलबाट आउटपुट</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">खाली पङ्क्ति</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d खाली पङ्क्ति</item>
+        <item quantity="other">%d खाली पङ्क्तिहरू</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">आउटपुट समीक्षा अद्यावधिक गर्नुहोस्</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">प्रत्यक्ष आउटपुटमा फर्कनुहोस्</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">टर्मिनल इनपुट मा फर्कनुहोस्</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">टर्मिनल आउटपुटमा खोज्नुहोस्</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">टर्मिनल आदेश लेख्नुहोस्</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">रेखा प्रतिलिपि गर्नुहोस्</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">अन्तिम आदेश आउटपुट ठूलो स्वरमा पढ्नुहोस्</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">अन्तिम आदेश आउटपुट प्रतिलिपि गर्नुहोस्</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">अघिल्लो शेल प्रम्प्ट</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">अर्को शेल प्रम्प्ट</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">पाठको यो रेखा वर्णन गर्नुहोस्</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">हाइपरलिङ्क खोल्नुहोस्</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">रेखा %1$d को %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">शेल प्रम्प्ट</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">आदेश</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">आदेश समाप्त भयो</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">निकास कोड %1$s संग आदेश समाप्त भयो</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">हाइपरलिंक</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">एनोटेसन</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">पाठ</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">टर्मिनल आउटपुटको जमेको प्रतिलिपि समीक्षा गर्दै। नयाँ आउटपुटका लागि घोषणाहरू रोकिएका छन्।</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">प्रत्यक्ष टर्मिनल आउटपुट</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">घोषणा गर्न धेरै नयाँ आउटपुट छ। बचत गरिएको आउटपुट पढ्नको लागि आउटपुट समीक्षा खोल्नुहोस्।</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">रद्द गर्नुहोस्</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">पाठ पठाउनुहोस्</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">पाठ पठाउनुहोस् र इन्टर थिच्नुहोस्</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">खोज्ने पाठ</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">खोज परिणाम %1$d of %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">कुनै खोज परिणामहरू छैनन्</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">अघिल्लो खोज परिणाम</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">अर्को खोज परिणाम</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">अघिल्लो लाइन</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">अर्को लाइन</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">टर्मिनल आउटपुटको सुरुमा जानुहोस्</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">टर्मिनल आउटपुटको अन्त्यमा जानुहोस्</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">पाठ चयन सुरु गर्नुहोस्</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">पाठ चयनको अर्को छेउमा स्विच गर्नुहोस्</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">सबै टर्मिनल आउटपुट चयन गर्नुहोस्</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">पाठ चयन खाली गर्नुहोस्</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">पाठ ढाँचा वर्णन गर्नुहोस्</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">चयन विस्तार गर्न रोक्नुहोस्</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">छनोट सुरु भयो। यसलाई विस्तार गर्न वर्णहरू, शब्दहरू वा रेखाहरूद्वारा सार्नुहोस्।</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">चयन विस्तार गर्न रोकियो।</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">टर्मिनल आउटपुट समीक्षा मेनु</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">चयन प्रतिलिपि गर्नुहोस्</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">यस स्थितिमा कुनै पाठ ढाँचा छैन</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">पाठ रङ</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">पृष्ठभूमि रंग</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">बोल्ड</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">इटालिक</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">अन्डरलाइन</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">स्ट्राइकथ्रु</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">झिम्किरहेको पाठ</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">रङ उल्टो</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">मिश्रित</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">एकल</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">दोहोरो</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">लहरदार</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">बन्द</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">सक्रिय</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">लाइनको सुरुमा जानुहोस्</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">लाइनको अन्त्यमा जानुहोस्</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">अघिल्लो हाइपरलिंक</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">अर्को हाइपरलिंक</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s। %2$s। हाइपरलिंक %4$d को %3$d</string>
+</resources>

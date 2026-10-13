@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Преглед на изхода от терминала</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Изход от терминала</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Празен ред</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d празен ред</item>
+        <item quantity="other">%d празни реда</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Обновяване на прегледа</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Връщане към текущия изход</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Върнете се към терминалния вход</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Търсене в изхода от терминала</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Напишете терминална команда</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Копиране на ред</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Прочитане на глас на изхода от последната команда</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Копиране на последния резултат от командата</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Предишна подкана на обвивката</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Следваща подкана на обвивката</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Опишете този ред от текст</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Отворете хипервръзка</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">Ред %1$d от %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Подкана на обвивката</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Команда</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Командата приключи.</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Командата завърши с изходен код %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Хипервръзка</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Анотация</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Текст</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Преглед на замразено копие на изхода на терминала. Съобщенията за нов изход са поставени на пауза.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Текущ изход от терминала</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Има твърде много нови резултати за обявяване. Отворете прегледа на изхода, за да прочетете изхода, който е записан.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Отказ</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Изпратете текст</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Изпратете текст и натиснете Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Текст за търсене</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Резултат от търсенето %1$d от %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Няма резултати от търсенето</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Предишен резултат от търсенето</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Следващ резултат от търсенето</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Предишен ред</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Следващ ред</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Отидете до началото на изхода на терминала</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Отидете до края на изхода на терминала</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Стартирайте избора на текст</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Превключете към другия край на избрания текст</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Изберете целия изход на терминала</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Ясен избор на текст</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Опишете форматирането на текст</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Спрете разширяването на селекцията</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">Селекцията започна. Придвижвайте се по знаци, думи или редове, за да го разширите.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">Разширяването на селекцията е спряно.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Меню за преглед на изхода на терминала</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Копиране на селекция</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">Няма форматиране на текст на тази позиция</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Цвят на текста</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Цвят на фона</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Удебелен</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">Курсив</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Подчертаване</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Зачертано</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Мигащ текст</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Цветна инверсия</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">смесено</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">единично</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">двойно</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">вълнообразно</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">изключено</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">включено</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Отидете до началото на реда</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Отидете до края на реда</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Предишна хипервръзка</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Следваща хипервръзка</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Хипервръзка %3$d от %4$d</string>
+</resources>

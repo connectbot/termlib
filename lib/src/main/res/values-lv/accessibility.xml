@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Pārskatiet termināļa izvadi</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Izvade no termināļa</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Tukša rinda</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="zero">%d tukšu rindu</item>
+        <item quantity="one">%d tukša rinda</item>
+        <item quantity="other">%d tukšas rindas</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Atsvaidzināt izvades pārskatu</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Atgriezties pie pašreizējās izvades</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Atgriezties pie termināļa ievades</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Meklēt termināļa izvadē</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Uzrakstiet termināļa komandu</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Kopēt līniju</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Skaļi izlasiet pēdējās komandas izvadi</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Kopēt pēdējās komandas izvadi</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Iepriekšējā čaulas uzvedne</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Nākamā apvalka uzvedne</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Aprakstiet šo teksta rindiņu</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Atvērt hipersaiti</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">%1$d. rindiņa no %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Čaulas uzvedne</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Komanda</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Komanda pabeigta</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Komanda pabeigta ar izejas kodu %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Hipersaite</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Anotācija</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Teksts</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Termināļa izvades iesaldētas kopijas pārskatīšana. Paziņojumi par jaunu izvadi ir apturēti.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Termināļa pašreizējā izvade</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Ir pārāk daudz jaunu rezultātu, ko paziņot. Atveriet izvades pārskatu, lai izlasītu saglabāto izvadi.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Atcelt</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Sūtīt tekstu</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Nosūtiet tekstu un nospiediet taustiņu Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Meklējamais teksts</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Meklēšanas rezultāts %1$d no %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Nav meklēšanas rezultātu</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Iepriekšējais meklēšanas rezultāts</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Nākamais meklēšanas rezultāts</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Iepriekšējā rinda</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Nākamā rinda</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Pārejiet uz termināļa izvades sākumu</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Dodieties uz termināļa izvades beigām</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Sāciet teksta atlasi</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Pārslēdzieties uz teksta atlases otru galu</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Atlasiet visu termināļa izvadi</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Notīrīt teksta atlasi</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Aprakstiet teksta formatējumu</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Pārtrauciet paplašināt atlasi</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">Sākta atlase. Pārvietojieties pa rakstzīmēm, vārdiem vai rindiņām, lai to paplašinātu.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">Pārtraukta atlases paplašināšana.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Termināļa izvades pārskatīšanas izvēlne</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Kopēt atlasi</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">Šajā pozīcijā nav teksta formatējuma</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Teksta krāsa</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Fona krāsa</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Treknrakstā</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">Kursīvs</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Pasvītrojums</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Pārsvītrots</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Mirgojošs teksts</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Krāsu inversija</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">jaukts</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">vienkāršs</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">dubults</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">viļņots</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">izslēgts</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">ieslēgts</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Dodieties uz rindas sākumu</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Iet uz rindas beigām</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Iepriekšējā hipersaite</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Nākamā hipersaite</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Hipersaite %3$d no %4$d</string>
+</resources>

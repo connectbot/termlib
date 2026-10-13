@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">முனைய வெளியீட்டை மதிப்பாய்வு செய்யவும்</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">முனையத்திலிருந்து வெளியீடு</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">வெற்று வரி</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d வெற்று வரி</item>
+        <item quantity="other">%d வெற்று வரிகள்</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">வெளியீட்டு மதிப்பாய்வைப் புதுப்பி</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">நேரடி வெளியீட்டிற்குத் திரும்பு</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">டெர்மினல் உள்ளீட்டிற்குத் திரும்பு</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">முனைய வெளியீட்டில் தேடு</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">டெர்மினல் கட்டளையை எழுதவும்</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">வரியை நகலெடுக்கவும்</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">கடைசி கட்டளை வெளியீட்டை உரக்கப் படிக்கவும்</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">கடைசி கட்டளை வெளியீட்டை நகலெடுக்கவும்</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">முந்தைய ஷெல் ப்ராம்ட்</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">அடுத்த ஷெல் ப்ராம்ட்</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">இந்த உரையின் வரியை விவரிக்கவும்</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">ஹைப்பர்லிங்கைத் திறக்கவும்</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">வரி %1$d of %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">ஷெல் ப்ராம்ட்</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">கட்டளை</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">கட்டளை முடிந்தது</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">வெளியேறும் குறியீடு %1$s உடன் கட்டளை முடிந்தது</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">ஹைப்பர்லிங்க்</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">சிறுகுறிப்பு</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">உரை</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">டெர்மினல் வெளியீட்டின் உறைந்த நகலை மதிப்பாய்வு செய்கிறது. புதிய வெளியீட்டிற்கான அறிவிப்புகள் இடைநிறுத்தப்பட்டுள்ளன.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">நேரடி முனைய வெளியீடு</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">அறிவிக்க முடியாத அளவுக்கு புதிய வெளியீடு உள்ளது. சேமிக்கப்பட்ட வெளியீட்டைப் படிக்க வெளியீட்டு மதிப்பாய்வைத் திறக்கவும்.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">ரத்து செய்</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">உரை அனுப்பவும்</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">உரையை அனுப்பவும் மற்றும் Enter ஐ அழுத்தவும்</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">தேட வேண்டிய உரை</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">தேடல் முடிவு %1$d / %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">தேடல் முடிவுகள் இல்லை</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">முந்தைய தேடல் முடிவு</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">அடுத்த தேடல் முடிவு</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">முந்தைய வரி</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">அடுத்த வரி</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">முனைய வெளியீட்டின் தொடக்கத்திற்குச் செல்லவும்</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">முனைய வெளியீட்டின் இறுதிக்குச் செல்லவும்</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">உரைத் தேர்வைத் தொடங்கவும்</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">உரைத் தேர்வின் மறுமுனைக்கு மாறவும்</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">அனைத்து முனைய வெளியீட்டையும் தேர்ந்தெடுக்கவும்</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">உரை தேர்வை அழிக்கவும்</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">உரை வடிவமைப்பை விவரிக்கவும்</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">தேர்வை நீட்டிப்பதை நிறுத்துங்கள்</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">தேர்வு தொடங்கியது. அதை நீட்டிக்க எழுத்துக்கள், வார்த்தைகள் அல்லது வரிகள் மூலம் நகர்த்தவும்.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">தேர்வை நீட்டிப்பது நிறுத்தப்பட்டது.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">டெர்மினல் வெளியீடு மதிப்பாய்வு மெனு</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">நகல் தேர்வு</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">இந்த நிலையில் உரை வடிவமைப்பு இல்லை</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">உரை நிறம்</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">பின்னணி நிறம்</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">தடித்த</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">சாய்வு</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">அடிக்கோடு</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">அடித்தல் கோடு</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">ஒளிரும் உரை</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">நிறங்களைத் தலைகீழாக்குதல்</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">கலப்பு</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">ஒற்றை</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">இரட்டை</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">அலைக்கோடு</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">முடக்கம்</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">செயலில்</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">வரியின் தொடக்கத்திற்குச் செல்லவும்</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">வரியின் முடிவில் செல்லுங்கள்</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">முந்தைய ஹைப்பர்லிங்க்</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">அடுத்த ஹைப்பர்லிங்க்</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. %4$d இணைப்புகளில் %3$d ஆம் இணைப்பு</string>
+</resources>

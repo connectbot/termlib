@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Skontrolujte výstup terminálu</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Výstup z terminálu</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Prázdny riadok</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d prázdny riadok</item>
+        <item quantity="few">%d prázdne riadky</item>
+        <item quantity="many">%d prázdneho riadka</item>
+        <item quantity="other">%d prázdnych riadkov</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Obnoviť prehľad</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Vrátiť sa k aktuálnemu výstupu</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Vráťte sa na vstup terminálu</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Hľadať vo výstupe terminálu</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Napíšte príkaz terminálu</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Kopírovať riadok</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Prečítajte si nahlas výstup posledného príkazu</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Skopírujte výstup posledného príkazu</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Predchádzajúca výzva shellu</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Ďalšia výzva shellu</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Opíšte tento riadok textu</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Otvoriť hypertextový odkaz</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">Riadok %1$d z %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Výzva shellu</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Príkaz</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Príkaz dokončený</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Príkaz skončil s návratovým kódom %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Hypertextový odkaz</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Anotácia</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Text</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Kontrola zmrazenej kópie výstupu terminálu. Oznámenia o novom výstupe sú pozastavené.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Aktuálny výstup terminálu</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Existuje príliš veľa nových výstupov na to, aby sme ich oznámili. Otvorte prehľad výstupu a prečítajte si uložený výstup.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Zrušiť</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Odoslať text</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Pošlite text a stlačte Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Hľadaný text</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Výsledok vyhľadávania %1$d z %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Žiadne výsledky vyhľadávania</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Predchádzajúci výsledok vyhľadávania</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Ďalší výsledok vyhľadávania</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Predchádzajúci riadok</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Ďalší riadok</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Prejdite na začiatok výstupu terminálu</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Prejdite na koniec výstupu terminálu</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Spustite výber textu</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Prepnite na druhý koniec výberu textu</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Vyberte všetky výstupy terminálu</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Jasný výber textu</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Popíšte formátovanie textu</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Prestaňte rozširovať výber</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">Výber začal. Presuňte sa po znakoch, slovách alebo riadkoch, aby ste ho rozšírili.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">Rozširovanie výberu bolo zastavené.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Ponuka kontroly výstupu terminálu</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Kopírovať výber</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">Na tejto pozícii nie je žiadne formátovanie textu</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Farba textu</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Farba pozadia</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Tučné</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">kurzíva</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Podčiarknutie</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Prečiarknuté</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Blikajúci text</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Inverzia farieb</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">zmiešané</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">jednoduché</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">dvojité</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">vlnité</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">vypnuté</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">zapnuté</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Prejdite na začiatok riadku</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Prejdite na koniec riadku</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Predchádzajúci hypertextový odkaz</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Ďalší hypertextový odkaz</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Hypertextový odkaz %3$d z %4$d</string>
+</resources>

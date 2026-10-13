@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">查看終端機輸出</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">終端機輸出</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">空行</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="other">%d 個空行</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">重新整理輸出檢閱</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">返回即時輸出</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">返回終端機輸入</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">搜尋終端機輸出</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">撰寫指令</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">複製行</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">朗讀上一個指令的輸出</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">複製最後一個命令的輸出</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">上一個 Shell 提示字元</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">下一個 Shell 提示字元</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">描述這行文字</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">開啟超連結</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">%2$d %1$d 線</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Shell 提示字元</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">指令</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">命令完成</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">指令已完成，退出代碼為 %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">超連結</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">註解</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">文字</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">正在檢閱終端機輸出的快照。新輸出的朗讀已暫停。</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">即時終端機輸出</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">新輸出太多，無法全部朗讀。開啟輸出檢閱即可閱讀保留的輸出。</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">取消</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">傳送文字</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">傳送文字並按 Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">要搜尋的文字</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">搜尋結果 %1$d 共 %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">沒有搜尋結果</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">上一個搜尋結果</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">下一個搜尋結果</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">上一行</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">下一行</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">轉到終端輸出的開頭</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">轉到終端輸出的末尾</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">開始文字選擇</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">切換到文字選擇的另一端</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">選擇所有終端輸出</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">清除文字選擇</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">描述文字格式</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">停止擴大選取範圍</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">選拔開始了。透過移動字元、單字或行來擴展它。</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">已停止擴大選取範圍。</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">輸出檢閱選單</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">複製選擇</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">該位置沒有文字格式</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">文字顏色</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">背景顏色</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">粗體</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">斜體</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">底線</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">刪除線</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">閃爍的文字</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">顏色反轉</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">混合</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">單線</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">雙線</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">波浪線</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">關閉</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">開啟</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s：%2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">轉到該行的開頭</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">轉到該行的末尾</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">上一個超連結</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">下一個超連結</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s。%2$s。第 %3$d 個連結，共 %4$d 個。</string>
+</resources>

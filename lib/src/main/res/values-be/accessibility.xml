@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="terminal_a11y_review" tools:machine_translated="true">Прагляд вываду тэрмінала</string>
+    <string name="terminal_a11y_output" tools:machine_translated="true">Вывад тэрмінала</string>
+    <string name="terminal_a11y_blank" tools:machine_translated="true">Пусты радок</string>
+    <plurals name="terminal_a11y_blank_lines" tools:machine_translated="true">
+        <item quantity="one">%d пусты радок</item>
+        <item quantity="few">%d пустыя радкі</item>
+        <item quantity="many">%d пустых радкоў</item>
+        <item quantity="other">%d пустога радка</item>
+    </plurals>
+    <string name="terminal_a11y_refresh" tools:machine_translated="true">Абнавіць прагляд вываду</string>
+    <string name="terminal_a11y_resume" tools:machine_translated="true">Вярнуцца да бягучага вываду</string>
+    <string name="terminal_a11y_input" tools:machine_translated="true">Вярнуцца да тэрмінальнага ўводу</string>
+    <string name="terminal_a11y_search" tools:machine_translated="true">Пошук у вывадзе тэрмінала</string>
+    <string name="terminal_a11y_compose" tools:machine_translated="true">Напішыце каманду тэрмінала</string>
+    <string name="terminal_a11y_copy_line" tools:machine_translated="true">Капіяваць радок</string>
+    <string name="terminal_a11y_last_output" tools:machine_translated="true">Прачытаць услых вывад апошняй каманды</string>
+    <string name="terminal_a11y_copy_output" tools:machine_translated="true">Скапіраваць апошні вынік каманды</string>
+    <string name="terminal_a11y_previous_prompt" tools:machine_translated="true">Папярэдняе запрашэнне абалонкі</string>
+    <string name="terminal_a11y_next_prompt" tools:machine_translated="true">Наступнае запрашэнне абалонкі</string>
+    <string name="terminal_a11y_describe" tools:machine_translated="true">Апішыце гэты радок тэксту</string>
+    <string name="terminal_a11y_open_link" tools:machine_translated="true">Адкрыць гіперспасылку</string>
+    <string name="terminal_a11y_line_number" tools:machine_translated="true">Радок %1$d з %2$d</string>
+    <string name="terminal_a11y_prompt" tools:machine_translated="true">Запрашэнне абалонкі</string>
+    <string name="terminal_a11y_command" tools:machine_translated="true">Каманда</string>
+    <string name="terminal_a11y_finished" tools:machine_translated="true">Выкананне каманды завершана.</string>
+    <string name="terminal_a11y_finished_code" tools:machine_translated="true">Каманда завершана з кодам выхаду %1$s</string>
+    <string name="terminal_a11y_link" tools:machine_translated="true">Гіперспасылка</string>
+    <string name="terminal_a11y_annotation" tools:machine_translated="true">Анатацыя</string>
+    <string name="terminal_a11y_text" tools:machine_translated="true">Тэкст</string>
+    <string name="terminal_a11y_paused" tools:machine_translated="true">Прагляд замарожанай копіі вываду тэрмінала. Аб\'явы для новага выхаду прыпынены.</string>
+    <string name="terminal_a11y_live" tools:machine_translated="true">Бягучы вывад тэрмінала</string>
+    <string name="terminal_a11y_overflow" tools:machine_translated="true">Ёсць занадта шмат новых вынікаў, каб абвясціць. Адкрыйце агляд вываду, каб прачытаць захаваны вывад.</string>
+    <string name="terminal_a11y_cancel" tools:machine_translated="true">Адмяніць</string>
+    <string name="terminal_a11y_send" tools:machine_translated="true">Адправіць тэкст</string>
+    <string name="terminal_a11y_send_enter" tools:machine_translated="true">Адпраўце тэкст і націсніце Enter</string>
+    <string name="terminal_a11y_search_query" tools:machine_translated="true">Пошукавы тэкст</string>
+    <string name="terminal_a11y_search_results" tools:machine_translated="true">Вынік пошуку %1$d з %2$d</string>
+    <string name="terminal_a11y_search_none" tools:machine_translated="true">Няма вынікаў пошуку</string>
+    <string name="terminal_a11y_previous_match" tools:machine_translated="true">Папярэдні вынік пошуку</string>
+    <string name="terminal_a11y_next_match" tools:machine_translated="true">Наступны вынік пошуку</string>
+    <string name="terminal_a11y_previous_line" tools:machine_translated="true">Папярэдні радок</string>
+    <string name="terminal_a11y_next_line" tools:machine_translated="true">Наступны радок</string>
+    <string name="terminal_a11y_start_output" tools:machine_translated="true">Перайсці да пачатку вываду тэрмінала</string>
+    <string name="terminal_a11y_end_output" tools:machine_translated="true">Перайдзіце ў канец вываду тэрмінала</string>
+    <string name="terminal_a11y_mark" tools:machine_translated="true">Пачаць выбар тэксту</string>
+    <string name="terminal_a11y_switch_endpoint" tools:machine_translated="true">Пераключыцеся на іншы канец вылучэння тэксту</string>
+    <string name="terminal_a11y_select_all" tools:machine_translated="true">Выберыце ўвесь выхад тэрмінала</string>
+    <string name="terminal_a11y_clear_selection" tools:machine_translated="true">Выразнае вылучэнне тэксту</string>
+    <string name="terminal_a11y_formatting" tools:machine_translated="true">Апішыце фарматаванне тэксту</string>
+    <string name="terminal_a11y_stop_mark" tools:machine_translated="true">Спыніць пашырэнне выбару</string>
+    <string name="terminal_a11y_selection_started" tools:machine_translated="true">Адбор пачаўся. Перамяшчайцеся па сімвалах, словах або радках, каб пашырыць яго.</string>
+    <string name="terminal_a11y_selection_stopped" tools:machine_translated="true">Пашырэнне выбару спынена.</string>
+    <string name="terminal_a11y_review_actions" tools:machine_translated="true">Меню агляду выхаду тэрмінала</string>
+    <string name="terminal_a11y_copy_selection" tools:machine_translated="true">Вылучэнне копіі</string>
+    <string name="terminal_a11y_no_formatting" tools:machine_translated="true">Няма фарматавання тэксту ў гэтай пазіцыі</string>
+    <string name="terminal_a11y_foreground" tools:machine_translated="true">Колер тэксту</string>
+    <string name="terminal_a11y_background" tools:machine_translated="true">Колер фону</string>
+    <string name="terminal_a11y_bold" tools:machine_translated="true">Тлусты</string>
+    <string name="terminal_a11y_italic" tools:machine_translated="true">Курсівам</string>
+    <string name="terminal_a11y_underline" tools:machine_translated="true">Падкрэсліванне</string>
+    <string name="terminal_a11y_strike" tools:machine_translated="true">Закрэсліванне</string>
+    <string name="terminal_a11y_blink" tools:machine_translated="true">Міргаючы тэкст</string>
+    <string name="terminal_a11y_reverse" tools:machine_translated="true">Колеравая інверсія</string>
+    <string name="terminal_a11y_mixed" tools:machine_translated="true">змяшана</string>
+    <string name="terminal_a11y_single" tools:machine_translated="true">адзінарнае</string>
+    <string name="terminal_a11y_double" tools:machine_translated="true">падвойнае</string>
+    <string name="terminal_a11y_curly" tools:machine_translated="true">хвалістае</string>
+    <string name="terminal_a11y_off" tools:machine_translated="true">выключана</string>
+    <string name="terminal_a11y_on" tools:machine_translated="true">ўключана</string>
+    <string name="terminal_a11y_attribute" tools:machine_translated="true">%1$s: %2$s</string>
+    <string name="terminal_a11y_start_line" tools:machine_translated="true">Перайсці да пачатку радка</string>
+    <string name="terminal_a11y_end_line" tools:machine_translated="true">Перайсці да канца радка</string>
+    <string name="terminal_a11y_previous_link" tools:machine_translated="true">Папярэдняя гіперспасылка</string>
+    <string name="terminal_a11y_next_link" tools:machine_translated="true">Наступная гіперспасылка</string>
+    <string name="terminal_a11y_link_position" tools:machine_translated="true">%1$s. %2$s. Гіперспасылка %3$d з %4$d</string>
+</resources>
