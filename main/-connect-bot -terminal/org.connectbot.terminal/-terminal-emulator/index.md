@@ -3,7 +3,7 @@
 # TerminalEmulator
 
 [release]\
-sealed interface [TerminalEmulator](index.md)
+sealed interface [TerminalEmulator](index.md) : [AutoCloseable](https://developer.android.com/reference/kotlin/java/lang/AutoCloseable.html)
 
 Terminal emulator interface. This has no dependency on any UI framework so it may be run in a Service on Android. It handles the management of the terminal emulation state.
 
@@ -22,6 +22,7 @@ Terminal emulator interface. This has no dependency on any UI framework so it ma
 |---|---|
 | [applyColorScheme](apply-color-scheme.md) | [release]<br>abstract fun [applyColorScheme](apply-color-scheme.md)(ansiColors: [IntArray](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int-array/index.html), defaultForeground: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html), defaultBackground: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html))<br>Apply a complete color scheme to the terminal. |
 | [clearScreen](clear-screen.md) | [release]<br>abstract fun [clearScreen](clear-screen.md)()<br>Clears the terminal emulator screen. |
+| [close](close.md) | [release]<br>abstract override fun [close](close.md)()<br>Permanently dispose this session and release its native, screen, and image state. Closing is synchronous and idempotent, and does not initialize an unused terminal. Stop session I/O and detach its UI before closing. A temporary UI detachment does not end a session. Mutations and content queries throw [IllegalStateException](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-illegal-state-exception/index.html) after close; scalar configuration and dimensions remain readable. |
 | [dispatchCharacter](dispatch-character.md) | [release]<br>open fun [~~dispatchCharacter~~](dispatch-character.md)(modifiers: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html), ch: [Char](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-char/index.html))<br>abstract fun [dispatchCharacter](dispatch-character.md)(modifiers: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html), codepoint: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html))<br>Dispatch a character to the terminal. |
 | [dispatchKey](dispatch-key.md) | [release]<br>abstract fun [dispatchKey](dispatch-key.md)(modifiers: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html), key: [Int](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html))<br>Dispatch a key event to the terminal. |
 | [getLastCommandOutput](get-last-command-output.md) | [release]<br>abstract fun [getLastCommandOutput](get-last-command-output.md)(): [String](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html)?<br>Get the text output of the last completed command. |

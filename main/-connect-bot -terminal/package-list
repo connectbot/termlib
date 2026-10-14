@@ -106,6 +106,7 @@ $dokka.location:org.connectbot.terminal/TerminalEmulator/applyColorScheme/#kotli
 $dokka.location:org.connectbot.terminal/TerminalEmulator/autoDetectUrls/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-terminal-emulator/auto-detect-urls.html
 $dokka.location:org.connectbot.terminal/TerminalEmulator/boldAsBright/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-terminal-emulator/bold-as-bright.html
 $dokka.location:org.connectbot.terminal/TerminalEmulator/clearScreen/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-terminal-emulator/clear-screen.html
+$dokka.location:org.connectbot.terminal/TerminalEmulator/close/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-terminal-emulator/close.html
 $dokka.location:org.connectbot.terminal/TerminalEmulator/dimensions/#/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-terminal-emulator/dimensions.html
 $dokka.location:org.connectbot.terminal/TerminalEmulator/dispatchCharacter/#kotlin.Int#kotlin.Char/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-terminal-emulator/dispatch-character.html
 $dokka.location:org.connectbot.terminal/TerminalEmulator/dispatchCharacter/#kotlin.Int#kotlin.Int/PointingToDeclaration/-connect-bot -terminal/org.connectbot.terminal/-terminal-emulator/dispatch-character.html
