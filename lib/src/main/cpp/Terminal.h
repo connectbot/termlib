@@ -19,6 +19,7 @@
 
 #include <jni.h>
 #include <vterm.h>
+#include <cassert>
 #include <mutex>
 
 template<typename T>
@@ -49,6 +50,26 @@ public:
     Terminal(JNIEnv* env, jobject callbacks, int rows = 24, int cols = 80);
     ~Terminal();
     bool ready() const { return mVt && mVts; }
+
+    // TerminalNative's lifetime lock serializes these scopes and destruction.
+    // JNI arguments keep the callback alive until return; neither pointer escapes
+    // this call. No native worker issues callbacks outside an active scope.
+    class CallbackScope {
+    public:
+        CallbackScope(Terminal& terminal, JNIEnv* env, jobject callbacks) : mTerminal(terminal) {
+            assert(!terminal.mEnv && !terminal.mCallbacks);
+            terminal.mEnv = env;
+            terminal.mCallbacks = callbacks;
+        }
+        ~CallbackScope() {
+            mTerminal.mCallbacks = nullptr;
+            mTerminal.mEnv = nullptr;
+        }
+        CallbackScope(const CallbackScope&) = delete;
+        CallbackScope& operator=(const CallbackScope&) = delete;
+    private:
+        Terminal& mTerminal;
+    };
 
     // Input handling - receives data from PTY/transport
     int writeInput(const uint8_t* data, size_t length);
@@ -154,8 +175,8 @@ private:
     VTermPos mCursorOldPosition{0, 0};
 
     // Java callback object and method IDs
-    JavaVM* mJavaVM{};
-    jobject mCallbacks{};  // Global reference
+    JNIEnv* mEnv{};
+    jobject mCallbacks{};  // Borrowed only during CallbackScope
     jmethodID mDamageMethod{};
     jmethodID mMoverectMethod{};
     jmethodID mMoveCursorMethod{};

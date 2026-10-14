@@ -35,6 +35,7 @@ import java.nio.ByteBuffer
  */
 internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private var nativePtr: Long = 0
+    private var callbacks: TerminalCallbacks? = callbacks
     private val lifetimeLock = Any()
     private var inNativeCall = false
 
@@ -66,7 +67,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      */
     fun writeInput(buffer: ByteBuffer, length: Int): Int {
         require(buffer.isDirect && length >= 0 && length <= buffer.capacity()) { "Invalid direct buffer range" }
-        return withNative { nativeWriteInputBuffer(nativePtr, buffer, length) }
+        return withNative { nativeWriteInputBuffer(nativePtr, checkNotNull(callbacks), buffer, length) }
     }
 
     /**
@@ -80,7 +81,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      */
     fun writeInput(data: ByteArray, offset: Int = 0, length: Int = data.size - offset): Int {
         require(offset >= 0 && offset <= data.size && length >= 0 && length <= data.size - offset) { "Invalid input slice" }
-        return withNative { nativeWriteInputArray(nativePtr, data, offset, length) }
+        return withNative { nativeWriteInputArray(nativePtr, checkNotNull(callbacks), data, offset, length) }
     }
 
     /**
@@ -94,7 +95,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
         require(rows > 0 && cols > 0 && cols <= Int.MAX_VALUE / CellData.STRIDE && rows <= Int.MAX_VALUE / cols) {
             "Invalid terminal dimensions"
         }
-        return withNative { nativeResize(nativePtr, rows, cols) }
+        return withNative { nativeResize(nativePtr, checkNotNull(callbacks), rows, cols) }
     }
 
     /**
@@ -105,7 +106,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @param key VTermKey value
      * @return true if handled
      */
-    fun dispatchKey(modifiers: Int, key: Int): Boolean = withNative { nativeDispatchKey(nativePtr, modifiers, key) }
+    fun dispatchKey(modifiers: Int, key: Int): Boolean = withNative { nativeDispatchKey(nativePtr, checkNotNull(callbacks), modifiers, key) }
 
     /**
      * Dispatch a character input to the terminal.
@@ -117,14 +118,14 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      */
     fun dispatchCharacter(modifiers: Int, character: Int): Boolean {
         require(CellData.isScalar(character)) { "Invalid Unicode code point" }
-        return withNative { nativeDispatchCharacter(nativePtr, modifiers, character) }
+        return withNative { nativeDispatchCharacter(nativePtr, checkNotNull(callbacks), modifiers, character) }
     }
 
     /** Fill bounded row/column requests in Kotlin-owned direct scratch. */
     fun getCells(buffer: ByteBuffer, requests: Int): Int {
         require(buffer.isDirect && !buffer.isReadOnly && buffer.capacity() >= CellData.BUFFER_BYTES)
         require(buffer.order() == java.nio.ByteOrder.nativeOrder() && requests in 0..CellData.MAX_REQUESTS)
-        return withNative { nativeGetCells(nativePtr, buffer, requests) }
+        return withNative { nativeGetCells(nativePtr, checkNotNull(callbacks), buffer, requests) }
     }
 
     /**
@@ -140,7 +141,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     fun setPaletteColors(colors: IntArray, count: Int = colors.size.coerceAtMost(16)): Int {
         require(count in 0..16) { "Can only set up to 16 ANSI palette colors" }
         require(colors.size >= count) { "Color array too small for requested count" }
-        return withNative { nativeSetPaletteColors(nativePtr, colors, count) }
+        return withNative { nativeSetPaletteColors(nativePtr, checkNotNull(callbacks), colors, count) }
     }
 
     /**
@@ -153,7 +154,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @param background ARGB background color
      * @return 0 on success, -1 on error
      */
-    fun setDefaultColors(foreground: Int, background: Int): Int = withNative { nativeSetDefaultColors(nativePtr, foreground, background) }
+    fun setDefaultColors(foreground: Int, background: Int): Int = withNative { nativeSetDefaultColors(nativePtr, checkNotNull(callbacks), foreground, background) }
 
     /**
      * Enable or disable bold-as-bright color promotion.
@@ -164,7 +165,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
      * @param enabled true to enable bold-as-bright, false to disable
      * @return 0 on success, -1 on error
      */
-    fun setBoldHighbright(enabled: Boolean): Int = withNative { nativeSetBoldHighbright(nativePtr, enabled) }
+    fun setBoldHighbright(enabled: Boolean): Int = withNative { nativeSetBoldHighbright(nativePtr, checkNotNull(callbacks), enabled) }
 
     /**
      * Close the terminal and release native resources.
@@ -177,6 +178,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
                 nativeDestroy(nativePtr)
                 nativePtr = 0
             }
+            callbacks = null
         }
     }
 
@@ -195,18 +197,18 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     // Native method declarations
     private external fun nativeInit(callbacks: TerminalCallbacks): Long
     private external fun nativeDestroy(ptr: Long): Int
-    private external fun nativeWriteInputBuffer(ptr: Long, buffer: ByteBuffer, length: Int): Int
-    private external fun nativeWriteInputArray(ptr: Long, data: ByteArray, offset: Int, length: Int): Int
-    private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
-    private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
-    private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
-    private external fun nativePaste(ptr: Long, data: ByteArray)
+    private external fun nativeWriteInputBuffer(ptr: Long, callbacks: TerminalCallbacks, buffer: ByteBuffer, length: Int): Int
+    private external fun nativeWriteInputArray(ptr: Long, callbacks: TerminalCallbacks, data: ByteArray, offset: Int, length: Int): Int
+    private external fun nativeResize(ptr: Long, callbacks: TerminalCallbacks, rows: Int, cols: Int): Int
+    private external fun nativeDispatchKey(ptr: Long, callbacks: TerminalCallbacks, modifiers: Int, key: Int): Boolean
+    private external fun nativeDispatchCharacter(ptr: Long, callbacks: TerminalCallbacks, modifiers: Int, character: Int): Boolean
+    private external fun nativePaste(ptr: Long, callbacks: TerminalCallbacks, data: ByteArray)
 
-    fun pasteText(data: ByteArray) = withNative { nativePaste(nativePtr, data) }
-    private external fun nativeGetCells(ptr: Long, buffer: ByteBuffer, requests: Int): Int
-    private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
-    private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int
-    private external fun nativeSetBoldHighbright(ptr: Long, enabled: Boolean): Int
+    fun pasteText(data: ByteArray) = withNative { nativePaste(nativePtr, checkNotNull(callbacks), data) }
+    private external fun nativeGetCells(ptr: Long, callbacks: TerminalCallbacks, buffer: ByteBuffer, requests: Int): Int
+    private external fun nativeSetPaletteColors(ptr: Long, callbacks: TerminalCallbacks, colors: IntArray, count: Int): Int
+    private external fun nativeSetDefaultColors(ptr: Long, callbacks: TerminalCallbacks, fgColor: Int, bgColor: Int): Int
+    private external fun nativeSetBoldHighbright(ptr: Long, callbacks: TerminalCallbacks, enabled: Boolean): Int
 
     companion object {
         private const val LIBRARY_NAME = "jni_cb_term"

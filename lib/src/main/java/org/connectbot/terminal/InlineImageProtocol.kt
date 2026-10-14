@@ -90,7 +90,9 @@ internal class InlineImageProtocol(
 
     fun reset() {
         abortUpload()
-        header.setLength(0)
+        header = StringBuilder()
+        keys = emptyMap()
+        command = ""
         discarded = true
     }
 

@@ -20,6 +20,7 @@ import android.icu.lang.UCharacter
 import android.icu.lang.UProperty
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.Color
@@ -76,7 +77,16 @@ sealed class UrlScanScope {
  * so it may be run in a Service on Android. It handles the management of
  * the terminal emulation state.
  */
-sealed interface TerminalEmulator {
+sealed interface TerminalEmulator : AutoCloseable {
+    /**
+     * Permanently dispose this session and release its native, screen, and image state.
+     * Closing is synchronous and idempotent, and does not initialize an unused terminal.
+     * Stop session I/O and detach its UI before closing. A temporary UI detachment does
+     * not end a session. Mutations and content queries throw [IllegalStateException]
+     * after close; scalar configuration and dimensions remain readable.
+     */
+    override fun close()
+
     /** Queue pasted text in the same FIFO as keyboard/IME input, honoring bracketed paste. */
     fun pasteText(text: String)
 
@@ -307,11 +317,11 @@ internal class TerminalEmulatorImpl(
     initialCols: Int = 80,
     defaultForeground: Color = Color.White,
     defaultBackground: Color = Color.Black,
-    private val onKeyboardInput: (ByteArray) -> Unit = {},
-    private val onBell: (() -> Unit)? = null,
-    private val onResize: ((TerminalDimensions) -> Unit)? = null,
-    private val onClipboardCopy: ((String) -> Unit)? = null,
-    private val onProgressChange: ((ProgressState, Int) -> Unit)? = null,
+    private var onKeyboardInput: (ByteArray) -> Unit = {},
+    private var onBell: (() -> Unit)? = null,
+    private var onResize: ((TerminalDimensions) -> Unit)? = null,
+    private var onClipboardCopy: ((String) -> Unit)? = null,
+    private var onProgressChange: ((ProgressState, Int) -> Unit)? = null,
     override val autoDetectUrls: Boolean = false,
     override val boldAsBright: Boolean = true,
     inlineImages: InlineImages = InlineImages.Off,
@@ -320,11 +330,34 @@ internal class TerminalEmulatorImpl(
 
     // Handler for escaping native mutex
     private val handler = Handler(looper)
+    private val callbackToken = Any()
+
+    @Volatile private var closed = false
+
+    private fun checkNotClosed() = check(!closed) { "Terminal has been closed" }
+
+    // Token cancellation excludes image drawable teardown on the same Handler.
+    private inline fun postCallback(crossinline action: () -> Unit) {
+        synchronized(damageLock) {
+            if (closed) return
+            handler.postAtTime({ if (!closed) action() }, callbackToken, SystemClock.uptimeMillis())
+        }
+    }
+
+    internal fun enqueueCommand(action: () -> Unit) {
+        checkNotClosed()
+        commands.execute {
+            synchronized(damageLock) {
+                if (!closed) action()
+            }
+        }
+    }
     internal val commands = TerminalDispatcher()
     private val snapshots = TerminalDispatcher()
     private var outputBatch: ByteArrayOutputStream? = null
 
     internal fun batchOutput(action: () -> Unit) = synchronized(damageLock) {
+        checkNotClosed()
         check(outputBatch == null)
         val batch = ByteArrayOutputStream(4096)
         outputBatch = batch
@@ -334,7 +367,7 @@ internal class TerminalEmulatorImpl(
             outputBatch = null
             if (batch.size() > 0) {
                 val data = batch.toByteArray()
-                handler.post { onKeyboardInput.invoke(data) }
+                postCallback { onKeyboardInput.invoke(data) }
             }
         }
     }
@@ -359,6 +392,7 @@ internal class TerminalEmulatorImpl(
     override val inlineImages: InlineImages get() = imagePolicy
 
     override fun setInlineImages(inlineImages: InlineImages): Unit = synchronized(damageLock) {
+        checkNotClosed()
         val oldLimits = imageStore.limits
         imageProtocol.consentGate?.reset()
         imageProtocol.reset()
@@ -374,7 +408,7 @@ internal class TerminalEmulatorImpl(
     private fun createConsentGate(policy: InlineImages): InlineImageConsentGate? {
         if (policy !is InlineImages.Ask) return null
         return InlineImageConsentGate(policy.limits.maxImages) { request, completion ->
-            handler.post {
+            postCallback {
                 policy.confirm.startCoroutine(
                     request,
                     object : Continuation<Boolean> {
@@ -382,6 +416,7 @@ internal class TerminalEmulatorImpl(
                         override fun resumeWith(result: Result<Boolean>) {
                             commands.execute {
                                 synchronized(damageLock) {
+                                    if (closed) return@synchronized
                                     synchronized(imageStore) { completion(result.getOrDefault(false)) }
                                     propertyChanged = true
                                     requestProcessPendingUpdatesLocked()
@@ -395,6 +430,7 @@ internal class TerminalEmulatorImpl(
     }
 
     override fun setCellPixelSize(width: Int, height: Int): Unit = synchronized(damageLock) {
+        checkNotClosed()
         require(width > 0 && height > 0)
         imageStore.updateCellSize(width, height)
         propertyChanged = true
@@ -502,13 +538,57 @@ internal class TerminalEmulatorImpl(
     }
 
     // Native terminal instance - MUST be initialized AFTER damageLock and other state
-    private val terminalNative by lazy {
-        TerminalNative(this).apply {
-            resize(initialRows, initialCols)
-            if (setBoldHighbright(boldAsBright) != 0) {
-                Log.e(TAG, "Failed to set boldAsBright=$boldAsBright")
+    private val terminalNativeDelegate = lazy {
+        checkNotClosed()
+        val native = TerminalNative(this)
+        try {
+            native.apply {
+                resize(initialRows, initialCols)
+                if (setBoldHighbright(boldAsBright) != 0) {
+                    Log.e(TAG, "Failed to set boldAsBright=$boldAsBright")
+                }
             }
+        } catch (failure: Throwable) {
+            native.close()
+            throw failure
         }
+    }
+    private val terminalNative by terminalNativeDelegate
+
+    override fun close(): Unit = synchronized(damageLock) {
+        if (closed) return@synchronized
+        // TerminalNative rejects synchronous close from a JNI callback before
+        // we mark the emulator closed or discard any of its state.
+        if (terminalNativeDelegate.isInitialized()) terminalNative.close()
+        closed = true
+        handler.removeCallbacksAndMessages(callbackToken)
+        imageProtocol.enabled = false
+        imageProtocol.consentGate?.reset()
+        imageProtocol.consentGate = null
+        imageProtocol.reset()
+        imagePolicy = InlineImages.Off
+        imageStore.close()
+        scrollback.clear()
+        scrollbackSnapshot = emptyList()
+        currentLines.clear()
+        pendingScrollback = null
+        scrollbackCellBuffer = null
+        screenTransfer.close()
+        pendingDamageRegions.clear()
+        pendingSemanticSegments.clear()
+        movedSegmentRows.clear()
+        semanticSegmentTexts.clear()
+        transferRanges = IntArray(0)
+        textDecoder.reset()
+        oscParser.reset()
+        terminalTitle = ""
+        outputBatch = null
+        onKeyboardInput = {}
+        onBell = null
+        onResize = null
+        onClipboardCopy = null
+        onProgressChange = null
+        _snapshot.value = TerminalSnapshot.empty(0, 0).copy(cursorVisible = false, cursorBlink = false, sequenceNumber = ++sequenceNumber)
     }
 
     // Parser for OSC sequences
@@ -522,6 +602,7 @@ internal class TerminalEmulatorImpl(
      * Write data to the terminal (from PTY/transport).
      */
     override fun writeInput(data: ByteArray, offset: Int, length: Int): Unit = synchronized(damageLock) {
+        checkNotClosed()
         terminalNative.writeInput(data, offset, length)
     }
 
@@ -529,6 +610,7 @@ internal class TerminalEmulatorImpl(
      * Write data to the terminal using ByteBuffer (more efficient for large data).
      */
     override fun writeInput(buffer: ByteBuffer, length: Int): Unit = synchronized(damageLock) {
+        checkNotClosed()
         terminalNative.writeInput(buffer, length)
     }
 
@@ -546,6 +628,7 @@ internal class TerminalEmulatorImpl(
 
     /** Resize using the physical viewport measured by the Compose terminal. */
     internal fun resize(newRows: Int, newCols: Int, widthPixels: Int, heightPixels: Int): Unit = synchronized(damageLock) {
+        checkNotClosed()
         require(newRows > 0 && newCols > 0) { "Terminal dimensions must be positive" }
         require(widthPixels > 0 && heightPixels > 0) { "Terminal pixel dimensions must be positive" }
         imageStore.rows = newRows
@@ -573,27 +656,37 @@ internal class TerminalEmulatorImpl(
         publishedDimensions = resized
 
         // Resize callback - post to handler to avoid blocking native thread
-        handler.post { onResize?.invoke(resized) }
+        postCallback { onResize?.invoke(resized) }
     }
 
     /**
      * Dispatch a key event to the terminal.
      */
-    override fun dispatchKey(modifiers: Int, key: Int): Unit = commands.call {
-        synchronized(damageLock) { terminalNative.dispatchKey(modifiers, key) }
-        Unit
+    override fun dispatchKey(modifiers: Int, key: Int) {
+        checkNotClosed()
+        commands.call {
+            synchronized(damageLock) {
+                checkNotClosed()
+                terminalNative.dispatchKey(modifiers, key)
+            }
+        }
     }
 
     /**
      * Dispatch a character to the terminal.
      */
-    override fun dispatchCharacter(modifiers: Int, codepoint: Int): Unit = commands.call {
-        synchronized(damageLock) { terminalNative.dispatchCharacter(modifiers, codepoint) }
-        Unit
+    override fun dispatchCharacter(modifiers: Int, codepoint: Int) {
+        checkNotClosed()
+        commands.call {
+            synchronized(damageLock) {
+                checkNotClosed()
+                terminalNative.dispatchCharacter(modifiers, codepoint)
+            }
+        }
     }
 
     override fun pasteText(text: String) {
-        commands.execute {
+        enqueueCommand {
             batchOutput {
                 terminalNative.pasteText(text.toByteArray(Charsets.UTF_8))
             }
@@ -609,12 +702,14 @@ internal class TerminalEmulatorImpl(
      * Get the text output of the last completed command.
      */
     override fun getLastCommandOutput(): String? {
+        checkNotClosed()
         val currentSnapshot = _snapshot.value
         val allLines = currentSnapshot.scrollback + currentSnapshot.lines
         return getLastCommandOutput(allLines)
     }
 
     override fun getUrls(scope: UrlScanScope): List<TerminalUrl> {
+        checkNotClosed()
         val currentSnapshot = _snapshot.value
         val altScreenActive = currentSnapshot.alternateScreen
         return extractUrls(currentSnapshot.linesForUrlScan(scope, altScreenActive))
@@ -630,6 +725,7 @@ internal class TerminalEmulatorImpl(
      * @return Number of colors set, or -1 on error
      */
     override fun setAnsiPalette(ansiColors: IntArray): Int = synchronized(damageLock) {
+        checkNotClosed()
         require(ansiColors.size >= 16) {
             "ANSI palette must contain 16 colors"
         }
@@ -650,6 +746,7 @@ internal class TerminalEmulatorImpl(
      * @return 0 on success, -1 on error
      */
     override fun setDefaultColors(foreground: Int, background: Int): Int = synchronized(damageLock) {
+        checkNotClosed()
         synchronized(damageLock) {
             currentDefaultForeground = Color(foreground)
             currentDefaultBackground = Color(background)
@@ -812,16 +909,16 @@ internal class TerminalEmulatorImpl(
 
     override fun bell(): Int {
         // Bell callback - post to handler to avoid blocking native thread
-        handler.post {
+        postCallback {
             onBell?.invoke()
         }
         return 0
     }
 
-    private val scrollbackCellBuffer = CellData.buffer()
+    private var scrollbackCellBuffer: ByteBuffer? = CellData.buffer()
     private var pendingScrollback: PackedCells.Builder? = null
 
-    override fun cellBuffer(): ByteBuffer = scrollbackCellBuffer
+    override fun cellBuffer(): ByteBuffer = checkNotNull(scrollbackCellBuffer)
 
     override fun pushScrollbackLine(cols: Int, start: Int, count: Int, cells: ByteBuffer, softWrapped: Boolean): Int {
         if (start == 0) pendingScrollback = PackedCells.Builder(cols)
@@ -893,12 +990,12 @@ internal class TerminalEmulatorImpl(
             if (batch.size() >= 16 * 1024) {
                 val chunk = batch.toByteArray()
                 batch.reset()
-                handler.post { onKeyboardInput.invoke(chunk) }
+                postCallback { onKeyboardInput.invoke(chunk) }
             }
             return 0
         }
         // Keyboard output callback - post to handler
-        handler.post {
+        postCallback {
             onKeyboardInput.invoke(data)
         }
         return 0
@@ -951,14 +1048,14 @@ internal class TerminalEmulatorImpl(
 
                     is OscParser.Action.ClipboardCopy -> {
                         // Post clipboard copy to handler thread to avoid blocking native callback
-                        handler.post {
+                        postCallback {
                             onClipboardCopy?.invoke(action.data)
                         }
                     }
 
                     is OscParser.Action.SetProgress -> {
                         // Post progress change to handler thread to avoid blocking native callback
-                        handler.post {
+                        postCallback {
                             onProgressChange?.invoke(action.state, action.progress)
                         }
                     }
@@ -1026,6 +1123,7 @@ internal class TerminalEmulatorImpl(
      */
     @VisibleForTesting
     fun processPendingUpdates(): Unit = synchronized(damageLock) {
+        if (closed) return@synchronized
         // Collect pending changes
         val damageRegions: List<DamageRegion>
         val needsUpdate: Boolean
@@ -1415,7 +1513,7 @@ internal class TerminalEmulatorImpl(
      * MUST be called with damageLock held.
      */
     private fun requestProcessPendingUpdatesLocked() {
-        if (damagePosted) return
+        if (closed || damagePosted) return
         damagePosted = true
         val waitNanos = nextSnapshotNanos - System.nanoTime()
         if (waitNanos <= 0) {

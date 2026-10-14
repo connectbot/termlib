@@ -153,6 +153,8 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
     // Published scheduling hint; UI reads this scalar, never the backend asset map.
     var frameUpdatesNeeded by mutableStateOf(false)
         private set
+
+    @Volatile private var closed = false
     private val maintenance = TerminalDispatcher()
     private val latestView = AtomicReference<ImageViewport?>()
     private val viewScheduled = AtomicBoolean()
@@ -161,7 +163,12 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
     private val retainedResources = mutableSetOf<RetainedResource>()
 
     fun updateViewport(view: ImageViewport) {
+        if (closed) return
         latestView.set(view)
+        if (closed) {
+            latestView.compareAndSet(view, null)
+            return
+        }
         scheduleViewport()
     }
 
@@ -171,6 +178,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
             try {
                 latestView.getAndSet(null)?.let { view ->
                     synchronized(this) {
+                        if (closed) return@synchronized
                         viewportTop = view.top
                         displayedIds = view.slices.map { it.asset.id }.toSet()
                         if (!view.attached) {
@@ -197,7 +205,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
                 }
             } finally {
                 viewScheduled.set(false)
-                if (latestView.get() != null) scheduleViewport()
+                if (!closed && latestView.get() != null) scheduleViewport()
             }
         }
     }
@@ -301,6 +309,21 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
         assets.values.forEach { it.release() }
         assets.clear()
         placements.clear()
+    }
+
+    @Synchronized
+    fun close() {
+        if (closed) return
+        closed = true
+        latestView.set(null)
+        assets.values.forEach { it.presentation.close() }
+        clear()
+        pendingSources.clear()
+        placeholderAnchors.clear()
+        displayedIds = emptySet()
+        retainedResources.clear()
+        frameUpdatesNeeded = false
+        uploadBytes = 0
     }
 
     @Synchronized
@@ -470,6 +493,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
 
     @Synchronized
     fun request(asset: ImageAsset, width: Int, height: Int) {
+        if (closed) return
         if (assets[asset.id] !== asset || asset.frames.isEmpty() || !asset.displayAllowed) return
         val frame = asset.frames[asset.frameIndex.coerceIn(asset.frames.indices)]
         val w = maxOf(width, if (asset.bitmap != null || asset.drawable != null) asset.targetWidth else 0).coerceIn(1, frame.width)
@@ -523,8 +547,8 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
                     decodedReservation -= reservation
                     asset.pending = false
                     // Even a stale decoder result owns native memory until GC.
-                    (drawable ?: movie)?.let { retainResource(it, nativeBytes) }
-                    if (assets[asset.id] === asset && generation == asset.generation) {
+                    if (!closed) (drawable ?: movie)?.let { retainResource(it, nativeBytes) }
+                    if (!closed && assets[asset.id] === asset && generation == asset.generation) {
                         if (decoded == null && drawable == null) {
                             remove(asset.id)
                             return@synchronized
@@ -546,6 +570,7 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
 
     @Synchronized
     fun advanceAnimations(now: Long) {
+        if (closed) return
         assets.values.forEach { asset ->
             if (!asset.displayAllowed || !visibleAsset(asset)) {
                 asset.clearDecoded()

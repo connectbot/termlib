@@ -23,7 +23,7 @@ ConnectBot Terminal is a high-performance Jetpack Compose terminal emulator comp
 In your Compose UI:
 ```kotlin
 val emulator = TerminalEmulatorFactory.create(
-    onKeyBoardInput = {
+    onKeyboardInput = {
         // … send data to PTY/SSH/etc
     }
 )
@@ -36,6 +36,21 @@ Terminal(
     terminalEmulator = emulator
 )
 ```
+
+## Session lifetime
+
+The session owner must call `emulator.close()` when permanently disposing the
+session, after stopping its input producers and detaching the terminal UI.
+`close()` releases native state, screen/history, and inline images. It is safe
+to call repeatedly and does not initialize an unused native terminal. Further
+mutations and content queries throw `IllegalStateException`; scalar metadata
+remains readable. Previously retained snapshots own their own resources.
+
+The `Terminal` composable borrows its emulator and does not close it on view
+removal. Keep sessions open across tab switches and temporary UI detachment.
+For a screen that owns its sessions, use `DisposableEffect(sessions)` to close
+those sessions when that owner leaves composition. Non-UI owners can use Kotlin
+`use` or Java try-with-resources. GC cleanup is only a best-effort fallback.
 
 ## Keyboard visibility and temporary layouts
 

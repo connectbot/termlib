@@ -42,7 +42,7 @@ internal object AnimatedImage {
         drawable.callback = object : Drawable.Callback {
             override fun invalidateDrawable(who: Drawable) = invalidate()
             override fun scheduleDrawable(who: Drawable, what: Runnable, `when`: Long) {
-                handler.postAtTime(what, `when`)
+                handler.postAtTime(what, who, `when`)
             }
             override fun unscheduleDrawable(who: Drawable, what: Runnable) {
                 handler.removeCallbacks(what)
@@ -51,7 +51,8 @@ internal object AnimatedImage {
         if (drawable is AnimatedImageDrawable) drawable.start()
     }
 
-    fun stop(drawable: Drawable?) {
+    fun stop(drawable: Drawable?, handler: Handler) {
+        if (drawable != null) handler.removeCallbacksAndMessages(drawable)
         if (Build.VERSION.SDK_INT >= 28 && drawable is AnimatedImageDrawable) drawable.stop()
         drawable?.callback = null
     }

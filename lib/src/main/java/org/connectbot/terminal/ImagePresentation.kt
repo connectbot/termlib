@@ -24,6 +24,7 @@ internal data class ImageViewport(
 
 /** Draw reads only this published resource, never the mutable image store. */
 internal class ImagePresentation(private val handler: Handler) {
+    @Volatile private var closed = false
     data class Frame(val bitmap: Bitmap?, val drawable: Drawable?)
     var frame by mutableStateOf(Frame(null, null))
         private set
@@ -31,6 +32,7 @@ internal class ImagePresentation(private val handler: Handler) {
         private set
 
     fun publish(bitmap: Bitmap?, drawable: Drawable?) {
+        if (closed) return
         val previous = frame
         if (previous.bitmap === bitmap && previous.drawable === drawable) return
         val next = Frame(bitmap, drawable)
@@ -38,11 +40,18 @@ internal class ImagePresentation(private val handler: Handler) {
         // Drawable lifecycle belongs to the callback thread, without store locks.
         if (previous.drawable !== drawable) {
             handler.post {
-                AnimatedImage.stop(previous.drawable)
-                if (frame === next && drawable != null && Build.VERSION.SDK_INT >= 28) {
+                AnimatedImage.stop(previous.drawable, handler)
+                if (!closed && frame === next && drawable != null && Build.VERSION.SDK_INT >= 28) {
                     AnimatedImage.start(drawable, handler) { redraw++ }
                 }
             }
         }
+    }
+    fun close() {
+        if (closed) return
+        closed = true
+        val drawable = frame.drawable
+        frame = Frame(null, null)
+        handler.post { AnimatedImage.stop(drawable, handler) }
     }
 }

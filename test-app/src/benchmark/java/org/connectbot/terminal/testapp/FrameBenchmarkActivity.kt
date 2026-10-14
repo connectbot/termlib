@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
+import org.connectbot.terminal.InlineImages
 import org.connectbot.terminal.Terminal
 import org.connectbot.terminal.TerminalEmulatorFactory
 import java.io.ByteArrayOutputStream
@@ -45,7 +46,7 @@ class FrameBenchmarkActivity : ComponentActivity() {
         }
         val workload = intent.getStringExtra("workload") ?: "text"
         var outputBytes = 0L
-        val terminal = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80, onKeyboardInput = {
+        val terminal = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80, inlineImages = if (workload in listOf("png", "rgba", "animation")) InlineImages.On() else InlineImages.Off, onKeyboardInput = {
             outputBytes += it.size
             Trace.setCounter("terminal.benchmark.outputBytes", outputBytes)
         })
