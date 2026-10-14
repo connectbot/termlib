@@ -79,6 +79,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
@@ -2103,77 +2104,160 @@ internal fun DrawScope.drawLine(
         return
     }
     val canvas = drawContext.canvas.nativeCanvas
+    val foregroundRows = (textPaint as? TerminalTextPaint)?.foregroundRows
+    if (foregroundRows != null && !foregroundRows.recording && shaped != null &&
+        activeSelection == null && !autoDetectUrls && line.semanticSegments.isEmpty() && line.images.isEmpty() &&
+        !cells.hasDecorations() && hyperlinkMask?.any { it } != true
+    ) {
+        val scope = this
+        foregroundRows.draw(canvas, cells, shaped, aboveLine?.cells, belowLine?.cells, y, charWidth, charHeight, charBaseline) { source ->
+            CanvasDrawScope().draw(scope, layoutDirection, androidx.compose.ui.graphics.Canvas(source), size) {
+                drawLine(
+                    line, row, charWidth, charHeight, charBaseline, textPaint, underlinePaint, defaultFg, defaultBg,
+                    selectionManager, autoDetectUrls, hyperlinkMask, selectionBackgroundColor, selectionForegroundColor,
+                    backgroundsOnly = false, aboveLine = aboveLine, belowLine = belowLine, shapedLine = shaped, selectionRow = selectionRow,
+                )
+            }
+        }
+        return
+    }
     shaped?.prepareDraw(canvas)
+    val hasBoxes = cells.hasBoxDrawing()
+    val boxRenderer = if (hasBoxes) (textPaint as? TerminalTextPaint)?.boxDrawing else null
+    val boxTextSize = if (hasBoxes) textPaint.textSize else 0f
+    boxRenderer?.prepareDraw(canvas)
+    if (boxRenderer != null && shaped == null && activeSelection == null &&
+        line.semanticSegments.isEmpty() && line.images.isEmpty() && hyperlinkMask?.any { it } != true &&
+        boxRenderer.drawRow(canvas, cells, line.text, aboveLine?.cells, belowLine?.cells, y, charWidth, charHeight, boxTextSize)
+    ) {
+        return
+    }
     line.images.filter { it.z in -1_073_741_824 until 0 }.forEach { it.draw(canvas, row, charWidth, charHeight) }
     textPaint.isUnderlineText = false
     textPaint.isStrikeThruText = false
     var paintedColor = Color.Unspecified
+    var paintedArgb = 0
     var paintedStyle = -1
-    for (col in 0 until cells.size) {
-        val width = cells.width(col)
-        if (width == 0) continue
-        val x = (shaped?.visualColumn(col) ?: col) * charWidth
-        val flags = cells.flags(col)
-        val underline = (flags ushr 1) and 3
-        val cellWidth = charWidth * width
-        val isSelected = activeSelection?.let {
-            it.isCellSelected(selectionRow, col, line) || (width == 2 && it.isCellSelected(selectionRow, col + 1, line))
-        } == true
-        val reversed = flags and 32 != 0
-        val fg = if (isSelected) {
-            selectionForegroundColor.takeUnless { it == Color.Unspecified } ?: Color.Black
-        } else if (reversed) {
-            cells.background(col)
-        } else {
-            cells.foreground(col)
-        }
-        val hyperlink = hyperlinkMask?.getOrNull(col) ?: (line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
-        if (!cells.blank(col) && !cells.placeholder(col)) {
-            if (fg != paintedColor) {
-                textPaint.color = fg.toArgb()
-                paintedColor = fg
-            }
-            val style = flags and 9
-            if (style != paintedStyle) {
-                textPaint.isFakeBoldText = flags and 1 != 0
-                textPaint.textSkewX = if (flags and 8 != 0) -0.25f else 0f
-                paintedStyle = style
-            }
-            val box = cells.boxCharacter(col)
-            if (box != null) {
-                val renderer = (textPaint as? TerminalTextPaint)?.boxDrawing ?: TerminalBoxDrawing()
-                fun dashKind(ch: Char?, horizontal: Boolean): Int = when (ch?.code) {
-                    in if (horizontal) 0x254C..0x254D else 0x254E..0x254F -> 1
-                    in if (horizontal) 0x2504..0x2505 else 0x2506..0x2507 -> 2
-                    in if (horizontal) 0x2508..0x2509 else 0x250A..0x250B -> 3
-                    else -> 0
-                }
-                val neighboringDashes =
-                    dashKind(cells.boxCharacter(col - 1), true) or
-                        (dashKind(cells.boxCharacter(col + 1), true) shl 2) or
-                        (dashKind(aboveLine?.cells?.boxCharacter(col), false) shl 4) or
-                        (dashKind(belowLine?.cells?.boxCharacter(col), false) shl 6)
-                renderer.draw(canvas, box, x, y, cellWidth, charHeight, fg.toArgb(), textPaint.textSize, neighboringDashes)
+    var shapedUntil = 0
+    var batchingBoxes = false
+    try {
+        for (col in 0 until cells.size) {
+            val width = cells.width(col)
+            if (width == 0) continue
+            val x = (shaped?.visualColumn(col) ?: col) * charWidth
+            val flags = cells.flags(col)
+            val underline = (flags ushr 1) and 3
+            val cellWidth = charWidth * width
+            val isSelected = activeSelection?.let {
+                it.isCellSelected(selectionRow, col, line) || (width == 2 && it.isCellSelected(selectionRow, col + 1, line))
+            } == true
+            val reversed = flags and 32 != 0
+            val fg = if (isSelected) {
+                selectionForegroundColor.takeUnless { it == Color.Unspecified } ?: Color.Black
+            } else if (reversed) {
+                cells.background(col)
             } else {
-                if (shaped == null || android.os.Build.VERSION.SDK_INT < 31 || !shaped.drawCell(canvas, col, y + charBaseline, textPaint, charWidth, width)) {
-                    cells.draw(canvas, col, x, y + charBaseline, textPaint, cellWidth)
+                cells.foreground(col)
+            }
+            val hyperlink = hyperlinkMask?.getOrNull(col) ?: (line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
+            val box = cells.boxCodePoint(col)
+            val batchBox = box != 0 && underline == 0 && !hyperlink && flags and 128 == 0
+            if (!batchBox && batchingBoxes) {
+                boxRenderer?.endBatch()
+                batchingBoxes = false
+            }
+            if (!cells.blank(col) && !cells.placeholder(col)) {
+                if (fg != paintedColor) {
+                    paintedArgb = fg.toArgb()
+                    textPaint.color = paintedArgb
+                    paintedColor = fg
+                }
+                val style = flags and 9
+                if (style != paintedStyle) {
+                    textPaint.isFakeBoldText = flags and 1 != 0
+                    textPaint.textSkewX = if (flags and 8 != 0) -0.25f else 0f
+                    paintedStyle = style
+                }
+                if (box != 0) {
+                    val renderer = boxRenderer ?: TerminalBoxDrawing(cacheRows = false)
+                    if (batchBox && boxRenderer != null) {
+                        renderer.beginBatch(canvas, paintedArgb)
+                        batchingBoxes = true
+                    }
+                    fun dashKind(cp: Int, horizontal: Boolean): Int = when (cp) {
+                        in if (horizontal) 0x254C..0x254D else 0x254E..0x254F -> 1
+                        in if (horizontal) 0x2504..0x2505 else 0x2506..0x2507 -> 2
+                        in if (horizontal) 0x2508..0x2509 else 0x250A..0x250B -> 3
+                        else -> 0
+                    }
+                    val neighboringDashes =
+                        dashKind(cells.boxCodePoint(col - 1), true) or
+                            (dashKind(cells.boxCodePoint(col + 1), true) shl 2) or
+                            (dashKind(aboveLine?.cells?.boxCodePoint(col) ?: 0, false) shl 4) or
+                            (dashKind(belowLine?.cells?.boxCodePoint(col) ?: 0, false) shl 6)
+                    renderer.draw(canvas, box.toChar(), x, y, cellWidth, charHeight, paintedArgb, boxTextSize, neighboringDashes, clipPrepared = boxRenderer != null)
+                } else {
+                    if (col >= shapedUntil) {
+                        var end = col + width
+                        if (shaped != null && android.os.Build.VERSION.SDK_INT >= 31) {
+                            val limit = shaped.clusterEnd(col)
+                            val rtl = shaped.resolvedRtl(col)
+                            var previousVisual = shaped.visualColumn(col)
+                            var previousWidth = width
+                            while (end < limit) {
+                                val nextWidth = cells.width(end).coerceAtLeast(1)
+                                val nextVisual = shaped.visualColumn(end)
+                                // One clip is valid only for a contiguous visual span.
+                                if (shaped.resolvedRtl(end) != rtl ||
+                                    nextVisual != if (rtl) previousVisual - nextWidth else previousVisual + previousWidth
+                                ) {
+                                    break
+                                }
+                                val nextFlags = cells.flags(end)
+                                val nextSelected = activeSelection?.let {
+                                    it.isCellSelected(selectionRow, end, line) ||
+                                        (cells.width(end) == 2 && it.isCellSelected(selectionRow, end + 1, line))
+                                } == true
+                                val nextFg = if (nextSelected) {
+                                    selectionForegroundColor.takeUnless { it == Color.Unspecified } ?: Color.Black
+                                } else if (nextFlags and 32 != 0) {
+                                    cells.background(end)
+                                } else {
+                                    cells.foreground(end)
+                                }
+                                if (nextFg != fg || nextFlags and 9 != style) break
+                                previousVisual = nextVisual
+                                previousWidth = nextWidth
+                                end += nextWidth
+                            }
+                        }
+                        if (shaped != null && android.os.Build.VERSION.SDK_INT >= 31 &&
+                            shaped.drawCell(canvas, col, y + charBaseline, textPaint, charWidth, width, end)
+                        ) {
+                            shapedUntil = end
+                        } else {
+                            cells.draw(canvas, col, x, y + charBaseline, textPaint, cellWidth)
+                        }
+                    }
                 }
             }
+            if (underline != 0 || hyperlink || flags and 128 != 0) underlinePaint.color = fg.toArgb()
+            if (underline == 1 || hyperlink) {
+                canvas.drawLine(x, y + charBaseline + 2f, x + cellWidth, y + charBaseline + 2f, underlinePaint)
+            }
+            if (flags and 128 != 0) {
+                val strikeY = y + charBaseline + textPaint.fontMetrics.ascent * 0.35f
+                canvas.drawLine(x, strikeY, x + cellWidth, strikeY, underlinePaint)
+            }
+            if (underline == 2) {
+                drawDoubleUnderline(x, y + charBaseline, cellWidth, fg, underlinePaint)
+            }
+            if (underline == 3) {
+                drawCurlyUnderline(x, y + charBaseline, cellWidth, charWidth, fg, underlinePaint)
+            }
         }
-        if (underline != 0 || hyperlink || flags and 128 != 0) underlinePaint.color = fg.toArgb()
-        if (underline == 1 || hyperlink) {
-            canvas.drawLine(x, y + charBaseline + 2f, x + cellWidth, y + charBaseline + 2f, underlinePaint)
-        }
-        if (flags and 128 != 0) {
-            val strikeY = y + charBaseline + textPaint.fontMetrics.ascent * 0.35f
-            canvas.drawLine(x, strikeY, x + cellWidth, strikeY, underlinePaint)
-        }
-        if (underline == 2) {
-            drawDoubleUnderline(x, y + charBaseline, cellWidth, fg, underlinePaint)
-        }
-        if (underline == 3) {
-            drawCurlyUnderline(x, y + charBaseline, cellWidth, charWidth, fg, underlinePaint)
-        }
+    } finally {
+        if (batchingBoxes) boxRenderer?.endBatch()
     }
     line.images.filter { it.z >= 0 }.forEach { it.draw(canvas, row, charWidth, charHeight) }
 }
