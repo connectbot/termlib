@@ -521,6 +521,7 @@ internal class TerminalEmulatorImpl(
     // Scrollback buffer
     private val scrollback = ArrayDeque<TerminalLine>()
     private val maxScrollbackLines = 1000
+    private var scrollbackEvictedCount: Long = 0L
 
     // Cached immutable copy of scrollback - only recreate when scrollback changes
     private var scrollbackSnapshot: List<TerminalLine> = emptyList()
@@ -569,6 +570,7 @@ internal class TerminalEmulatorImpl(
         imagePolicy = InlineImages.Off
         imageStore.close()
         scrollback.clear()
+        scrollbackEvictedCount = 0L
         scrollbackSnapshot = emptyList()
         currentLines.clear()
         pendingScrollback = null
@@ -942,6 +944,7 @@ internal class TerminalEmulatorImpl(
             scrollback.add(line)
             if (scrollback.size > maxScrollbackLines) {
                 scrollback.removeFirst()
+                scrollbackEvictedCount++
             }
             scrollbackDirty = true
 
@@ -955,6 +958,7 @@ internal class TerminalEmulatorImpl(
         synchronized(damageLock) {
             imageStore.trimHistory(0)
             scrollback.clear()
+            scrollbackEvictedCount = 0L
             scrollbackDirty = true
             propertyChanged = true
             requestProcessPendingUpdatesLocked()
@@ -1326,6 +1330,7 @@ internal class TerminalEmulatorImpl(
             timestamp = System.currentTimeMillis(),
             sequenceNumber = sequenceNumber++,
             alternateScreen = isAltScreenActive,
+            scrollbackEvictedCount = scrollbackEvictedCount,
         )
     }
 
