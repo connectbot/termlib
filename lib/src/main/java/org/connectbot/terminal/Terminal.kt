@@ -68,6 +68,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -290,6 +291,7 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
  * @param keyboardEnabled Enable keyboard input handling (default: false for display-only mode).
  *                        When false, no keyboard input (hardware or soft) is accepted.
  * @param showSoftKeyboard Whether to show the soft keyboard/IME (default: true when keyboardEnabled=true).
+ * The explicit accessibility "Return to input" action can reopen it after dismissal.
  *                         Only applies when keyboardEnabled=true. Hardware keyboard always works when keyboardEnabled=true.
  *                         Allows explicit show requests; dismissing the IME leaves it hidden until another request.
  * @param resizeSuspended Retain terminal dimensions during temporary host layouts (for example a menu).
@@ -312,6 +314,9 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
  *                      normal scrollback everywhere. Selection and pinch zoom take priority; paging
  *                      does not scroll local history or fling. Upward drags emit PAGEDOWN.
  * @param onInterceptKey Optional callback to intercept raw Compose KeyEvents before the terminal emulator handles them. Return true to consume the event.
+ * @param accessibilityOptions Preferences for live output and cursor feedback.
+ * @param onAccessibilityControllerAvailable Receives main-thread controls for frozen output review.
+ * @param accessibilityState Optional session-owned review state retained across terminal views.
  */
 @Composable
 fun Terminal(
@@ -341,6 +346,9 @@ fun Terminal(
     onInterceptKey: ((ComposeKeyEvent) -> Boolean)? = null,
     resizeSuspended: Boolean = false,
     onPageGesture: ((Int) -> Unit)? = null,
+    accessibilityOptions: TerminalAccessibilityOptions = TerminalAccessibilityOptions(),
+    onAccessibilityControllerAvailable: ((TerminalAccessibilityController) -> Unit)? = null,
+    accessibilityState: TerminalAccessibilityState? = null,
 ) {
     if (LocalInspectionMode.current) {
         TerminalPreview(modifier, backgroundColor, foregroundColor)
@@ -375,6 +383,9 @@ fun Terminal(
         delKeyMode = delKeyMode,
         resizeSuspended = resizeSuspended,
         onPageGesture = onPageGesture,
+        accessibilityOptions = accessibilityOptions,
+        onAccessibilityControllerAvailable = onAccessibilityControllerAvailable,
+        accessibilityState = accessibilityState,
     )
 }
 
@@ -415,6 +426,9 @@ internal fun TerminalWithAccessibility(
     delKeyMode: DelKeyMode = DelKeyMode.Delete,
     resizeSuspended: Boolean = false,
     onPageGesture: ((Int) -> Unit)? = null,
+    accessibilityOptions: TerminalAccessibilityOptions = TerminalAccessibilityOptions(),
+    onAccessibilityControllerAvailable: ((TerminalAccessibilityController) -> Unit)? = null,
+    accessibilityState: TerminalAccessibilityState? = null,
 ) {
     if (terminalEmulator !is TerminalEmulatorImpl) {
         Box(
@@ -444,7 +458,27 @@ internal fun TerminalWithAccessibility(
     val accessibilityEnabled = forceAccessibilityEnabled ?: systemAccessibilityEnabled
 
     // Observe terminal state via StateFlow
-    val screenState = rememberTerminalScreenState(terminalEmulator)
+    val liveScreenState = rememberTerminalScreenState(terminalEmulator)
+    val retainedAccessibilityState = accessibilityState ?: remember(terminalEmulator) { TerminalAccessibilityState() }
+    val review = remember(terminalEmulator, retainedAccessibilityState) {
+        retainedAccessibilityState.bindTo(terminalEmulator)
+        TerminalReviewSession(retainedAccessibilityState) { liveScreenState.snapshot }
+    }
+    val isReviewMode = review.isReviewing
+    val screenState = if (isReviewMode) review.screenState else liveScreenState
+    var accessibilityView by remember(terminalEmulator) { mutableStateOf<TerminalAccessibilityView?>(null) }
+    var accessibilityMessage by remember(terminalEmulator) { mutableStateOf<TerminalAccessibilityMessage?>(null) }
+    var searchRequested by remember(terminalEmulator) { mutableStateOf(false) }
+    var accessibilityControlsHeight by remember { mutableStateOf(0) }
+    val touchExplorationEnabled by rememberTouchExplorationState()
+    LaunchedEffect(review, onAccessibilityControllerAvailable) { onAccessibilityControllerAvailable?.invoke(review) }
+    LaunchedEffect(accessibilityEnabled) { if (!accessibilityEnabled) review.resumeLiveOutput() }
+    AccessibleOutputFeedback(terminalEmulator, accessibilityEnabled, !isReviewMode, accessibilityOptions) { accessibilityMessage = TerminalAccessibilityMessage(it) }
+    LaunchedEffect(terminalEmulator, accessibilityOptions.announceOutput, accessibilityOptions.announceCursor) {
+        // Feedback muted for a host popup must not be replayed when it closes.
+        terminalEmulator.drainAccessibleOutput()
+        accessibilityMessage = null
+    }
 
     // Keyboard handler (will be updated with selectionController after it's created)
     val keyboardHandler = remember(terminalEmulator) {
@@ -452,6 +486,7 @@ internal fun TerminalWithAccessibility(
     }
     SideEffect {
         keyboardHandler.onInterceptKey = currentOnInterceptKey
+        keyboardHandler.inputEnabled = !review.isReviewing
     }
 
     // Font size and zoom state
@@ -466,7 +501,10 @@ internal fun TerminalWithAccessibility(
     var retainedWidth by remember { mutableStateOf(0) }
     var retainedHeight by remember { mutableStateOf(0) }
     val availableWidth = if (resizeSuspended) retainedWidth else measuredWidth
-    val availableHeight = if (resizeSuspended) retainedHeight else measuredHeight
+    val availableHeight = (
+        (if (resizeSuspended) retainedHeight else measuredHeight) -
+            if (accessibilityEnabled) accessibilityControlsHeight else 0
+        ).coerceAtLeast(0)
 
     // Magnifying glass state
     var showMagnifier by remember(terminalEmulator) { mutableStateOf(false) }
@@ -476,15 +514,16 @@ internal fun TerminalWithAccessibility(
     // Cursor blink state
     var cursorBlinkVisible by remember(terminalEmulator) { mutableStateOf(true) }
 
-    // Review Mode state for accessibility
-    var isReviewMode by remember(terminalEmulator) { mutableStateOf(false) }
-    val reviewFocusRequester = remember { FocusRequester() }
-
     // Manage focus and IME visibility
     // Determine if IME should be shown:
     // 1. keyboardEnabled is true (master switch)
     // 2. showSoftKeyboard is true (user wants IME visible)
-    val shouldShowIme = keyboardEnabled && showSoftKeyboard
+    // Return to input is an explicit keyboard request, even after the host has
+    // recorded the review-time hide as a dismissal. A new host preference or
+    // entering review again ends this override; Back still dismisses normally.
+    var inputImeRequested by remember(keyboardEnabled, showSoftKeyboard) { mutableStateOf(false) }
+    var returnToInputRequested by remember { mutableStateOf(false) }
+    val shouldShowIme = keyboardEnabled && (showSoftKeyboard || inputImeRequested)
 
     // Keep reference to ImeInputView for controlling IME
     var imeInputView by remember { mutableStateOf<ImeInputView?>(null) }
@@ -493,7 +532,24 @@ internal fun TerminalWithAccessibility(
     val currentVisibilityCallback by rememberUpdatedState(onImeVisibilityChanged)
     val currentShouldShowIme by rememberUpdatedState(shouldShowIme)
     var restoreAfterReview by remember { mutableStateOf(false) }
-    var reviewExitedByKey by remember { mutableStateOf(false) }
+    SideEffect {
+        review.onAccessibilityFocusRequested = { accessibilityView?.requestReadingFocus() }
+        review.onReturnToInput = {
+            liveScreenState.scrollToBottom()
+            if (keyboardEnabled) {
+                returnToInputRequested = true
+            }
+        }
+        review.onDocumentChanged = {
+            if (review.isReviewing) {
+                inputImeRequested = false
+                returnToInputRequested = false
+            }
+            keyboardHandler.inputEnabled = !review.isReviewing
+            terminalEmulator.drainAccessibleOutput()
+            accessibilityMessage = null
+        }
+    }
     SideEffect {
         currentInputView?.imeAllowed = shouldShowIme && !isReviewMode
         currentInputView?.observeImeVisibility(imeVisible)
@@ -509,11 +565,18 @@ internal fun TerminalWithAccessibility(
     }
 
     // React to IME state changes
-    LaunchedEffect(shouldShowIme, currentInputView) {
+    LaunchedEffect(shouldShowIme, currentInputView, returnToInputRequested) {
         Log.d("Terminal", "IME state changed: shouldShowIme=$shouldShowIme (imeInputView=$imeInputView)")
 
         currentInputView?.let { view ->
-            if (shouldShowIme) {
+            if (returnToInputRequested && keyboardEnabled && !isReviewMode) {
+                // Wait for composition to leave review before enabling the editor:
+                // otherwise the review SideEffect cancels its pending IME request.
+                inputImeRequested = true
+                returnToInputRequested = false
+                view.imeAllowed = true
+                view.showIme()
+            } else if (shouldShowIme) {
                 Log.d("Terminal", "Requesting IME for terminal editor")
                 if (!isReviewMode) view.showIme()
             } else {
@@ -537,26 +600,16 @@ internal fun TerminalWithAccessibility(
         }
     }
 
-    // Manage focus based on Review Mode
+    // Accessibility focus is managed by the native provider, independently of input focus.
     LaunchedEffect(isReviewMode) {
         if (isReviewMode) {
-            // Entering Review Mode: hide keyboard, focus on accessibility overlay
             restoreAfterReview = imeVisible
             imeInputView?.hideIme()
-            delay(UI_SETTLE_DELAY_MS)
-            try {
-                reviewFocusRequester.requestFocus()
-            } catch (_: IllegalStateException) {
-                // Focus requester not attached yet, ignore
-            }
-        } else {
-            // Exiting Review Mode: return focus to input field if keyboard enabled
-            if (keyboardEnabled && (restoreAfterReview || reviewExitedByKey)) {
-                imeInputView?.requestFocus()
-                if (shouldShowIme && restoreAfterReview && !reviewExitedByKey) imeInputView?.showIme()
-            }
+            accessibilityView?.requestFocus()
+        } else if (keyboardEnabled && restoreAfterReview) {
+            imeInputView?.requestFocus()
+            if (shouldShowIme) imeInputView?.showIme()
             restoreAfterReview = false
-            reviewExitedByKey = false
         }
     }
 
@@ -663,7 +716,7 @@ internal fun TerminalWithAccessibility(
 
     // Scroll animation state
     val scrollOffset = remember(terminalEmulator) { Animatable(0f) }
-    val maxScroll by remember(terminalEmulator, baseCharHeight) {
+    val maxScroll by remember(terminalEmulator, screenState, baseCharHeight) {
         derivedStateOf { screenState.snapshot.scrollback.size * baseCharHeight }
     }
     LaunchedEffect(maxScroll) {
@@ -676,7 +729,9 @@ internal fun TerminalWithAccessibility(
     }
     SideEffect {
         screenState.onSnapshotChanged = selectionManager::onSnapshotChanged
+        if (isReviewMode) liveScreenState.onSnapshotChanged = null
     }
+    LaunchedEffect(isReviewMode) { selectionManager.clearSelection() }
 
     // Selection controller - expose API for external control
     val selectionController = remember(terminalEmulator, selectionManager, clipboardManager, screenState, textPaint, baseCharWidth) {
@@ -764,19 +819,32 @@ internal fun TerminalWithAccessibility(
     val composeMode = remember(terminalEmulator) {
         ComposeMode()
     }
+    SideEffect {
+        val editorOwnsInput = accessibilityEnabled && composeMode.isActive
+        keyboardHandler.inputEnabled = !isReviewMode && !editorOwnsInput
+        currentInputView?.imeAllowed = shouldShowIme && !isReviewMode && !editorOwnsInput
+    }
 
     // Compose controller - expose API for external control
-    val composeController = remember(terminalEmulator, composeMode, keyboardHandler, selectionController) {
+    val composeController = remember(terminalEmulator, composeMode, keyboardHandler, selectionController, accessibilityEnabled) {
         object : ComposeController {
             override val isComposeModeActive: Boolean
                 get() = composeMode.isActive
 
             override fun startComposeMode() {
+                if (accessibilityEnabled) {
+                    review.resumeLiveOutput()
+                    imeInputView?.hideIme()
+                }
                 selectionController.clearSelection()
                 composeMode.activate()
             }
 
             override fun stopComposeMode() {
+                if (accessibilityEnabled) {
+                    composeMode.deactivate()
+                    return
+                }
                 // Flush any in-flight IME composition into the terminal before leaving
                 // compose mode, so the user's typing isn't silently dropped on toggle off.
                 composeMode.commit()?.let { text ->
@@ -923,28 +991,19 @@ internal fun TerminalWithAccessibility(
                     Modifier
                         .focusable()
                         .onPreviewKeyEvent { event ->
-                            // In Review Mode, let accessibility system handle navigation keys
                             if (isReviewMode) {
-                                // Allow arrow keys, Page Up/Down to navigate accessibility tree
-                                when (event.key) {
-                                    Key.DirectionUp,
-                                    Key.DirectionDown,
-                                    Key.DirectionLeft,
-                                    Key.DirectionRight,
-                                    Key.PageUp,
-                                    Key.PageDown,
-                                    -> false
-
-                                    // Don't consume - let system handle
-                                    else -> {
-                                        // Any other key exits Review Mode and goes to shell
-                                        reviewExitedByKey = true
-                                        isReviewMode = false
-                                        keyboardHandler.onKeyEvent(event)
-                                    }
+                                // Navigation belongs to review. Never forward an unhandled key to the shell.
+                                if (accessibilityView?.hasFocus() == true && event.nativeKeyEvent.keyCode != KeyEvent.KEYCODE_TAB) {
+                                    accessibilityView?.reviewKey(event.nativeKeyEvent)
+                                    true
+                                } else {
+                                    false
                                 }
+                            } else if (accessibilityEnabled && composeMode.isActive) {
+                                false
+                            } else if (accessibilityEnabled && currentInputView?.hasFocus() != true) {
+                                false
                             } else {
-                                // Input Mode: send all keys to shell
                                 keyboardHandler.onKeyEvent(event)
                             }
                         }
@@ -1044,9 +1103,9 @@ internal fun TerminalWithAccessibility(
                             color = Color(0xFF4CAF50).copy(alpha = 0.6f),
                         )
                 } else {
-                    Modifier.fillMaxSize()
+                    if (accessibilityEnabled) Modifier.fillMaxWidth().height(with(density) { availableHeight.toDp() }) else Modifier.fillMaxSize()
                 }
-                ).pointerInput(terminalEmulator, baseCharWidth, baseCharHeight) {
+                ).clipToBounds().pointerInput(terminalEmulator, baseCharWidth, baseCharHeight, isReviewMode, touchExplorationEnabled) {
                 val touchSlopSquared =
                     viewConfiguration.touchSlop * viewConfiguration.touchSlop
                 var scrollJob: Job? = null
@@ -1054,6 +1113,7 @@ internal fun TerminalWithAccessibility(
                     awaitEachGesture {
                         var gestureType: GestureType = GestureType.Undetermined
                         val down = awaitFirstDown(requireUnconsumed = true)
+                        if (isReviewMode || touchExplorationEnabled) return@awaitEachGesture
                         val isFinger = down.type == PointerType.Touch
                         val releaseFilter = SelectionReleaseFilter<SelectionRange>()
                         val selectionEdgeReach = SelectionEdgeReach(
@@ -1586,7 +1646,7 @@ internal fun TerminalWithAccessibility(
                     .fillMaxSize()
                     .background(backgroundColor)
                     .clearAndSetSemantics {
-                        // Hide from accessibility tree - AccessibilityOverlay provides semantic structure
+                        // The native accessibility surface exposes the rendered terminal text.
                     }
                     .clipToBounds()
                     .graphicsLayer {
@@ -1598,7 +1658,7 @@ internal fun TerminalWithAccessibility(
                     },
             ) {
                 Box(
-                    Modifier.fillMaxSize().drawWithContent {
+                    Modifier.fillMaxSize().graphicsLayer { translationX = -review.firstColumn * baseCharWidth }.drawWithContent {
                         val snapshot = screenState.snapshot
                         terminalInversion.reset()
                         if (inverseSelection(selectionBackgroundColor, selectionForegroundColor) && selectionManager.selectionRange != null) {
@@ -1682,7 +1742,7 @@ internal fun TerminalWithAccessibility(
                     val snapshot = screenState.snapshot
 
                     // Draw compose mode overlay
-                    if (composeMode.isActive && screenState.scrollbackPosition == 0) {
+                    if (composeMode.isActive && !accessibilityEnabled && screenState.scrollbackPosition == 0) {
                         drawComposeOverlay(
                             buffer = composeMode.buffer,
                             cursorRow = snapshot.cursorRow,
@@ -1733,25 +1793,49 @@ internal fun TerminalWithAccessibility(
             }
 
             if (accessibilityEnabled) {
-                AccessibilityOverlay(
-                    screenState = screenState,
-                    charHeight = baseCharHeight,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .focusRequester(reviewFocusRequester)
-                        .focusable(),
-                    onToggleReviewMode = { isReviewMode = !isReviewMode },
-                    isReviewMode = isReviewMode,
+                AndroidView(
+                    factory = { context -> TerminalAccessibilityView(context, review).also { accessibilityView = it } },
+                    update = { view ->
+                        view.requestInitialFocus = accessibilityOptions.requestInitialFocus
+                        view.onMessage = { accessibilityMessage = TerminalAccessibilityMessage(it) }
+                        view.onSearch = { searchRequested = true }
+                        view.onCompose = if (keyboardEnabled) ({ composeController.startComposeMode() }) else null
+                        view.onLink = currentOnHyperlinkClick
+                        view.visualColumn = { row, column -> textPaint.visualColumn(if (review.isReviewing) review.screenState else liveScreenState, row, column, baseCharWidth) }
+                        view.logicalColumn = { row, column -> textPaint.logicalColumn(if (review.isReviewing) review.screenState else liveScreenState, row, column, baseCharWidth) }
+                        view.autoDetectUrls = terminalEmulator.autoDetectUrls
+                        view.update(liveScreenState.snapshot, liveScreenState.scrollbackPosition, baseCharWidth, baseCharHeight)
+                    },
+                    modifier = Modifier.fillMaxSize(),
                 )
-
-                if (!isReviewMode && keyboardEnabled) {
-                    LiveOutputRegion(
-                        screenState = screenState,
-                        enabled = true,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
             }
+        }
+
+        if (accessibilityEnabled) {
+            TerminalAccessibilityControls(
+                review = review,
+                view = accessibilityView,
+                feedbackEnabled = accessibilityOptions.announceOutput || accessibilityOptions.announceCursor,
+                composeMode = composeMode,
+                keyboardEnabled = keyboardEnabled,
+                searchRequested = searchRequested,
+                onSearchRequested = { searchRequested = it },
+                onCompose = composeController::startComposeMode,
+                onSend = { enter ->
+                    val text = composeMode.commit().orEmpty()
+                    composeMode.deactivate()
+                    terminalEmulator.commands.execute {
+                        terminalEmulator.batchOutput {
+                            dispatchText(terminalEmulator, 0, text, true)
+                            if (enter) terminalEmulator.dispatchKey(0, VTermKey.ENTER)
+                        }
+                    }
+                    review.returnToInput()
+                },
+                message = accessibilityMessage,
+                onMessage = { accessibilityMessage = TerminalAccessibilityMessage(it) },
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { accessibilityControlsHeight = it.height },
+            )
         }
 
         // Magnifying glass
@@ -1924,9 +2008,15 @@ internal fun TerminalWithAccessibility(
             AndroidView(
                 factory = { context ->
                     ImeInputView(context, keyboardHandler).apply {
+                        importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
                         // Set up key event handling
                         setOnKeyListener { _, _, event ->
-                            handleRawKeyEvent(event)
+                            if (review.isReviewing) {
+                                accessibilityView?.reviewKey(event)
+                                true
+                            } else {
+                                handleRawKeyEvent(event)
+                            }
                         }
                         // Store reference for IME control
                         imeInputView = this
