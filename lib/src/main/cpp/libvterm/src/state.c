@@ -179,7 +179,7 @@ void vterm_state_place_image(VTermState *state, int rows, int cols, int reserve)
   VTermPos oldpos = state->pos;
   int left = state->pos.col;
   for(int row = 0; row < rows; row++) {
-    if(row > 0 || !reserve)
+    if(row > 0)
       linefeed(state);
     if(reserve) {
       VTermRect rect = {state->pos.row, state->pos.row + 1, left,

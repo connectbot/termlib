@@ -251,7 +251,7 @@ class InlineImageTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(2, requests.size)
         assertTrue(responses.any { "EPERM:user denied inline image" in it })
-        assertEquals(2, terminal.flush().cursorRow)
+        assertEquals(0, terminal.flush().cursorRow)
         assertEquals(2, terminal.flush().cursorCol)
         answers[1].resume(true)
         terminal.commands.call { Unit }
@@ -412,7 +412,7 @@ class InlineImageTest {
 
         terminal.write(kitty("a=T,f=100", png))
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(1, terminal.flush().cursorRow)
+        assertEquals(0, terminal.flush().cursorRow)
         assertEquals(1, terminal.flush().cursorCol)
         assertTrue(terminal.flush().lines.all { it.images.isEmpty() })
 
@@ -420,9 +420,39 @@ class InlineImageTest {
         terminal.commands.call { Unit }
 
         val snapshot = terminal.flush()
-        assertEquals(1, snapshot.cursorRow)
+        assertEquals(0, snapshot.cursorRow)
         assertEquals(1, snapshot.cursorCol)
         assertEquals(1, terminal.imageStore.assets.size)
+    }
+
+    @Test
+    fun kittyCursorMovementAdvancesToLastImageRowAndScrollsOnlyOverflowRows() {
+        val terminal = emulator()
+        terminal.write("\u001b[2;3H" + kitty("a=T,f=100,c=4,r=3", png))
+        var snapshot = terminal.flush()
+        assertEquals(3, snapshot.cursorRow)
+        assertEquals(6, snapshot.cursorCol)
+
+        terminal.write("\u001b[1;1H" + kitty("a=T,f=100,c=2,r=1", png))
+        snapshot = terminal.flush()
+        assertEquals(0, snapshot.cursorRow)
+        assertEquals(2, snapshot.cursorCol)
+
+        val terminal2 = emulator()
+        terminal2.write("TOP0\r\nTOP1\r\n")
+        terminal2.write("\u001b[5;2H" + kitty("a=T,f=100,c=3,r=2", png))
+        val snapFit = terminal2.flush()
+        assertEquals(5, snapFit.cursorRow)
+        assertEquals(4, snapFit.cursorCol)
+        assertEquals(0, snapFit.scrollback.size)
+        assertTrue(snapFit.lines[0].text.startsWith("TOP0"))
+
+        terminal2.write("\u001b[5;2H" + kitty("a=T,f=100,c=3,r=3", png))
+        val snapOverflow = terminal2.flush()
+        assertEquals(5, snapOverflow.cursorRow)
+        assertEquals(4, snapOverflow.cursorCol)
+        assertEquals(1, snapOverflow.scrollback.size)
+        assertTrue(snapOverflow.lines[0].text.startsWith("TOP1"))
     }
 
     @Test
