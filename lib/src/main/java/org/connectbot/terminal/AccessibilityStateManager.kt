@@ -61,3 +61,17 @@ internal fun rememberAccessibilityState(): State<Boolean> {
 
     return accessibilityState
 }
+
+/** Touch exploration is independent of other enabled accessibility services. */
+@Composable
+internal fun rememberTouchExplorationState(): State<Boolean> {
+    val context = LocalContext.current
+    val manager = remember(context) { context.getSystemService(AccessibilityManager::class.java) }
+    val state = remember(manager) { mutableStateOf(manager.isTouchExplorationEnabled) }
+    DisposableEffect(manager) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener { state.value = it }
+        manager.addTouchExplorationStateChangeListener(listener)
+        onDispose { manager.removeTouchExplorationStateChangeListener(listener) }
+    }
+    return state
+}

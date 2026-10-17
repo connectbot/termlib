@@ -1,0 +1,101 @@
+<resources>
+    <string name="terminal_a11y_review">Review output</string>
+    <string name="terminal_a11y_output">Terminal output</string>
+    <string name="terminal_a11y_blank">Blank line</string>
+    <plurals name="terminal_a11y_blank_lines">
+        <item quantity="one">%d blank line</item>
+        <item quantity="other">%d blank lines</item>
+    </plurals>
+    <string name="terminal_a11y_refresh">Refresh review</string>
+    <string name="terminal_a11y_resume">Resume live output</string>
+    <string name="terminal_a11y_input">Return to input</string>
+    <string name="terminal_a11y_search">Search output</string>
+    <string name="terminal_a11y_compose">Compose command</string>
+    <string name="terminal_a11y_copy_line">Copy line</string>
+    <string name="terminal_a11y_last_output">Read last command output</string>
+    <string name="terminal_a11y_copy_output">Copy last command output</string>
+    <string name="terminal_a11y_previous_prompt">Previous prompt</string>
+    <string name="terminal_a11y_next_prompt">Next prompt</string>
+    <string name="terminal_a11y_describe">Describe line</string>
+    <string name="terminal_a11y_open_link">Open link</string>
+    <string name="terminal_a11y_line_number">Line %1$d of %2$d</string>
+    <string name="terminal_a11y_prompt">Prompt</string>
+    <string name="terminal_a11y_command">Command</string>
+    <string name="terminal_a11y_finished">Command finished</string>
+    <string name="terminal_a11y_finished_code">Command finished with exit code %1$s</string>
+    <string name="terminal_a11y_link">Link</string>
+    <string name="terminal_a11y_annotation">Annotation</string>
+    <string name="terminal_a11y_text">Text</string>
+    <string name="terminal_a11y_paused">Reviewing a frozen snapshot. New output speech is paused.</string>
+    <string name="terminal_a11y_live">Live output</string>
+    <string name="terminal_a11y_overflow">More output arrived than can be announced. Review retained output to read it.</string>
+    <string name="terminal_a11y_cancel">Cancel</string>
+    <string name="terminal_a11y_send">Send text</string>
+    <string name="terminal_a11y_send_enter">Send and Enter</string>
+    <string name="terminal_a11y_search_query">Text to find</string>
+    <string name="terminal_a11y_search_results">Match %1$d of %2$d</string>
+    <string name="terminal_a11y_search_none">No matches</string>
+    <string name="terminal_a11y_previous_match">Previous match</string>
+    <string name="terminal_a11y_next_match">Next match</string>
+    <item name="terminal_a11y_review" type="id" />
+    <item name="terminal_a11y_refresh" type="id" />
+    <item name="terminal_a11y_resume" type="id" />
+    <item name="terminal_a11y_input" type="id" />
+    <item name="terminal_a11y_search" type="id" />
+    <item name="terminal_a11y_compose" type="id" />
+    <item name="terminal_a11y_copy_line" type="id" />
+    <item name="terminal_a11y_last_output" type="id" />
+    <item name="terminal_a11y_copy_output" type="id" />
+    <item name="terminal_a11y_previous_prompt" type="id" />
+    <item name="terminal_a11y_next_prompt" type="id" />
+    <item name="terminal_a11y_describe" type="id" />
+    <item name="terminal_a11y_open_link" type="id" />
+    <string name="terminal_a11y_previous_line">Previous line</string>
+    <string name="terminal_a11y_next_line">Next line</string>
+    <string name="terminal_a11y_start_output">Start of output</string>
+    <string name="terminal_a11y_end_output">End of output</string>
+    <string name="terminal_a11y_mark">Start selection</string>
+    <string name="terminal_a11y_switch_endpoint">Switch selection endpoint</string>
+    <string name="terminal_a11y_select_all">Select all output</string>
+    <string name="terminal_a11y_clear_selection">Clear selection</string>
+    <string name="terminal_a11y_formatting">Describe formatting</string>
+    <string name="terminal_a11y_stop_mark">Stop selection</string>
+    <string name="terminal_a11y_selection_started">Selection started. Move by characters, words, or lines to extend it.</string>
+    <string name="terminal_a11y_selection_stopped">Selection stopped.</string>
+    <string name="terminal_a11y_review_actions">Review actions</string>
+    <string name="terminal_a11y_copy_selection">Copy selection</string>
+    <string name="terminal_a11y_no_formatting">No character formatting at this position</string>
+    <string name="terminal_a11y_foreground">Foreground</string>
+    <string name="terminal_a11y_background">Background</string>
+    <string name="terminal_a11y_bold">Bold</string>
+    <string name="terminal_a11y_italic">Italic</string>
+    <string name="terminal_a11y_underline">Underline</string>
+    <string name="terminal_a11y_strike">Strikethrough</string>
+    <string name="terminal_a11y_blink">Blink</string>
+    <string name="terminal_a11y_reverse">Reverse video</string>
+    <string name="terminal_a11y_mixed">mixed</string>
+    <string name="terminal_a11y_single">single</string>
+    <string name="terminal_a11y_double">double</string>
+    <string name="terminal_a11y_curly">curly</string>
+    <string name="terminal_a11y_off">off</string>
+    <string name="terminal_a11y_on">on</string>
+    <string name="terminal_a11y_attribute">%1$s: %2$s</string>
+    <item name="terminal_a11y_previous_line" type="id" />
+    <item name="terminal_a11y_next_line" type="id" />
+    <item name="terminal_a11y_start_output" type="id" />
+    <item name="terminal_a11y_end_output" type="id" />
+    <item name="terminal_a11y_mark" type="id" />
+    <item name="terminal_a11y_switch_endpoint" type="id" />
+    <item name="terminal_a11y_select_all" type="id" />
+    <item name="terminal_a11y_clear_selection" type="id" />
+    <item name="terminal_a11y_formatting" type="id" />
+    <string name="terminal_a11y_start_line">Start of line</string>
+    <item name="terminal_a11y_start_line" type="id" />
+    <string name="terminal_a11y_end_line">End of line</string>
+    <item name="terminal_a11y_end_line" type="id" />
+    <string name="terminal_a11y_previous_link">Previous link</string>
+    <item name="terminal_a11y_previous_link" type="id" />
+    <string name="terminal_a11y_next_link">Next link</string>
+    <item name="terminal_a11y_next_link" type="id" />
+    <string name="terminal_a11y_link_position">%1$s. %2$s. Link %3$d of %4$d</string>
+</resources>

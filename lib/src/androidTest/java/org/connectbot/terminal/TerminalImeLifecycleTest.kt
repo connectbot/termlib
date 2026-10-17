@@ -103,6 +103,55 @@ class TerminalImeLifecycleTest {
         instrumentation.runOnMainSync { assertFalse("A tap must honor showSoftKeyboard=false", imeVisible()) }
     }
 
+    @Test
+    fun returnToInputReopensKeyboardAfterHostRecordsReviewHide() {
+        val terminal = TerminalEmulatorFactory.create()
+        val show = mutableStateOf(true)
+        val enabled = mutableStateOf(true)
+        var hasBeenVisible = false
+        var controller: TerminalAccessibilityController? = null
+        instrumentation.runOnMainSync {
+            setContent {
+                Box(Modifier.fillMaxSize().imePadding()) {
+                    TerminalWithAccessibility(
+                        terminal,
+                        keyboardEnabled = enabled.value,
+                        showSoftKeyboard = show.value,
+                        forceAccessibilityEnabled = true,
+                        onAccessibilityControllerAvailable = { controller = it },
+                        onImeVisibilityChanged = {
+                            if (it) hasBeenVisible = true
+                            if (!it && hasBeenVisible) show.value = false
+                        },
+                    )
+                }
+            }
+        }
+        waitUntil("Keyboard did not open") { imeVisible() && controller != null }
+        settleLayout()
+        instrumentation.runOnMainSync { controller!!.startReview() }
+        waitUntil("Review did not hide keyboard") { !imeVisible() && !show.value }
+        settleLayout()
+        instrumentation.runOnMainSync { controller!!.returnToInput() }
+        waitUntil("Return to input did not override the recorded dismissal") { imeVisible() }
+        settleLayout()
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        waitUntil("Back did not dismiss the explicitly opened keyboard") { !imeVisible() }
+        terminal.writeInput("output after Back\r\n".toByteArray())
+        settleLayout()
+        instrumentation.runOnMainSync { assertFalse(imeVisible()) }
+        instrumentation.runOnMainSync { controller!!.returnToInput() }
+        waitUntil("A second Return to input did not reopen the keyboard") { imeVisible() }
+        settleLayout()
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        waitUntil("Back did not dismiss the reopened keyboard") { !imeVisible() }
+        instrumentation.runOnMainSync { enabled.value = false }
+        settleLayout()
+        instrumentation.runOnMainSync { controller!!.returnToInput() }
+        settleLayout()
+        instrumentation.runOnMainSync { assertFalse("Return must honor keyboardEnabled=false", imeVisible()) }
+    }
+
     private fun tapTerminal() {
         val now = SystemClock.uptimeMillis()
         val location = IntArray(2)
