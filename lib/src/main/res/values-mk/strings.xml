@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Копирај</string>
+    <string name="terminal_selection_more_options_description">Повеќе опции</string>
+    <string name="terminal_selection_select_all">Избери сè</string>
+    <string name="terminal_selection_select_all_visible">Избери го целиот видлив текст</string>
+    <string name="terminal_selection_share">Сподели</string>
+    <string name="terminal_selection_paste">Залепи</string>
+    <string name="terminal_selection_mode_character">Режим: знак</string>
+    <string name="terminal_selection_mode_word">Режим: збор</string>
+    <string name="terminal_selection_mode_line">Режим: ред</string>
+</resources>

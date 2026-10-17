@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Sao chép</string>
+    <string name="terminal_selection_more_options_description">Tùy chọn khác</string>
+    <string name="terminal_selection_select_all">Chọn tất cả</string>
+    <string name="terminal_selection_select_all_visible">Chọn tất cả văn bản hiển thị</string>
+    <string name="terminal_selection_share">Chia sẻ</string>
+    <string name="terminal_selection_paste">Dán</string>
+    <string name="terminal_selection_mode_character">Chế độ: Ký tự</string>
+    <string name="terminal_selection_mode_word">Chế độ: Từ</string>
+    <string name="terminal_selection_mode_line">Chế độ: Dòng</string>
+</resources>

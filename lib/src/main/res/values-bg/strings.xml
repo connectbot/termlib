@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Копиране</string>
+    <string name="terminal_selection_more_options_description">Още опции</string>
+    <string name="terminal_selection_select_all">Избиране на всичко</string>
+    <string name="terminal_selection_select_all_visible">Избиране на целия видим текст</string>
+    <string name="terminal_selection_share">Споделяне</string>
+    <string name="terminal_selection_paste">Поставяне</string>
+    <string name="terminal_selection_mode_character">Режим: знак</string>
+    <string name="terminal_selection_mode_word">Режим: дума</string>
+    <string name="terminal_selection_mode_line">Режим: ред</string>
+</resources>

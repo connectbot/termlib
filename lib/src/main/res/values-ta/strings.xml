@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">நகலெடு</string>
+    <string name="terminal_selection_more_options_description">மேலும் விருப்பங்கள்</string>
+    <string name="terminal_selection_select_all">அனைத்தையும் தேர்ந்தெடு</string>
+    <string name="terminal_selection_select_all_visible">தெரியும் உரை அனைத்தையும் தேர்ந்தெடு</string>
+    <string name="terminal_selection_share">பகிர்</string>
+    <string name="terminal_selection_paste">ஒட்டு</string>
+    <string name="terminal_selection_mode_character">முறை: எழுத்து</string>
+    <string name="terminal_selection_mode_word">முறை: சொல்</string>
+    <string name="terminal_selection_mode_line">முறை: வரி</string>
+</resources>

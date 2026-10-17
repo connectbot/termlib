@@ -4,7 +4,7 @@
     <string name="terminal_selection_copy">Copy</string>
 
     <!-- Button that opens an overflow menu with additional text selection actions (Select All, Share, Paste, mode toggle). The glyph shown on the button face. -->
-    <string name="terminal_selection_more_options">⋮</string>
+    <string name="terminal_selection_more_options" translatable="false">⋮</string>
 
     <!-- Accessibility content description for the overflow menu button, read aloud by screen readers such as TalkBack -->
     <string name="terminal_selection_more_options_description">More options</string>

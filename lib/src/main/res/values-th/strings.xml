@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">คัดลอก</string>
+    <string name="terminal_selection_more_options_description">ตัวเลือกเพิ่มเติม</string>
+    <string name="terminal_selection_select_all">เลือกทั้งหมด</string>
+    <string name="terminal_selection_select_all_visible">เลือกข้อความที่มองเห็นทั้งหมด</string>
+    <string name="terminal_selection_share">แชร์</string>
+    <string name="terminal_selection_paste">วาง</string>
+    <string name="terminal_selection_mode_character">โหมด: อักขระ</string>
+    <string name="terminal_selection_mode_word">โหมด: คำ</string>
+    <string name="terminal_selection_mode_line">โหมด: บรรทัด</string>
+</resources>

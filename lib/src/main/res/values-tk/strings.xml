@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Göçür</string>
+    <string name="terminal_selection_more_options_description">Has köp opsiýa</string>
+    <string name="terminal_selection_select_all">Ählisini saýla</string>
+    <string name="terminal_selection_select_all_visible">Ähli görünýän teksti saýla</string>
+    <string name="terminal_selection_share">Paýlaş</string>
+    <string name="terminal_selection_paste">Goý</string>
+    <string name="terminal_selection_mode_character">Režim: Nyşan</string>
+    <string name="terminal_selection_mode_word">Režim: Söz</string>
+    <string name="terminal_selection_mode_line">Režim: Setir</string>
+</resources>

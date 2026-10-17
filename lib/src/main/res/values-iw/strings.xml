@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">העתקה</string>
+    <string name="terminal_selection_more_options_description">אפשרויות נוספות</string>
+    <string name="terminal_selection_select_all">בחירת הכול</string>
+    <string name="terminal_selection_select_all_visible">בחירת כל הטקסט הגלוי</string>
+    <string name="terminal_selection_share">שיתוף</string>
+    <string name="terminal_selection_paste">הדבקה</string>
+    <string name="terminal_selection_mode_character">מצב: תו</string>
+    <string name="terminal_selection_mode_word">מצב: מילה</string>
+    <string name="terminal_selection_mode_line">מצב: שורה</string>
+</resources>

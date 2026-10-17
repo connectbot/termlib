@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopēt</string>
+    <string name="terminal_selection_more_options_description">Vairāk opciju</string>
+    <string name="terminal_selection_select_all">Atlasīt visu</string>
+    <string name="terminal_selection_select_all_visible">Atlasīt visu redzamo tekstu</string>
+    <string name="terminal_selection_share">Kopīgot</string>
+    <string name="terminal_selection_paste">Ielīmēt</string>
+    <string name="terminal_selection_mode_character">Režīms: rakstzīme</string>
+    <string name="terminal_selection_mode_word">Režīms: vārds</string>
+    <string name="terminal_selection_mode_line">Režīms: rinda</string>
+</resources>

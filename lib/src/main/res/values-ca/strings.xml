@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Copia</string>
+    <string name="terminal_selection_more_options_description">Més opcions</string>
+    <string name="terminal_selection_select_all">Selecciona-ho tot</string>
+    <string name="terminal_selection_select_all_visible">Selecciona tot el text visible</string>
+    <string name="terminal_selection_share">Comparteix</string>
+    <string name="terminal_selection_paste">Enganxa</string>
+    <string name="terminal_selection_mode_character">Mode: caràcter</string>
+    <string name="terminal_selection_mode_word">Mode: paraula</string>
+    <string name="terminal_selection_mode_line">Mode: línia</string>
+</resources>

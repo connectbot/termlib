@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopioi</string>
+    <string name="terminal_selection_more_options_description">Lisää vaihtoehtoja</string>
+    <string name="terminal_selection_select_all">Valitse kaikki</string>
+    <string name="terminal_selection_select_all_visible">Valitse kaikki näkyvä teksti</string>
+    <string name="terminal_selection_share">Jaa</string>
+    <string name="terminal_selection_paste">Liitä</string>
+    <string name="terminal_selection_mode_character">Tila: merkki</string>
+    <string name="terminal_selection_mode_word">Tila: sana</string>
+    <string name="terminal_selection_mode_line">Tila: rivi</string>
+</resources>

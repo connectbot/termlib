@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopier</string>
+    <string name="terminal_selection_more_options_description">Flere alternativer</string>
+    <string name="terminal_selection_select_all">Velg alt</string>
+    <string name="terminal_selection_select_all_visible">Velg all synlig tekst</string>
+    <string name="terminal_selection_share">Del</string>
+    <string name="terminal_selection_paste">Lim inn</string>
+    <string name="terminal_selection_mode_character">Modus: Tegn</string>
+    <string name="terminal_selection_mode_word">Modus: Ord</string>
+    <string name="terminal_selection_mode_line">Modus: Linje</string>
+</resources>

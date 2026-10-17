@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">კოპირება</string>
+    <string name="terminal_selection_more_options_description">მეტი პარამეტრი</string>
+    <string name="terminal_selection_select_all">ყველაფრის მონიშვნა</string>
+    <string name="terminal_selection_select_all_visible">მთელი ხილული ტექსტის მონიშვნა</string>
+    <string name="terminal_selection_share">გაზიარება</string>
+    <string name="terminal_selection_paste">ჩასმა</string>
+    <string name="terminal_selection_mode_character">რეჟიმი: სიმბოლო</string>
+    <string name="terminal_selection_mode_word">რეჟიმი: სიტყვა</string>
+    <string name="terminal_selection_mode_line">რეჟიმი: სტრიქონი</string>
+</resources>

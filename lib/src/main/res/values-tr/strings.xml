@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopyala</string>
+    <string name="terminal_selection_more_options_description">Diğer seçenekler</string>
+    <string name="terminal_selection_select_all">Tümünü seç</string>
+    <string name="terminal_selection_select_all_visible">Görünen tüm metni seç</string>
+    <string name="terminal_selection_share">Paylaş</string>
+    <string name="terminal_selection_paste">Yapıştır</string>
+    <string name="terminal_selection_mode_character">Mod: Karakter</string>
+    <string name="terminal_selection_mode_word">Mod: Sözcük</string>
+    <string name="terminal_selection_mode_line">Mod: Satır</string>
+</resources>

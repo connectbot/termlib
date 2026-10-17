@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopiér</string>
+    <string name="terminal_selection_more_options_description">Flere muligheder</string>
+    <string name="terminal_selection_select_all">Vælg alt</string>
+    <string name="terminal_selection_select_all_visible">Vælg al synlig tekst</string>
+    <string name="terminal_selection_share">Del</string>
+    <string name="terminal_selection_paste">Indsæt</string>
+    <string name="terminal_selection_mode_character">Tilstand: Tegn</string>
+    <string name="terminal_selection_mode_word">Tilstand: Ord</string>
+    <string name="terminal_selection_mode_line">Tilstand: Linje</string>
+</resources>

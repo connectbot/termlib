@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">복사</string>
+    <string name="terminal_selection_more_options_description">옵션 더보기</string>
+    <string name="terminal_selection_select_all">모두 선택</string>
+    <string name="terminal_selection_select_all_visible">보이는 텍스트 모두 선택</string>
+    <string name="terminal_selection_share">공유</string>
+    <string name="terminal_selection_paste">붙여넣기</string>
+    <string name="terminal_selection_mode_character">모드: 문자</string>
+    <string name="terminal_selection_mode_word">모드: 단어</string>
+    <string name="terminal_selection_mode_line">모드: 줄</string>
+</resources>

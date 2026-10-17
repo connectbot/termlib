@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopiatu</string>
+    <string name="terminal_selection_more_options_description">Aukera gehiago</string>
+    <string name="terminal_selection_select_all">Hautatu dena</string>
+    <string name="terminal_selection_select_all_visible">Hautatu ikusgai dagoen testu guztia</string>
+    <string name="terminal_selection_share">Partekatu</string>
+    <string name="terminal_selection_paste">Itsatsi</string>
+    <string name="terminal_selection_mode_character">Modua: karakterea</string>
+    <string name="terminal_selection_mode_word">Modua: hitza</string>
+    <string name="terminal_selection_mode_line">Modua: lerroa</string>
+</resources>

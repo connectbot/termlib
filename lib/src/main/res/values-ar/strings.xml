@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">نسخ</string>
+    <string name="terminal_selection_more_options_description">المزيد من الخيارات</string>
+    <string name="terminal_selection_select_all">تحديد الكل</string>
+    <string name="terminal_selection_select_all_visible">تحديد كل النص المرئي</string>
+    <string name="terminal_selection_share">مشاركة</string>
+    <string name="terminal_selection_paste">لصق</string>
+    <string name="terminal_selection_mode_character">الوضع: حرف</string>
+    <string name="terminal_selection_mode_word">الوضع: كلمة</string>
+    <string name="terminal_selection_mode_line">الوضع: سطر</string>
+</resources>
