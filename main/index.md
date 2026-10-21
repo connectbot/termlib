@@ -83,19 +83,11 @@ Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() �
 <!-- BEGIN DOCS API CHANGES -->
 ## New and changed APIs
 
-Changes since 0.3.13.
+Changes since 0.3.14.
 
-[Compare source versions](https://github.com/connectbot/termlib/compare/0.3.13...289537c9fbbd467fdcd2f300d52eb106b8c5bc32)
+[Compare source versions](https://github.com/connectbot/termlib/compare/0.3.14...56934dd1369dc5d3e1f842b384df989c3c642a12)
 
 ### Terminal
 
-#### org.connectbot.terminal.SelectionController
-
-- Added: [open fun selectAllVisible()](-connect-bot%20-terminal/org.connectbot.terminal/-selection-controller/select-all-visible.html)
-
-#### org.connectbot.terminal.TerminalEmulator
-
-- Added: [abstract override fun close()](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-emulator/close.html)
-
-- Changed: [sealed interface TerminalEmulator : AutoCloseable](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-emulator/index.html)
+No public API signature changes.
 <!-- END DOCS API CHANGES -->
