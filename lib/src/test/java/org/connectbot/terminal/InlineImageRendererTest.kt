@@ -6,16 +6,17 @@
 package org.connectbot.terminal
 
 import android.os.Looper
+import com.github.valfirst.slf4jtest.TestLoggerFactory
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import org.robolectric.shadows.ShadowLog
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.Continuation
@@ -26,6 +27,11 @@ import kotlin.coroutines.suspendCoroutine
 @Config(sdk = [34])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class InlineImageRendererTest : InlineImageRenderChecks() {
+    private val logger = TestLoggerFactory.getTestLogger(InlineImageStore::class.java)
+
+    @get:Rule
+    val clearLogs = ClearLogsRule(logger)
+
     @Test
     fun invalidPixelsAreDiscardedAfterApprovalAndDecoderRecovers() {
         for (ask in listOf(false, true)) {
@@ -61,6 +67,6 @@ class InlineImageRendererTest : InlineImageRenderChecks() {
             terminal.processPendingUpdates()
             assertTrue(terminal.snapshot.value.lines.any { "SAFE" in it.text })
         }
-        assertTrue(ShadowLog.getLogsForTag("InlineImageStore").any { "pixel decoding failed" in it.msg })
+        assertTrue(logger.allLoggingEvents.any { "pixel decoding failed" in it.formattedMessage })
     }
 }

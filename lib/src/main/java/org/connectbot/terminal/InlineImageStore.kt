@@ -20,10 +20,10 @@ import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Handler
 import android.os.SystemClock
-import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import org.slf4j.LoggerFactory
 import java.io.InputStream
 import java.lang.ref.ReferenceQueue
 import java.lang.ref.WeakReference
@@ -35,6 +35,8 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.InflaterInputStream
 import kotlin.math.ceil
 import kotlin.math.max
+
+private val logger = LoggerFactory.getLogger("org.connectbot.terminal.InlineImageStore")
 
 internal data class ImageSource(val bytes: ImageBytes, val width: Int, val height: Int, val format: Int = 100, val mime: String? = null, val frameCount: Int = 1, val consent: ImageConsent? = null) {
     val displayAllowed: Boolean get() = consent == null || consent.decision == true
@@ -536,10 +538,10 @@ internal class InlineImageStore(var limits: InlineImageLimits, private val handl
                     frame.decode(w, h)
                 }
             } catch (e: Exception) {
-                Log.w("InlineImageStore", "Ignoring image ${asset.id}: pixel decoding failed", e)
+                logger.warn("Ignoring image ${asset.id}: pixel decoding failed", e)
                 null
             } catch (e: OutOfMemoryError) {
-                Log.w("InlineImageStore", "Ignoring image ${asset.id}: pixel decoding exhausted memory", e)
+                logger.warn("Ignoring image ${asset.id}: pixel decoding exhausted memory", e)
                 null
             }
             maintenance.execute {

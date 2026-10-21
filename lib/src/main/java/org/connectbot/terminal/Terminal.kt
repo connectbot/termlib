@@ -25,7 +25,6 @@ import android.graphics.Typeface
 import android.icu.lang.UCharacter
 import android.icu.lang.UProperty
 import android.text.TextPaint
-import android.util.Log
 import android.view.KeyEvent
 import androidx.annotation.VisibleForTesting
 import androidx.compose.animation.core.Animatable
@@ -121,11 +120,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.ceil
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
+
+private val logger = LoggerFactory.getLogger("org.connectbot.terminal.Terminal")
 
 private val CURLY_UNDERLINE_PATH = ThreadLocal.withInitial { Path() }
 
@@ -503,23 +505,23 @@ internal fun TerminalWithAccessibility(
     // Cleanup IME when component is disposed
     DisposableEffect(currentInputView) {
         onDispose {
-            Log.d("Terminal", "Disposing Terminal - hiding IME")
+            logger.debug("Disposing Terminal - hiding IME")
             currentInputView?.hideIme()
         }
     }
 
     // React to IME state changes
     LaunchedEffect(shouldShowIme, currentInputView) {
-        Log.d("Terminal", "IME state changed: shouldShowIme=$shouldShowIme (imeInputView=$imeInputView)")
+        logger.debug("IME state changed: shouldShowIme=$shouldShowIme (imeInputView=$imeInputView)")
 
         currentInputView?.let { view ->
             if (shouldShowIme) {
-                Log.d("Terminal", "Requesting IME for terminal editor")
+                logger.debug("Requesting IME for terminal editor")
                 if (!isReviewMode) view.showIme()
             } else {
-                Log.d("Terminal", "Hiding IME via InputMethodManager")
+                logger.debug("Hiding IME via InputMethodManager")
                 view.hideIme()
-                Log.d("Terminal", "IME hide completed")
+                logger.debug("IME hide completed")
             }
         }
     }

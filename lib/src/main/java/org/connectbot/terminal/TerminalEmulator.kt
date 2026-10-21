@@ -21,17 +21,19 @@ import android.icu.lang.UProperty
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
+
+private val logger = LoggerFactory.getLogger("org.connectbot.terminal.TerminalEmulator")
 
 /**
  * URL discovered in terminal output.
@@ -545,7 +547,7 @@ internal class TerminalEmulatorImpl(
             native.apply {
                 resize(initialRows, initialCols)
                 if (setBoldHighbright(boldAsBright) != 0) {
-                    Log.e(TAG, "Failed to set boldAsBright=$boldAsBright")
+                    logger.error("Failed to set boldAsBright=$boldAsBright")
                 }
             }
         } catch (failure: Throwable) {
@@ -1635,7 +1637,6 @@ internal class TerminalEmulatorImpl(
     }
 
     companion object {
-        private const val TAG = "TerminalEmulatorImpl"
         private const val MAX_URL_SCAN_CONTINUATION_ROWS = 6
     }
 }

@@ -7,16 +7,17 @@ package org.connectbot.terminal
 
 import android.os.Handler
 import android.os.Looper
+import com.github.valfirst.slf4jtest.TestLoggerFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-import org.robolectric.shadows.ShadowLog
 import java.io.File
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
@@ -27,6 +28,11 @@ import kotlin.coroutines.suspendCoroutine
 
 @RunWith(RobolectricTestRunner::class)
 class InlineImageTest {
+    private val logger = TestLoggerFactory.getTestLogger(InlineImageProtocol::class.java)
+
+    @get:Rule
+    val clearLogs = ClearLogsRule(logger)
+
     private val png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
     private fun emulator() = TerminalEmulatorFactory.create(initialRows = 6, initialCols = 12, inlineImages = InlineImages.On()) as TerminalEmulatorImpl
     private fun iterm(data: String = png, options: String = "width=3;height=2;preserveAspectRatio=0") = "\u001b]1337;File=inline=1;$options:$data\u0007"
@@ -632,7 +638,6 @@ class InlineImageTest {
     fun kittyTgp001Transcript() {
         val directory = System.getenv("TERMLIB_KITTY_TGP")?.let(::File)
         assumeTrue(directory?.isDirectory == true)
-        ShadowLog.clear()
         val terminal = TerminalEmulatorFactory.create(initialRows = 30, initialCols = 137, inlineImages = InlineImages.On()) as TerminalEmulatorImpl
         terminal.setCellPixelSize(8, 16)
         var peakAssets = 0
@@ -670,7 +675,7 @@ class InlineImageTest {
             assertTrue("Unexpected typescript trailer", trailer.isEmpty() || trailer.trimStart().startsWith("Script done on "))
         }
         terminal.processPendingUpdates()
-        val rejections = ShadowLog.getLogsForTag("InlineImageProtocol").map { it.msg }
+        val rejections = logger.allLoggingEvents.map { it.formattedMessage }
         println(
             "KITTY_TGP peakAssets=$peakAssets peakPlacements=$peakPlacements " +
                 "peakEncoded=$peakEncoded finalAssets=${terminal.imageStore.assets.size} " +
@@ -746,7 +751,7 @@ class InlineImageTest {
                 }
             }
         }
-        assertTrue(ShadowLog.getLogsForTag("InlineImageProtocol").any { "Rejected" in it.msg })
+        assertTrue(logger.allLoggingEvents.any { "Rejected" in it.formattedMessage })
     }
 
     @Test
