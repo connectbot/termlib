@@ -8,3 +8,8 @@ updates:
     directory: /
     schedule:
       interval: daily
+    # Keep release workflows on main to match Octo STS trust policies.
+    ignore:
+      - dependency-name: connectbot/actions/.github/workflows/prepare-release.yml
+      - dependency-name: connectbot/actions/.github/workflows/publish-release.yml
+      - dependency-name: connectbot/actions/.github/workflows/release-branch.yml
