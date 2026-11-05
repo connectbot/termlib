@@ -59,7 +59,7 @@ jobs:
 
       - name: Reconcile and save documentation archive
         id: docs
-        uses: connectbot/actions/docs@9b826116f0d49329fbe10985a5abdfa49562f0a0 # v0.2.0
+        uses: connectbot/actions/docs@afbe5170d337a112404df279d64fb3cdf0d6b1ee # v0.2.1
         env:
           GH_TOKEN: ${{ github.token }}
         with:
