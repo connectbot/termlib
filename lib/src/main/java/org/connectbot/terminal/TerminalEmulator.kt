@@ -1163,6 +1163,22 @@ internal class TerminalEmulatorImpl(
                 transferRanges[row * 2 + 1] = maxOf(transferRanges[row * 2 + 1], end)
             }
         }
+        // A row's softWrapped is the next row's libvterm continuation flag, so writing a row can change the flag of
+        // the row above it, which may not be damaged (a line that wraps in a later PTY read). Fetch the last cell of
+        // the row above each damaged row so its flag is read again. Ascending order reads each row's own damage
+        // before the next row extends it.
+        for (row in 1 until rows) {
+            if (transferRanges[row * 2] >= transferRanges[row * 2 + 1]) continue
+            val above = row - 1
+            val previous = currentLines[above].cells
+            val start = when {
+                previous.size != cols -> 0
+                cols > 1 && previous.width(cols - 1) == 0 -> cols - 2
+                else -> cols - 1
+            }
+            transferRanges[above * 2] = minOf(transferRanges[above * 2], start)
+            transferRanges[above * 2 + 1] = cols
+        }
         var builder: PackedCells.Builder? = null
         screenTransfer.fetch(terminalNative, transferRanges) { row, start, count, buffer, offset, softWrapped ->
             val previous = currentLines[row].cells
