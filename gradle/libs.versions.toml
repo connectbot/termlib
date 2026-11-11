@@ -21,7 +21,7 @@ appcompat = "1.8.0"
 material = "1.14.0"
 coreKtx = "1.19.1"
 
-mockk = "1.14.11"
+mockk = "1.14.12"
 
 junitClassic = "4.13.2"
 robolectric = "4.17"
