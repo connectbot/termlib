@@ -34,32 +34,32 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout source from main
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           ref: main
           fetch-depth: 0
           fetch-tags: true
 
       - name: Set up JDK
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@v6.1.0
         with:
           distribution: zulu
           java-version: '17'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        uses: gradle/actions/setup-gradle@v6.4.1
         with:
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        uses: android-actions/setup-android@v4.0.4
         with:
           cmdline-tools-version: '13114758'
           packages: 'platform-tools'
 
       - name: Reconcile and save documentation archive
         id: docs
-        uses: connectbot/actions/docs@9b826116f0d49329fbe10985a5abdfa49562f0a0 # v0.2.0
+        uses: connectbot/actions/docs@v0.2.0
         env:
           GH_TOKEN: ${{ github.token }}
         with:
@@ -68,7 +68,7 @@ jobs:
 
       - name: Preserve build logs
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: documentation-build-logs
           path: ${{ runner.temp }}/docs-logs
@@ -76,18 +76,18 @@ jobs:
 
       - name: Set up Pages
         if: steps.docs.outputs.ready == 'true'
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        uses: actions/configure-pages@v6.0.0
 
       - name: Upload complete site
         if: steps.docs.outputs.ready == 'true'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: ${{ runner.temp }}/docs-site
 
       - name: Deploy to GitHub Pages
         if: steps.docs.outputs.ready == 'true'
         id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        uses: actions/deploy-pages@v5.0.1
 
       - name: Report incomplete documentation
         if: steps.docs.outputs.ready != 'true' || steps.docs.outputs.failures != '0'
