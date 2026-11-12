@@ -16,6 +16,12 @@ permissions:
   contents: write
 
 jobs:
+  lockfile:
+    name: Verify Actions lockfile
+    uses: connectbot/actions/.github/workflows/verify-lockfile.yml@v0.2.2
+    permissions:
+      contents: read
+
   build:
     name: Build and test
     runs-on: ubuntu-latest
