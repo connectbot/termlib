@@ -2,6 +2,23 @@ INIT
 WANTSTATE
 WANTSCREEN
 
+!Resize drops a vertical scroll region beyond the new screen
+RESET
+RESIZE 10,40
+PUSH "\e[5;9r"
+RESIZE 3,40
+PUSH "\e[5S\e[5T\e[3;1HX\nY"
+  ?screen_chars 1,0,2,40 = "X"
+  ?screen_chars 2,0,3,40 = " Y"
+
+!Resize drops a horizontal scroll region beyond the new screen
+RESET
+RESIZE 10,40
+PUSH "\e[?69h\e[10;30s"
+RESIZE 10,5
+PUSH "\e[1;1HABCDE\e[1;1H\e[@"
+  ?screen_chars 0,0,1,5 = " ABCD"
+
 !Resize wider preserves cells
 RESET
 RESIZE 25,80

@@ -2,6 +2,11 @@ INIT
 UTF8 1
 WANTSTATE g
 
+!REP before any graphic character
+RESET
+PUSH "\e[9b"
+  ?cursor = 0,0
+
 !REP no argument
 RESET
 PUSH "a\e[b"

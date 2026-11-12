@@ -83,6 +83,24 @@ PUSH "\e[1:2c"
 PUSH "\e[678d"
   csi 0x64 678
 
+!CSI maximum numeric argument
+PUSH "\e[2147483646m"
+  csi 0x6d 2147483646
+
+!CSI numeric arguments cannot become the missing-argument sentinel
+PUSH "\e[2147483647m"
+  csi 0x6d 2147483646
+
+!CSI long numeric argument is clamped without affecting subsequent parameters
+PUSH "\e[999999999999999999999999999999999999999999999999999999999999;3mOK"
+  csi 0x6d 2147483646,3
+  text 0x4f, 0x4b
+
+!CSI long numeric subparameter across writes
+PUSH "\e[38:5:999999999999999999"
+PUSH "999999999999999999999999999999999999999999999999999999;1m"
+  csi 0x6d 38+,5+,2147483646,1
+
 !CSI leading zero
 PUSH "\e[007e"
   csi 0x65 7

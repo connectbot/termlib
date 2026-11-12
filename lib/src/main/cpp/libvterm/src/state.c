@@ -116,6 +116,11 @@ static void scroll(VTermState *state, VTermRect rect, int downward, int rightwar
   if(!downward && !rightward)
     return;
 
+  /* Resizing can leave a scroll region outside the new screen. Never pass
+   * an inverted rectangle through the size and movement calculations. */
+  if(rect.end_row <= rect.start_row || rect.end_col <= rect.start_col)
+    return;
+
   int rows = rect.end_row - rect.start_row;
   if(downward > rows)
     downward = rows;
@@ -1235,6 +1240,10 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
 
   case 0x62: { // REP - ECMA-48 8.3.103
     const int row_width = THISROWWIDTH(state);
+    /* There is no preceding graphic character in a fresh terminal. */
+    if(state->combine_width < 1)
+      break;
+
     count = CSI_ARG_COUNT(args[0]);
     col = state->pos.col + count;
     UBOUND(col, row_width);
@@ -1993,6 +2002,17 @@ static int on_resize(int rows, int cols, void *user)
     UBOUND(state->scrollregion_bottom, state->rows);
   if(state->scrollregion_right > -1)
     UBOUND(state->scrollregion_right, state->cols);
+
+  UBOUND(state->scrollregion_top, state->rows);
+  UBOUND(state->scrollregion_left, state->cols);
+  if(SCROLLREGION_BOTTOM(state) <= state->scrollregion_top) {
+    state->scrollregion_top = 0;
+    state->scrollregion_bottom = -1;
+  }
+  if(SCROLLREGION_RIGHT(state) <= state->scrollregion_left) {
+    state->scrollregion_left = 0;
+    state->scrollregion_right = -1;
+  }
 
   VTermStateFields fields = {
     .pos       = state->pos,
