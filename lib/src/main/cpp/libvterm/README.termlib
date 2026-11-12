@@ -28,6 +28,16 @@ colours 0-7 when bold is applied, including Kismet's indexed black-on-black text
 The upstream SGR 38 test is adjusted to capture this existing behaviour; the
 ShellIntegrationTest Kismet regression also covers it through JNI.
 
+Additional Vim backports:
+
+* 9.2.0297 (including 9.2.0288): clamp numeric CSI arguments before overflow.
+  https://github.com/vim/vim/commit/77e7a40af2cab8c0f89a33553af42428b20af233
+* 9.2.0989: ignore REP when no preceding graphic character exists.
+  https://github.com/vim/vim/commit/785bb3e9b271eb377dbd4157ce281eac7f16a021
+* 9.2.0990: reset scroll regions invalidated by resize and reject empty or
+  inverted scroll rectangles.
+  https://github.com/vim/vim/commit/cb34d15aeae530d6803ef4aa0618ec5b430df911
+
 Validation:
 
     make -C lib/src/main/cpp/libvterm test
