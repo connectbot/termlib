@@ -2,9 +2,15 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.15][0.3.15]
 
-<!-- Add user-facing changes here; use ## [version] headings when releasing. -->
+### Fixed
+- Clamp oversized CSI numeric arguments and reject excess parameters and subparameters to prevent parser overflow and out-of-bounds access
+- Ignore REP (repeat character) sequences when no preceding graphic character exists
+- Reset scroll regions invalidated by resize and reject empty or inverted scroll rectangles
+
+### Dependencies
+- Update vendored libvterm to revision 847 with additional Vim parser and resize fixes
 
 ## [0.3.14][0.3.14]
 
@@ -68,6 +74,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Update AndroidX Core from 1.19.0 to 1.19.1
 
 
+[0.3.15]: https://github.com/connectbot/termlib/compare/0.3.14...0.3.15
 [0.3.14]: https://github.com/connectbot/termlib/compare/0.3.13...0.3.14
 [0.3.13]: https://github.com/connectbot/termlib/compare/0.3.12...0.3.13
 [0.3.12]: https://github.com/connectbot/termlib/compare/0.3.11...0.3.12
