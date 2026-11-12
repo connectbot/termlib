@@ -1,0 +1,34 @@
+libvterm vendoring
+=================
+
+Source: https://bazaar.leonerd.org.uk/c/libvterm/
+Bazaar revision: 847 (2026-10-29)
+Revision ID: leonerd@leonerd.org.uk-20261029213117-ufuqbcpo9edo3vqg
+Release base: 0.3.3 (Bazaar revision 839)
+
+This copy includes upstream revisions 840-847: pre-move and continuation-aware
+scrollback callbacks, reflow cleanup, and bounds checking for excess CSI
+parameters and subparameters. Upstream still
+reports version 0.3.3; the Bazaar revision above identifies the snapshot.
+
+To retrieve the pinned source:
+
+    bzr export -r 847 /tmp/libvterm-r847 http://bazaar.leonerd.org.uk/c/libvterm/
+
+Merge future upstream changes against this revision rather than replacing the
+directory. Local changes include keyboard handling, parser bounds and escape
+handling, glyph clusters and generated Unicode/emoji data, resize/reflow fixes,
+BiDi support, and inline-image state and screen callbacks. The Makefile and
+vterm.pc.in retain their release-tarball form, and only the existing source/test
+subset is vendored. CMake builds the library and JNI wrapper for Android/host.
+
+Compatibility exception: revision 845's change to bold/highbright handling is
+reverted locally. termlib's boldAsBright option must continue promoting indexed
+colours 0-7 when bold is applied, including Kismet's indexed black-on-black text.
+The upstream SGR 38 test is adjusted to capture this existing behaviour; the
+ShellIntegrationTest Kismet regression also covers it through JNI.
+
+Validation:
+
+    make -C lib/src/main/cpp/libvterm test
+    ./gradlew :lib:testDebugUnitTest --no-configuration-cache

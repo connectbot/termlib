@@ -229,6 +229,8 @@ size_t vterm_input_write(VTerm *vt, const char *bytes, size_t len)
     case CSI_ARGS:
       /* Numerical value of argument */
       if(c >= '0' && c <= '9') {
+        if(vt->parser.v.csi.argi >= CSI_ARGS_MAX-1)
+          break;
         if(vt->parser.v.csi.args[vt->parser.v.csi.argi] == CSI_ARG_MISSING)
           vt->parser.v.csi.args[vt->parser.v.csi.argi] = 0;
         vt->parser.v.csi.args[vt->parser.v.csi.argi] *= 10;
@@ -236,10 +238,14 @@ size_t vterm_input_write(VTerm *vt, const char *bytes, size_t len)
         break;
       }
       if(c == ':') {
+        if(vt->parser.v.csi.argi >= CSI_ARGS_MAX-1)
+          break;
         vt->parser.v.csi.args[vt->parser.v.csi.argi] |= CSI_ARG_FLAG_MORE;
         c = ';';
       }
       if(c == ';') {
+        if(vt->parser.v.csi.argi >= CSI_ARGS_MAX-1)
+          break;
         vt->parser.v.csi.argi++;
         vt->parser.v.csi.args[vt->parser.v.csi.argi] = CSI_ARG_MISSING;
         break;
