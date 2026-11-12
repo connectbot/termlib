@@ -25,7 +25,7 @@ mockk = "1.14.12"
 
 junitClassic = "4.13.2"
 robolectric = "4.17"
-roborazzi = "1.78.0"
+roborazzi = "1.79.0"
 ui = "1.12.1"
 
 [libraries]
