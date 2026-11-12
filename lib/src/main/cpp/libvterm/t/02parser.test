@@ -105,6 +105,20 @@ PUSH "A\e[8mB"
   csi 0x6d 8
   text 0x42
 
+!Excess CSI parameters are discarded
+PUSH "\e[;;;;;;;;;;;;;;;;;;;;;mOK"
+  csi 0x6d *,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*
+  text 0x4f, 0x4b
+
+!Excess CSI subparameters are discarded
+PUSH "\e[:::::::::::::::::::::mOK"
+  csi 0x6d *+,*+,*+,*+,*+,*+,*+,*+,*+,*+,*+,*+,*+,*+,*+,*
+  text 0x4f, 0x4b
+
+!CAN recovers from ignored CSI
+PUSH "\e[;;;;;;;;;;;;;;;;;;;;;\x18OK"
+  text 0x4f, 0x4b
+
 !Split write
 PUSH "\e"
 PUSH "[a"
