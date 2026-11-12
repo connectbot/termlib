@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+<!-- Add user-facing changes here; use ## [version] headings when releasing. -->
+
 ## [0.3.15][0.3.15]
 
 ### Fixed
