@@ -8,7 +8,7 @@ publish = "0.37.0"
 release = "3.2.0"
 metalava = "0.5.1"
 dokka = "2.3.0"
-sonarqube = "7.5.0.8588"
+sonarqube = "7.6.0.18749"
 kover = "0.9.11"
 
 composeBom = "2026.09.00"
