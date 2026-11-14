@@ -42,6 +42,37 @@ class AccessibilityOverlayTest {
     val composeTestRule = createComposeRule()
 
     @Test
+    fun movingFromHistoryToRecentRowsDoesNotReenableFollowing() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 40) as TerminalEmulatorImpl
+        emulator.writeInput((1..30).joinToString("\r\n") { "Output $it" }.toByteArray())
+        emulator.processPendingUpdates()
+        val state = TerminalScreenState(emulator.snapshot.value)
+        val list = LazyListState()
+        var following = true
+        composeTestRule.setContent {
+            AccessibilityOverlay(
+                state,
+                24f,
+                lazyListState = list,
+                modifier = Modifier.height(48.dp).testTag("history"),
+                onFollowTailChange = { following = it },
+            )
+        }
+        composeTestRule.onNodeWithTag("history").performScrollToIndex(0)
+        composeTestRule.onNodeWithTag("history").performScrollToIndex(state.snapshot.scrollback.size)
+        composeTestRule.runOnIdle { assertEquals(false, following) }
+        composeTestRule.runOnIdle {
+            emulator.writeInput("\r\nOutput 31".toByteArray())
+            emulator.processPendingUpdates()
+            state.updateSnapshot(emulator.snapshot.value)
+        }
+        composeTestRule.runOnIdle {
+            assertEquals(state.snapshot.scrollback.size, list.firstVisibleItemIndex)
+            assertEquals(false, following)
+        }
+    }
+
+    @Test
     fun readingRecentScreenRowsDoesNotFollowNewOutput() {
         val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40) as TerminalEmulatorImpl
         emulator.writeInput((1..8).joinToString("\r\n") { "Recent $it" }.toByteArray())
@@ -163,6 +194,12 @@ class AccessibilityOverlayTest {
         }
         composeTestRule.runOnIdle {
             assertEquals(anchor, state.snapshot.scrollback[list.firstVisibleItemIndex].text)
+            emulator.resize(5, 60)
+            emulator.processPendingUpdates()
+            state.updateSnapshot(emulator.snapshot.value)
+        }
+        composeTestRule.runOnIdle {
+            assertEquals(anchor, state.getLine(list.firstVisibleItemIndex).text)
         }
     }
 
