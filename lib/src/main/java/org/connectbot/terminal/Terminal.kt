@@ -443,7 +443,9 @@ internal fun TerminalWithAccessibility(
 
     // Track accessibility state - only enable accessibility features when needed
     val systemAccessibilityEnabled by rememberAccessibilityState()
+    val touchExplorationEnabled by rememberTouchExplorationState()
     val accessibilityEnabled = forceAccessibilityEnabled ?: systemAccessibilityEnabled
+    var followAccessibleOutput by remember(terminalEmulator) { mutableStateOf(true) }
 
     // Observe terminal state via StateFlow
     val screenState = rememberTerminalScreenState(terminalEmulator)
@@ -1744,13 +1746,17 @@ internal fun TerminalWithAccessibility(
                         .focusable(),
                     onToggleReviewMode = { isReviewMode = !isReviewMode },
                     isReviewMode = isReviewMode,
+                    touchExplorationEnabled = touchExplorationEnabled,
+                    onFollowTailChange = { followAccessibleOutput = it },
                 )
 
                 if (!isReviewMode && keyboardEnabled) {
                     LiveOutputRegion(
                         screenState = screenState,
-                        enabled = true,
-                        modifier = Modifier.fillMaxSize(),
+                        enabled = followAccessibleOutput,
+                        // A full-screen live-region node masks the individual rows
+                        // during TalkBack touch exploration.
+                        modifier = Modifier.size(1.dp),
                     )
                 }
             }
