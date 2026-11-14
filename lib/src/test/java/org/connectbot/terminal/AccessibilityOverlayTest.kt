@@ -72,6 +72,32 @@ class AccessibilityOverlayTest {
         val rows = (1..200).map { TerminalLine(row = -1, cells = emptyList<TerminalLine.Cell>(), lastModified = 1L) }
         assertEquals(rows.size, rows.map { it.accessibilityId }.distinct().size)
         assertEquals(rows.first().accessibilityId, rows.first().copy(row = 0).accessibilityId)
+        val first = rows.first()
+        val equalContent = TerminalLine(row = first.row, cells = first.cells, lastModified = first.lastModified)
+        assertEquals(first, equalContent)
+        assertEquals(first.hashCode(), equalContent.hashCode())
+    }
+
+    @Test
+    fun blankRowsBelowAPromptDoNotDisableTailFollowing() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40) as TerminalEmulatorImpl
+        emulator.writeInput("a".toByteArray())
+        emulator.processPendingUpdates()
+        val state = TerminalScreenState(emulator.snapshot.value)
+        composeTestRule.setContent { AccessibilityOverlay(state, 24f, modifier = Modifier.height(72.dp)) }
+        composeTestRule.runOnIdle {
+            emulator.writeInput("\r\nb\r\nc".toByteArray())
+            emulator.processPendingUpdates()
+            state.updateSnapshot(emulator.snapshot.value)
+        }
+        composeTestRule.onNodeWithText("c", substring = true).assertIsDisplayed()
+        composeTestRule.runOnIdle {
+            emulator.writeInput((1..15).joinToString("\r\n", prefix = "\r\n") { "New $it" }.toByteArray())
+            emulator.processPendingUpdates()
+            state.updateSnapshot(emulator.snapshot.value)
+        }
+        composeTestRule.onNodeWithText("New 15", substring = true).assertIsDisplayed()
+        composeTestRule.runOnIdle { assertEquals(0, state.scrollbackPosition) }
     }
 
     @Test

@@ -92,15 +92,27 @@ internal fun AccessibilityOverlay(
             if (screenState.snapshot.alternateScreen) screenState.snapshot.lines else screenState.snapshot.scrollback + screenState.snapshot.lines
         }
     }
+    val latestRow by remember(screenState) {
+        derivedStateOf {
+            val screenRow = screenState.snapshot.lines.indexOfLast { it.text.isNotBlank() }
+            if (screenRow >= 0) {
+                historySize + screenRow
+            } else if (historySize > 0) {
+                screenState.snapshot.scrollback.indexOfLast { it.text.isNotBlank() }
+            } else {
+                -1
+            }
+        }
+    }
 
-    var followTail by remember(screenState) { mutableStateOf(true) }
+    var followTail by remember(screenState) { mutableStateOf(screenState.scrollbackPosition == 0) }
     LaunchedEffect(screenState, screenState.snapshot.alternateScreen) {
         announcementText.value = ""
         announcementCounter.intValue = 0
         var announcedInitialLine = false
         snapshotFlow { screenState.snapshot }.collect {
-            val latest = allLines.indexOfLast { it.text.isNotBlank() }
-            if (latest >= 0 && followTail) lazyListState.scrollToItem(latest)
+            val latest = latestRow
+            if (latest >= 0 && followTail && !lazyListState.isScrollInProgress) lazyListState.scrollToItem(latest)
             if (latest >= 0 && !announcedInitialLine) {
                 // Read the latest row once without confusing keyboard focus with
                 // accessibility focus or displacing an authentication/editor field.
@@ -118,15 +130,18 @@ internal fun AccessibilityOverlay(
                 val position = (historySize - firstVisible).coerceAtLeast(0)
                 screenState.scrollBy(position - screenState.scrollbackPosition)
             }
-            followTail = !scrolling && !lazyListState.canScrollForward
+            followTail = !scrolling && firstVisible >= historySize
         }
     }
 
+    var previousAlternateScreen by remember(screenState) { mutableStateOf(screenState.snapshot.alternateScreen) }
     LaunchedEffect(screenState.snapshot.alternateScreen) {
-        screenState.scrollToBottom()
-        followTail = true
-        val latest = allLines.indexOfLast { it.text.isNotBlank() }
-        if (latest >= 0) lazyListState.scrollToItem(latest)
+        if (previousAlternateScreen != screenState.snapshot.alternateScreen) {
+            screenState.scrollToBottom()
+            followTail = true
+            if (latestRow >= 0) lazyListState.scrollToItem(latestRow)
+        }
+        previousAlternateScreen = screenState.snapshot.alternateScreen
     }
 
     // Synchronize explicit terminal scrolling, including a return to the live screen.
@@ -135,7 +150,7 @@ internal fun AccessibilityOverlay(
             val position = screenState.scrollbackPosition
             followTail = position == 0
             val targetIndex = if (followTail) {
-                allLines.indexOfLast { it.text.isNotBlank() }
+                latestRow
             } else {
                 historySize - position
             }

@@ -47,6 +47,22 @@ internal data class TerminalLine(
     // Unlike a timestamp this stays unique even when many history rows share a clock tick.
     val accessibilityId: Long = nextAccessibilityLineId.incrementAndGet(),
 ) {
+    // Accessibility identity is not rendering content. Keep the pre-existing value
+    // equality contract while copy() retains the identity of frozen history rows.
+    override fun equals(other: Any?): Boolean = this === other ||
+        other is TerminalLine && row == other.row && cells == other.cells &&
+        lastModified == other.lastModified && semanticSegments == other.semanticSegments &&
+        softWrapped == other.softWrapped && images == other.images
+
+    override fun hashCode(): Int {
+        var result = row
+        result = 31 * result + cells.hashCode()
+        result = 31 * result + lastModified.hashCode()
+        result = 31 * result + semanticSegments.hashCode()
+        result = 31 * result + softWrapped.hashCode()
+        return 31 * result + images.hashCode()
+    }
+
     constructor(
         row: Int,
         cells: List<Cell>,
