@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -38,6 +39,36 @@ import org.junit.runner.RunWith
 class AccessibilityOverlayTest {
     @get:Rule
     val composeTestRule = createComposeRule()
+
+    @Test
+    fun lineIdentityDoesNotDependOnTimestampAndSurvivesCopies() {
+        val rows = (1..200).map { TerminalLine(row = -1, cells = emptyList<TerminalLine.Cell>(), lastModified = 1L) }
+        assertEquals(rows.size, rows.map { it.accessibilityId }.distinct().size)
+        assertEquals(rows.first().accessibilityId, rows.first().copy(row = 0).accessibilityId)
+    }
+
+    @Test
+    fun liveOutputFollowsTailAndExplicitReturnToBottomResyncs() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 40) as TerminalEmulatorImpl
+        emulator.writeInput("First".toByteArray())
+        emulator.processPendingUpdates()
+        val state = TerminalScreenState(emulator.snapshot.value)
+        val list = LazyListState()
+        composeTestRule.setContent {
+            AccessibilityOverlay(state, 24f, lazyListState = list, modifier = Modifier.height(72.dp).testTag("history"))
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.runOnIdle {
+            emulator.writeInput((1..20).joinToString("\r\n", prefix = "\r\n") { "Tail $it" }.toByteArray())
+            emulator.processPendingUpdates()
+            state.updateSnapshot(emulator.snapshot.value)
+        }
+        composeTestRule.onNodeWithText("Tail 20", substring = true).assertIsDisplayed()
+        composeTestRule.runOnIdle { state.scrollBy(10) }
+        composeTestRule.waitForIdle()
+        composeTestRule.runOnIdle { state.scrollToBottom() }
+        composeTestRule.onNodeWithText("Tail 20", substring = true).assertIsDisplayed()
+    }
 
     @Test
     fun historyAnchorSurvivesScrollbackEviction() {

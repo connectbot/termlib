@@ -61,3 +61,20 @@ internal fun rememberAccessibilityState(): State<Boolean> {
 
     return accessibilityState
 }
+
+/** Only touch exploration should take drag gestures away from the terminal canvas. */
+@Composable
+internal fun rememberTouchExplorationState(): State<Boolean> {
+    val context = LocalContext.current
+    val manager = remember(context) {
+        context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    }
+    val state = remember(manager) { mutableStateOf(manager.isTouchExplorationEnabled) }
+    DisposableEffect(manager) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener { state.value = it }
+        manager.addTouchExplorationStateChangeListener(listener)
+        state.value = manager.isTouchExplorationEnabled
+        onDispose { manager.removeTouchExplorationStateChangeListener(listener) }
+    }
+    return state
+}

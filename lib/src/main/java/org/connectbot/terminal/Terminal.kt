@@ -443,6 +443,7 @@ internal fun TerminalWithAccessibility(
 
     // Track accessibility state - only enable accessibility features when needed
     val systemAccessibilityEnabled by rememberAccessibilityState()
+    val touchExplorationEnabled by rememberTouchExplorationState()
     val accessibilityEnabled = forceAccessibilityEnabled ?: systemAccessibilityEnabled
 
     // Observe terminal state via StateFlow
@@ -1744,6 +1745,7 @@ internal fun TerminalWithAccessibility(
                         .focusable(),
                     onToggleReviewMode = { isReviewMode = !isReviewMode },
                     isReviewMode = isReviewMode,
+                    touchExplorationEnabled = touchExplorationEnabled,
                 )
 
                 if (!isReviewMode && keyboardEnabled) {

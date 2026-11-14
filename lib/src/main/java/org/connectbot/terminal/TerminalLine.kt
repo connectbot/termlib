@@ -18,6 +18,9 @@ package org.connectbot.terminal
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import java.util.concurrent.atomic.AtomicLong
+
+private val nextAccessibilityLineId = AtomicLong()
 
 /**
  * Represents a single line in the terminal screen.
@@ -41,6 +44,8 @@ internal data class TerminalLine(
      */
     val softWrapped: Boolean = false,
     val images: List<ImageSlice> = emptyList(),
+    // Unlike a timestamp this stays unique even when many history rows share a clock tick.
+    val accessibilityId: Long = nextAccessibilityLineId.incrementAndGet(),
 ) {
     constructor(
         row: Int,

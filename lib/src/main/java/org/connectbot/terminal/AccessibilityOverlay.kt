@@ -20,6 +20,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,6 +32,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,7 +47,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
-import kotlinx.coroutines.flow.first
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
@@ -70,6 +73,7 @@ internal fun AccessibilityOverlay(
     modifier: Modifier = Modifier,
     onToggleReviewMode: () -> Unit = {},
     isReviewMode: Boolean = false,
+    touchExplorationEnabled: Boolean = true,
 ) {
     val density = LocalDensity.current
     val clipboardManager = LocalClipboardManager.current
@@ -84,22 +88,43 @@ internal fun AccessibilityOverlay(
         derivedStateOf { screenState.snapshot.scrollback + screenState.snapshot.lines }
     }
 
+    var followTail by remember(screenState) { mutableStateOf(true) }
     LaunchedEffect(screenState) {
-        // Bring the latest nonblank row into view once. Keyboard focus is not
-        // accessibility focus: leave the terminal, prompt, or draft editor focused.
-        val latest = snapshotFlow { allLines.indexOfLast { it.text.isNotBlank() } }
-            .first { it >= 0 }
-        lazyListState.scrollToItem(latest)
+        var announcedInitialLine = false
+        snapshotFlow { screenState.snapshot }.collect {
+            val latest = allLines.indexOfLast { it.text.isNotBlank() }
+            if (latest >= 0 && followTail) lazyListState.scrollToItem(latest)
+            if (latest >= 0 && !announcedInitialLine) {
+                // Read the latest row once without confusing keyboard focus with
+                // accessibility focus or displacing an authentication/editor field.
+                announcementText.value = allLines[latest].text
+                announcementCounter.intValue++
+                announcedInitialLine = true
+            }
+        }
+    }
+    LaunchedEffect(lazyListState, screenState) {
+        snapshotFlow {
+            Triple(lazyListState.isScrollInProgress, lazyListState.firstVisibleItemIndex, screenState.snapshot.sequenceNumber)
+        }.collect { (scrolling, firstVisible, _) ->
+            if (scrolling || !followTail) {
+                val position = (screenState.snapshot.scrollback.size - firstVisible).coerceAtLeast(0)
+                screenState.scrollBy(position - screenState.scrollbackPosition)
+            }
+            followTail = !scrolling && !lazyListState.canScrollForward
+        }
     }
 
-    // Sync explicit terminal scrolling, but do not reset TalkBack's history on output.
+    // Synchronize explicit terminal scrolling, including a return to the live screen.
     LaunchedEffect(screenState.scrollbackPosition) {
-        if (screenState.scrollbackPosition == 0) return@LaunchedEffect
         if (!lazyListState.isScrollInProgress) {
-            // Convert scrollbackPosition to LazyColumn index
-            // scrollbackPosition = 0 means bottom (index = scrollback.size)
-            // scrollbackPosition = scrollback.size means top (index = 0)
-            val targetIndex = screenState.snapshot.scrollback.size - screenState.scrollbackPosition
+            val position = screenState.scrollbackPosition
+            followTail = position == 0
+            val targetIndex = if (followTail) {
+                allLines.indexOfLast { it.text.isNotBlank() }
+            } else {
+                screenState.snapshot.scrollback.size - position
+            }
             if (targetIndex >= 0 && targetIndex < allLines.size) {
                 lazyListState.scrollToItem(targetIndex)
             }
@@ -113,7 +138,7 @@ internal fun AccessibilityOverlay(
     if (counter > 0) {
         Box(
             modifier = Modifier
-                .height(with(density) { 0.toDp() })
+                .size(1.dp)
                 .semantics {
                     contentDescription = announcementText.value
                     liveRegion = LiveRegionMode.Polite
@@ -124,7 +149,7 @@ internal fun AccessibilityOverlay(
     LazyColumn(
         state = lazyListState,
         modifier = modifier,
-        userScrollEnabled = true,
+        userScrollEnabled = touchExplorationEnabled,
     ) {
         items(
             count = allLines.size,
@@ -132,7 +157,7 @@ internal fun AccessibilityOverlay(
             // are evicted. Active screen rows keep their node across CR redraws.
             key = { index ->
                 if (index < screenState.snapshot.scrollback.size) {
-                    "history:${allLines[index].lastModified}"
+                    "history:${allLines[index].accessibilityId}"
                 } else {
                     "screen:${allLines[index].row}"
                 }
