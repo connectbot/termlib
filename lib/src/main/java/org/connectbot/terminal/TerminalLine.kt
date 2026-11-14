@@ -49,10 +49,13 @@ internal data class TerminalLine(
 ) {
     // Accessibility identity is not rendering content. Keep the pre-existing value
     // equality contract while copy() retains the identity of frozen history rows.
-    override fun equals(other: Any?): Boolean = this === other ||
-        other is TerminalLine && row == other.row && cells == other.cells &&
-        lastModified == other.lastModified && semanticSegments == other.semanticSegments &&
-        softWrapped == other.softWrapped && images == other.images
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is TerminalLine) return false
+        return row == other.row && cells == other.cells &&
+            lastModified == other.lastModified && semanticSegments == other.semanticSegments &&
+            softWrapped == other.softWrapped && images == other.images
+    }
 
     override fun hashCode(): Int {
         var result = row

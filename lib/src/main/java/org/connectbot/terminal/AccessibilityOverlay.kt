@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -74,6 +75,7 @@ internal fun AccessibilityOverlay(
     onToggleReviewMode: () -> Unit = {},
     isReviewMode: Boolean = false,
     touchExplorationEnabled: Boolean = true,
+    onFollowTailChange: (Boolean) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val clipboardManager = LocalClipboardManager.current
@@ -106,13 +108,37 @@ internal fun AccessibilityOverlay(
     }
 
     var followTail by remember(screenState) { mutableStateOf(screenState.scrollbackPosition == 0) }
+    SideEffect { onFollowTailChange(followTail) }
+    var programmaticScrolls by remember(screenState) { mutableIntStateOf(0) }
+
+    fun tailStart(): Int {
+        val height = lazyListState.layoutInfo.viewportSize.height
+        val visibleRows = if (height > 0) {
+            (height / charHeight.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
+        } else {
+            screenState.snapshot.rows.coerceAtLeast(1)
+        }
+        // Align with the live screen when it fits. In a smaller viewport, keep
+        // the latest row at the bottom instead of pinning it to the top.
+        return maxOf(historySize, latestRow - visibleRows + 1)
+    }
+
+    suspend fun scrollToRow(index: Int) {
+        programmaticScrolls++
+        try {
+            lazyListState.scrollToItem(index)
+        } finally {
+            programmaticScrolls--
+        }
+    }
+
     LaunchedEffect(screenState, screenState.snapshot.alternateScreen) {
         announcementText.value = ""
         announcementCounter.intValue = 0
         var announcedInitialLine = false
-        snapshotFlow { screenState.snapshot }.collect {
+        snapshotFlow { screenState.snapshot to lazyListState.layoutInfo.viewportSize.height }.collect { (_, height) ->
             val latest = latestRow
-            if (latest >= 0 && followTail && !lazyListState.isScrollInProgress) lazyListState.scrollToItem(latest)
+            if (latest >= 0 && height > 0 && followTail && !lazyListState.isScrollInProgress) scrollToRow(tailStart())
             if (latest >= 0 && !announcedInitialLine) {
                 // Read the latest row once without confusing keyboard focus with
                 // accessibility focus or displacing an authentication/editor field.
@@ -123,14 +149,24 @@ internal fun AccessibilityOverlay(
         }
     }
     LaunchedEffect(lazyListState, screenState) {
-        snapshotFlow {
-            Triple(lazyListState.isScrollInProgress, lazyListState.firstVisibleItemIndex, screenState.snapshot.sequenceNumber)
-        }.collect { (scrolling, firstVisible, _) ->
-            if (scrolling || !followTail) {
+        var previousFirst = lazyListState.firstVisibleItemIndex
+        var userWasScrolling = false
+        snapshotFlow { lazyListState.isScrollInProgress to lazyListState.firstVisibleItemIndex }.collect { (scrolling, firstVisible) ->
+            val moved = previousFirst != firstVisible
+            previousFirst = firstVisible
+            if (programmaticScrolls > 0) return@collect
+            if (scrolling) {
+                followTail = false
+                userWasScrolling = true
+            } else if (userWasScrolling || moved) {
+                val lastVisible = lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                followTail = latestRow < 0 || lastVisible >= latestRow
+                userWasScrolling = false
+            }
+            if (!followTail) {
                 val position = (historySize - firstVisible).coerceAtLeast(0)
                 screenState.scrollBy(position - screenState.scrollbackPosition)
             }
-            followTail = !scrolling && firstVisible >= historySize
         }
     }
 
@@ -139,7 +175,7 @@ internal fun AccessibilityOverlay(
         if (previousAlternateScreen != screenState.snapshot.alternateScreen) {
             screenState.scrollToBottom()
             followTail = true
-            if (latestRow >= 0) lazyListState.scrollToItem(latestRow)
+            if (latestRow >= 0) scrollToRow(tailStart())
         }
         previousAlternateScreen = screenState.snapshot.alternateScreen
     }
@@ -150,12 +186,12 @@ internal fun AccessibilityOverlay(
             val position = screenState.scrollbackPosition
             followTail = position == 0
             val targetIndex = if (followTail) {
-                latestRow
+                tailStart()
             } else {
                 historySize - position
             }
             if (targetIndex >= 0 && targetIndex < allLines.size) {
-                lazyListState.scrollToItem(targetIndex)
+                scrollToRow(targetIndex)
             }
         }
     }

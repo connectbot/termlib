@@ -42,6 +42,26 @@ class AccessibilityOverlayTest {
     val composeTestRule = createComposeRule()
 
     @Test
+    fun readingRecentScreenRowsDoesNotFollowNewOutput() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40) as TerminalEmulatorImpl
+        emulator.writeInput((1..8).joinToString("\r\n") { "Recent $it" }.toByteArray())
+        emulator.processPendingUpdates()
+        val state = TerminalScreenState(emulator.snapshot.value)
+        val list = LazyListState()
+        composeTestRule.setContent {
+            AccessibilityOverlay(state, 24f, lazyListState = list, modifier = Modifier.height(72.dp).testTag("history"))
+        }
+        composeTestRule.onNodeWithTag("history").performScrollToIndex(2)
+        composeTestRule.runOnIdle {
+            emulator.writeInput("\r\nRecent 9".toByteArray())
+            emulator.processPendingUpdates()
+            state.updateSnapshot(emulator.snapshot.value)
+        }
+        composeTestRule.runOnIdle { assertEquals(2, list.firstVisibleItemIndex) }
+        composeTestRule.onNodeWithText("Recent 3", substring = true).assertIsDisplayed()
+    }
+
+    @Test
     fun alternateScreenDoesNotExposePrimaryHistory() {
         val emulator = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 40) as TerminalEmulatorImpl
         emulator.writeInput("Shell history\r\n\r\n\r\n\r\n".toByteArray())
