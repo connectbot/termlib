@@ -80,16 +80,23 @@ internal fun AccessibilityOverlay(
     val coroutineScope = rememberCoroutineScope()
 
     // State for live region announcements (replaces deprecated announceForAccessibility)
-    val announcementText = remember { mutableStateOf("") }
-    val announcementCounter = remember { mutableIntStateOf(0) }
+    val announcementText = remember(screenState) { mutableStateOf("") }
+    val announcementCounter = remember(screenState) { mutableIntStateOf(0) }
 
-    // Include both scrollback and visible lines in the list
+    // Full-screen apps have their own screen, not the primary shell's history.
+    val historySize by remember(screenState) {
+        derivedStateOf { if (screenState.snapshot.alternateScreen) 0 else screenState.snapshot.scrollback.size }
+    }
     val allLines by remember(screenState) {
-        derivedStateOf { screenState.snapshot.scrollback + screenState.snapshot.lines }
+        derivedStateOf {
+            if (screenState.snapshot.alternateScreen) screenState.snapshot.lines else screenState.snapshot.scrollback + screenState.snapshot.lines
+        }
     }
 
     var followTail by remember(screenState) { mutableStateOf(true) }
-    LaunchedEffect(screenState) {
+    LaunchedEffect(screenState, screenState.snapshot.alternateScreen) {
+        announcementText.value = ""
+        announcementCounter.intValue = 0
         var announcedInitialLine = false
         snapshotFlow { screenState.snapshot }.collect {
             val latest = allLines.indexOfLast { it.text.isNotBlank() }
@@ -108,11 +115,18 @@ internal fun AccessibilityOverlay(
             Triple(lazyListState.isScrollInProgress, lazyListState.firstVisibleItemIndex, screenState.snapshot.sequenceNumber)
         }.collect { (scrolling, firstVisible, _) ->
             if (scrolling || !followTail) {
-                val position = (screenState.snapshot.scrollback.size - firstVisible).coerceAtLeast(0)
+                val position = (historySize - firstVisible).coerceAtLeast(0)
                 screenState.scrollBy(position - screenState.scrollbackPosition)
             }
             followTail = !scrolling && !lazyListState.canScrollForward
         }
+    }
+
+    LaunchedEffect(screenState.snapshot.alternateScreen) {
+        screenState.scrollToBottom()
+        followTail = true
+        val latest = allLines.indexOfLast { it.text.isNotBlank() }
+        if (latest >= 0) lazyListState.scrollToItem(latest)
     }
 
     // Synchronize explicit terminal scrolling, including a return to the live screen.
@@ -123,7 +137,7 @@ internal fun AccessibilityOverlay(
             val targetIndex = if (followTail) {
                 allLines.indexOfLast { it.text.isNotBlank() }
             } else {
-                screenState.snapshot.scrollback.size - position
+                historySize - position
             }
             if (targetIndex >= 0 && targetIndex < allLines.size) {
                 lazyListState.scrollToItem(targetIndex)
@@ -156,7 +170,7 @@ internal fun AccessibilityOverlay(
             // Frozen scrollback rows retain their existing identity when older rows
             // are evicted. Active screen rows keep their node across CR redraws.
             key = { index ->
-                if (index < screenState.snapshot.scrollback.size) {
+                if (index < historySize) {
                     "history:${allLines[index].accessibilityId}"
                 } else {
                     "screen:${allLines[index].row}"

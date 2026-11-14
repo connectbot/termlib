@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToIndex
@@ -39,6 +40,32 @@ import org.junit.runner.RunWith
 class AccessibilityOverlayTest {
     @get:Rule
     val composeTestRule = createComposeRule()
+
+    @Test
+    fun alternateScreenDoesNotExposePrimaryHistory() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 40) as TerminalEmulatorImpl
+        emulator.writeInput("Shell history\r\n\r\n\r\n\r\n".toByteArray())
+        emulator.processPendingUpdates()
+        val state = TerminalScreenState(emulator.snapshot.value)
+        composeTestRule.setContent { AccessibilityOverlay(state, 24f, modifier = Modifier.fillMaxSize()) }
+        composeTestRule.runOnIdle {
+            emulator.writeInput("\u001b[?1049hFull screen app".toByteArray())
+            emulator.processPendingUpdates()
+            state.updateSnapshot(emulator.snapshot.value)
+        }
+        composeTestRule.onNodeWithText("Full screen app", substring = true).assertExists()
+        composeTestRule.onNodeWithText("Shell history", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun initialReadingUsesTheLatestNonblankRow() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 10, initialCols = 40) as TerminalEmulatorImpl
+        emulator.writeInput("Earlier output\r\nLatest prompt".toByteArray())
+        emulator.processPendingUpdates()
+        val state = TerminalScreenState(emulator.snapshot.value)
+        composeTestRule.setContent { AccessibilityOverlay(state, 24f, modifier = Modifier.fillMaxSize()) }
+        composeTestRule.onNodeWithContentDescription("Latest prompt", substring = true).assertExists()
+    }
 
     @Test
     fun lineIdentityDoesNotDependOnTimestampAndSurvivesCopies() {
