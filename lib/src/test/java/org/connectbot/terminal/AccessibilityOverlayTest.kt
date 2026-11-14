@@ -16,6 +16,10 @@
  */
 package org.connectbot.terminal
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -28,6 +32,27 @@ import org.junit.runner.RunWith
 class AccessibilityOverlayTest {
     @get:Rule
     val composeTestRule = createComposeRule()
+
+    @Test
+    fun historySupportsAccessibilityScrolling() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 20)
+        emulator.writeInput((1..30).joinToString("\r\n") { "History $it" }.toByteArray())
+        (emulator as TerminalEmulatorImpl).processPendingUpdates()
+        composeTestRule.setContent {
+            AccessibilityOverlay(
+                screenState = rememberTerminalScreenState(emulator),
+                charHeight = 24f,
+                modifier = androidx.compose.ui.Modifier
+                    .then(androidx.compose.ui.Modifier.fillMaxSize())
+                    .testTag("history"),
+            )
+        }
+        composeTestRule.onNodeWithTag("history").assert(
+            androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(
+                androidx.compose.ui.semantics.SemanticsActions.ScrollBy,
+            ),
+        )
+    }
 
     @Test
     fun testAccessibilityOverlayExposesLines() {

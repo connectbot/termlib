@@ -1750,7 +1750,9 @@ internal fun TerminalWithAccessibility(
                     LiveOutputRegion(
                         screenState = screenState,
                         enabled = true,
-                        modifier = Modifier.fillMaxSize(),
+                        // A full-screen live-region node masks the individual rows
+                        // during TalkBack touch exploration.
+                        modifier = Modifier.size(1.dp),
                     )
                 }
             }

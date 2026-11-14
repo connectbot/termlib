@@ -17,6 +17,7 @@
 package org.connectbot.terminal
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +32,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -45,6 +51,7 @@ import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 /**
  * Invisible overlay that provides semantic structure for screen readers.
@@ -82,8 +89,22 @@ internal fun AccessibilityOverlay(
         derivedStateOf { screenState.snapshot.scrollback + screenState.snapshot.lines }
     }
 
-    // Sync LazyColumn scroll with terminal scrollback position
+    val initialFocusRequester = remember(screenState) { FocusRequester() }
+    var initialFocusIndex by remember(screenState) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(screenState) {
+        // Start reading at the latest nonblank row, not the oldest scrollback or
+        // the unused blank area below a short prompt. Never refocus on new output.
+        val latest = snapshotFlow { allLines.indexOfLast { it.text.isNotBlank() } }
+            .first { it >= 0 }
+        initialFocusIndex = latest
+        lazyListState.scrollToItem(latest)
+        withFrameNanos { }
+        initialFocusRequester.requestFocus()
+    }
+
+    // Sync explicit terminal scrolling, but do not reset TalkBack's history on output.
     LaunchedEffect(screenState.scrollbackPosition) {
+        if (screenState.scrollbackPosition == 0) return@LaunchedEffect
         if (!lazyListState.isScrollInProgress) {
             // Convert scrollbackPosition to LazyColumn index
             // scrollbackPosition = 0 means bottom (index = scrollback.size)
@@ -113,11 +134,12 @@ internal fun AccessibilityOverlay(
     LazyColumn(
         state = lazyListState,
         modifier = modifier,
-        userScrollEnabled = false,
+        userScrollEnabled = true,
     ) {
         items(
             count = allLines.size,
-            key = { index -> allLines[index].row to allLines[index].lastModified },
+            // Content changes must not replace the focused semantic node.
+            key = { index -> index },
         ) { index ->
             val line = allLines[index]
 
@@ -130,6 +152,13 @@ internal fun AccessibilityOverlay(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(with(density) { charHeight.toDp() })
+                    .then(
+                        if (index == initialFocusIndex) {
+                            Modifier.focusRequester(initialFocusRequester).focusable()
+                        } else {
+                            Modifier
+                        },
+                    )
                     .then(
                         if (isCurrentlyFocused) {
                             // Subtle highlight for focused line in Review Mode
