@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Copiază</string>
+    <string name="terminal_selection_more_options_description">Mai multe opțiuni</string>
+    <string name="terminal_selection_select_all">Selectează tot</string>
+    <string name="terminal_selection_select_all_visible">Selectează tot textul vizibil</string>
+    <string name="terminal_selection_share">Distribuie</string>
+    <string name="terminal_selection_paste">Lipește</string>
+    <string name="terminal_selection_mode_character">Mod: caracter</string>
+    <string name="terminal_selection_mode_word">Mod: cuvânt</string>
+    <string name="terminal_selection_mode_line">Mod: linie</string>
+</resources>

@@ -16,28 +16,34 @@ permissions:
   contents: write
 
 jobs:
+  lockfile:
+    name: Verify Actions lockfile
+    uses: connectbot/actions/.github/workflows/verify-lockfile.yml@v0.2.2
+    permissions:
+      contents: read
+
   build:
     name: Build and test
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout (with history)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Validate Gradle Wrapper
-        uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/wrapper-validation@v6.4.1
 
       - name: Set up JDK
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@v6.2.0
         with:
           distribution: 'zulu'
           java-version: '17'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@v6.4.1
         with:
           dependency-graph: generate-and-submit
           cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
@@ -47,7 +53,7 @@ jobs:
           rm -rf $ANDROID_HOME/cmdline-tools/latest
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        uses: android-actions/setup-android@v4.0.4
         with:
           packages: 'cmdline-tools;latest platform-tools'
 
@@ -76,7 +82,7 @@ jobs:
 
       - name: Store artifacts for upload
         if: ${{ github.event_name == 'push' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: aar
           path: |
@@ -118,7 +124,7 @@ jobs:
 
     steps:
       - name: Download artifacts from previous job
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: aar
 
@@ -129,7 +135,7 @@ jobs:
           echo "GITHUB_TAG=$(cat tag.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Upload release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           body: "Untested build"
           draft: true

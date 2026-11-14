@@ -66,13 +66,13 @@ internal class TerminalDispatcher {
 /** Used only by Compose. The public emulator retains synchronous behavior. */
 internal class QueuedTerminal(private val terminal: TerminalEmulatorImpl) : TerminalEmulator by terminal {
     fun text(modifiers: Int, value: String, normalizeNewlines: Boolean) {
-        terminal.commands.execute { terminal.batchOutput { dispatchText(terminal, modifiers, value, normalizeNewlines) } }
+        terminal.enqueueCommand { terminal.batchOutput { dispatchText(terminal, modifiers, value, normalizeNewlines) } }
     }
     override fun dispatchKey(modifiers: Int, key: Int) {
-        terminal.commands.execute { terminal.dispatchKey(modifiers, key) }
+        terminal.enqueueCommand { terminal.dispatchKey(modifiers, key) }
     }
     override fun dispatchCharacter(modifiers: Int, codepoint: Int) {
-        terminal.commands.execute { terminal.dispatchCharacter(modifiers, codepoint) }
+        terminal.enqueueCommand { terminal.dispatchCharacter(modifiers, codepoint) }
     }
 }
 

@@ -115,7 +115,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.3"
+        kotlinCompilerExtensionVersion = "1.5.15"
     }
 
     packaging {
@@ -200,6 +200,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(libs.slf4j.api)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
@@ -216,6 +217,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
 
     // Testing
+    testImplementation(libs.slf4j.test)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi.compose)

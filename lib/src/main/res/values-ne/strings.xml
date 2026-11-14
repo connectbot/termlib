@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">प्रतिलिपि गर्नुहोस्</string>
+    <string name="terminal_selection_more_options_description">थप विकल्पहरू</string>
+    <string name="terminal_selection_select_all">सबै चयन गर्नुहोस्</string>
+    <string name="terminal_selection_select_all_visible">देखिने सबै पाठ चयन गर्नुहोस्</string>
+    <string name="terminal_selection_share">साझा गर्नुहोस्</string>
+    <string name="terminal_selection_paste">टाँस्नुहोस्</string>
+    <string name="terminal_selection_mode_character">मोड: अक्षर</string>
+    <string name="terminal_selection_mode_word">मोड: शब्द</string>
+    <string name="terminal_selection_mode_line">मोड: पङ्क्ति</string>
+</resources>

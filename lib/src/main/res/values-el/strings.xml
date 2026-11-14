@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Αντιγραφή</string>
+    <string name="terminal_selection_more_options_description">Περισσότερες επιλογές</string>
+    <string name="terminal_selection_select_all">Επιλογή όλων</string>
+    <string name="terminal_selection_select_all_visible">Επιλογή όλου του ορατού κειμένου</string>
+    <string name="terminal_selection_share">Κοινοποίηση</string>
+    <string name="terminal_selection_paste">Επικόλληση</string>
+    <string name="terminal_selection_mode_character">Λειτουργία: Χαρακτήρας</string>
+    <string name="terminal_selection_mode_word">Λειτουργία: Λέξη</string>
+    <string name="terminal_selection_mode_line">Λειτουργία: Γραμμή</string>
+</resources>

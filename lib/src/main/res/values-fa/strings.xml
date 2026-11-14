@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">کپی</string>
+    <string name="terminal_selection_more_options_description">گزینه‌های بیشتر</string>
+    <string name="terminal_selection_select_all">انتخاب همه</string>
+    <string name="terminal_selection_select_all_visible">انتخاب همهٔ متن نمایان</string>
+    <string name="terminal_selection_share">اشتراک‌گذاری</string>
+    <string name="terminal_selection_paste">جای‌گذاری</string>
+    <string name="terminal_selection_mode_character">حالت: نویسه</string>
+    <string name="terminal_selection_mode_word">حالت: واژه</string>
+    <string name="terminal_selection_mode_line">حالت: خط</string>
+</resources>

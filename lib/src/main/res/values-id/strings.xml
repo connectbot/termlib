@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Salin</string>
+    <string name="terminal_selection_more_options_description">Opsi lainnya</string>
+    <string name="terminal_selection_select_all">Pilih Semua</string>
+    <string name="terminal_selection_select_all_visible">Pilih Semua Teks yang Terlihat</string>
+    <string name="terminal_selection_share">Bagikan</string>
+    <string name="terminal_selection_paste">Tempel</string>
+    <string name="terminal_selection_mode_character">Mode: Karakter</string>
+    <string name="terminal_selection_mode_word">Mode: Kata</string>
+    <string name="terminal_selection_mode_line">Mode: Baris</string>
+</resources>

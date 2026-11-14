@@ -8,6 +8,7 @@ package org.connectbot.terminal
 import android.graphics.Bitmap
 import android.graphics.Typeface
 import androidx.compose.ui.unit.sp
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziComposeOptions
 import com.github.takahirom.roborazzi.RoborazziComposeSizeOption
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -19,6 +20,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.ByteArrayOutputStream
 import java.util.Base64
 
+@OptIn(ExperimentalRoborazziApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w480dp-h300dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

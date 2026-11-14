@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">複製</string>
+    <string name="terminal_selection_more_options_description">更多選項</string>
+    <string name="terminal_selection_select_all">全選</string>
+    <string name="terminal_selection_select_all_visible">選取所有可見文字</string>
+    <string name="terminal_selection_share">分享</string>
+    <string name="terminal_selection_paste">貼上</string>
+    <string name="terminal_selection_mode_character">模式：字元</string>
+    <string name="terminal_selection_mode_word">模式：詞語</string>
+    <string name="terminal_selection_mode_line">模式：行</string>
+</resources>

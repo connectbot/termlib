@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Másolás</string>
+    <string name="terminal_selection_more_options_description">További lehetőségek</string>
+    <string name="terminal_selection_select_all">Összes kijelölése</string>
+    <string name="terminal_selection_select_all_visible">Összes látható szöveg kijelölése</string>
+    <string name="terminal_selection_share">Megosztás</string>
+    <string name="terminal_selection_paste">Beillesztés</string>
+    <string name="terminal_selection_mode_character">Mód: karakter</string>
+    <string name="terminal_selection_mode_word">Mód: szó</string>
+    <string name="terminal_selection_mode_line">Mód: sor</string>
+</resources>

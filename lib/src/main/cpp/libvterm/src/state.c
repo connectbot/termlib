@@ -73,6 +73,7 @@ static VTermState *vterm_state_new(VTerm *vt)
 
   state->callbacks = NULL;
   state->cbdata    = NULL;
+  state->callbacks_has_premove = false;
 
   state->selection.callbacks = NULL;
   state->selection.user      = NULL;
@@ -115,6 +116,11 @@ static void scroll(VTermState *state, VTermRect rect, int downward, int rightwar
   if(!downward && !rightward)
     return;
 
+  /* Resizing can leave a scroll region outside the new screen. Never pass
+   * an inverted rectangle through the size and movement calculations. */
+  if(rect.end_row <= rect.start_row || rect.end_col <= rect.start_col)
+    return;
+
   int rows = rect.end_row - rect.start_row;
   if(downward > rows)
     downward = rows;
@@ -126,6 +132,33 @@ static void scroll(VTermState *state, VTermRect rect, int downward, int rightwar
     rightward = cols;
   else if(rightward < -cols)
     rightward = -cols;
+
+  if(state->callbacks_has_premove && state->callbacks && state->callbacks->premove) {
+    // TODO: technically this logic is wrong if both downward != 0 and rightward != 0
+
+    /* Work out what subsection of the destination area is about to be destroyed */
+    if(downward > 0)
+      /* about to destroy the top */
+      (*state->callbacks->premove)((VTermRect){
+          .start_row = rect.start_row, .end_row = rect.start_row + downward,
+          .start_col = rect.start_col, .end_col = rect.end_col}, state->cbdata);
+    else if(downward < 0)
+      /* about to destroy the bottom */
+      (*state->callbacks->premove)((VTermRect){
+          .start_row = rect.end_row + downward, .end_row = rect.end_row,
+          .start_col = rect.start_col,          .end_col = rect.end_col}, state->cbdata);
+
+    if(rightward > 0)
+      /* about to destroy the left */
+      (*state->callbacks->premove)((VTermRect){
+          .start_row = rect.start_row, .end_row = rect.end_row,
+          .start_col = rect.start_col, .end_col = rect.start_col + rightward}, state->cbdata);
+    else if(rightward < 0)
+      /* about to destroy the right */
+      (*state->callbacks->premove)((VTermRect){
+          .start_row = rect.start_row,           .end_row = rect.end_row,
+          .start_col = rect.end_col + rightward, .end_col = rect.end_col}, state->cbdata);
+  }
 
   // Update lineinfo if full line
   if(rect.start_col == 0 && rect.end_col == state->cols && rightward == 0) {
@@ -179,7 +212,7 @@ void vterm_state_place_image(VTermState *state, int rows, int cols, int reserve)
   VTermPos oldpos = state->pos;
   int left = state->pos.col;
   for(int row = 0; row < rows; row++) {
-    if(row > 0 || !reserve)
+    if(row > 0)
       linefeed(state);
     if(reserve) {
       VTermRect rect = {state->pos.row, state->pos.row + 1, left,
@@ -1207,6 +1240,10 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
 
   case 0x62: { // REP - ECMA-48 8.3.103
     const int row_width = THISROWWIDTH(state);
+    /* There is no preceding graphic character in a fresh terminal. */
+    if(state->combine_width < 1)
+      break;
+
     count = CSI_ARG_COUNT(args[0]);
     col = state->pos.col + count;
     UBOUND(col, row_width);
@@ -1966,6 +2003,17 @@ static int on_resize(int rows, int cols, void *user)
   if(state->scrollregion_right > -1)
     UBOUND(state->scrollregion_right, state->cols);
 
+  UBOUND(state->scrollregion_top, state->rows);
+  UBOUND(state->scrollregion_left, state->cols);
+  if(SCROLLREGION_BOTTOM(state) <= state->scrollregion_top) {
+    state->scrollregion_top = 0;
+    state->scrollregion_bottom = -1;
+  }
+  if(SCROLLREGION_RIGHT(state) <= state->scrollregion_left) {
+    state->scrollregion_left = 0;
+    state->scrollregion_right = -1;
+  }
+
   VTermStateFields fields = {
     .pos       = state->pos,
     .lineinfos = { [0] = state->lineinfos[0], [1] = state->lineinfos[1] },
@@ -2145,6 +2193,11 @@ void vterm_state_set_callbacks(VTermState *state, const VTermStateCallbacks *cal
     state->callbacks = NULL;
     state->cbdata = NULL;
   }
+}
+
+void vterm_state_callbacks_has_premove(VTermState *state)
+{
+  state->callbacks_has_premove = true;
 }
 
 void *vterm_state_get_cbdata(VTermState *state)

@@ -48,6 +48,15 @@ internal class OscParser {
     private var hyperlinkStartRow: Int = 0
     private var hyperlinkStartCol: Int = 0
 
+    fun reset() {
+        currentPromptId = 0
+        currentSegmentStartCol = 0
+        activeHyperlinkUrl = null
+        activeHyperlinkId = null
+        hyperlinkStartRow = 0
+        hyperlinkStartCol = 0
+    }
+
     sealed class Action {
         data class AddSegment(
             val row: Int,

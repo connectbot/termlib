@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Copia</string>
+    <string name="terminal_selection_more_options_description">Altre opzioni</string>
+    <string name="terminal_selection_select_all">Seleziona tutto</string>
+    <string name="terminal_selection_select_all_visible">Seleziona tutto il testo visibile</string>
+    <string name="terminal_selection_share">Condividi</string>
+    <string name="terminal_selection_paste">Incolla</string>
+    <string name="terminal_selection_mode_character">Modalità: carattere</string>
+    <string name="terminal_selection_mode_word">Modalità: parola</string>
+    <string name="terminal_selection_mode_line">Modalità: riga</string>
+</resources>

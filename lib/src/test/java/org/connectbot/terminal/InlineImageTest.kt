@@ -7,16 +7,17 @@ package org.connectbot.terminal
 
 import android.os.Handler
 import android.os.Looper
+import com.github.valfirst.slf4jtest.TestLoggerFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-import org.robolectric.shadows.ShadowLog
 import java.io.File
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
@@ -27,6 +28,11 @@ import kotlin.coroutines.suspendCoroutine
 
 @RunWith(RobolectricTestRunner::class)
 class InlineImageTest {
+    private val logger = TestLoggerFactory.getTestLogger(InlineImageProtocol::class.java)
+
+    @get:Rule
+    val clearLogs = ClearLogsRule(logger)
+
     private val png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
     private fun emulator() = TerminalEmulatorFactory.create(initialRows = 6, initialCols = 12, inlineImages = InlineImages.On()) as TerminalEmulatorImpl
     private fun iterm(data: String = png, options: String = "width=3;height=2;preserveAspectRatio=0") = "\u001b]1337;File=inline=1;$options:$data\u0007"
@@ -251,7 +257,7 @@ class InlineImageTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(2, requests.size)
         assertTrue(responses.any { "EPERM:user denied inline image" in it })
-        assertEquals(2, terminal.flush().cursorRow)
+        assertEquals(0, terminal.flush().cursorRow)
         assertEquals(2, terminal.flush().cursorCol)
         answers[1].resume(true)
         terminal.commands.call { Unit }
@@ -412,7 +418,7 @@ class InlineImageTest {
 
         terminal.write(kitty("a=T,f=100", png))
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(1, terminal.flush().cursorRow)
+        assertEquals(0, terminal.flush().cursorRow)
         assertEquals(1, terminal.flush().cursorCol)
         assertTrue(terminal.flush().lines.all { it.images.isEmpty() })
 
@@ -420,9 +426,39 @@ class InlineImageTest {
         terminal.commands.call { Unit }
 
         val snapshot = terminal.flush()
-        assertEquals(1, snapshot.cursorRow)
+        assertEquals(0, snapshot.cursorRow)
         assertEquals(1, snapshot.cursorCol)
         assertEquals(1, terminal.imageStore.assets.size)
+    }
+
+    @Test
+    fun kittyCursorMovementAdvancesToLastImageRowAndScrollsOnlyOverflowRows() {
+        val terminal = emulator()
+        terminal.write("\u001b[2;3H" + kitty("a=T,f=100,c=4,r=3", png))
+        var snapshot = terminal.flush()
+        assertEquals(3, snapshot.cursorRow)
+        assertEquals(6, snapshot.cursorCol)
+
+        terminal.write("\u001b[1;1H" + kitty("a=T,f=100,c=2,r=1", png))
+        snapshot = terminal.flush()
+        assertEquals(0, snapshot.cursorRow)
+        assertEquals(2, snapshot.cursorCol)
+
+        val terminal2 = emulator()
+        terminal2.write("TOP0\r\nTOP1\r\n")
+        terminal2.write("\u001b[5;2H" + kitty("a=T,f=100,c=3,r=2", png))
+        val snapFit = terminal2.flush()
+        assertEquals(5, snapFit.cursorRow)
+        assertEquals(4, snapFit.cursorCol)
+        assertEquals(0, snapFit.scrollback.size)
+        assertTrue(snapFit.lines[0].text.startsWith("TOP0"))
+
+        terminal2.write("\u001b[5;2H" + kitty("a=T,f=100,c=3,r=3", png))
+        val snapOverflow = terminal2.flush()
+        assertEquals(5, snapOverflow.cursorRow)
+        assertEquals(4, snapOverflow.cursorCol)
+        assertEquals(1, snapOverflow.scrollback.size)
+        assertTrue(snapOverflow.lines[0].text.startsWith("TOP1"))
     }
 
     @Test
@@ -632,7 +668,6 @@ class InlineImageTest {
     fun kittyTgp001Transcript() {
         val directory = System.getenv("TERMLIB_KITTY_TGP")?.let(::File)
         assumeTrue(directory?.isDirectory == true)
-        ShadowLog.clear()
         val terminal = TerminalEmulatorFactory.create(initialRows = 30, initialCols = 137, inlineImages = InlineImages.On()) as TerminalEmulatorImpl
         terminal.setCellPixelSize(8, 16)
         var peakAssets = 0
@@ -670,7 +705,7 @@ class InlineImageTest {
             assertTrue("Unexpected typescript trailer", trailer.isEmpty() || trailer.trimStart().startsWith("Script done on "))
         }
         terminal.processPendingUpdates()
-        val rejections = ShadowLog.getLogsForTag("InlineImageProtocol").map { it.msg }
+        val rejections = logger.allLoggingEvents.map { it.formattedMessage }
         println(
             "KITTY_TGP peakAssets=$peakAssets peakPlacements=$peakPlacements " +
                 "peakEncoded=$peakEncoded finalAssets=${terminal.imageStore.assets.size} " +
@@ -746,7 +781,7 @@ class InlineImageTest {
                 }
             }
         }
-        assertTrue(ShadowLog.getLogsForTag("InlineImageProtocol").any { "Rejected" in it.msg })
+        assertTrue(logger.allLoggingEvents.any { "Rejected" in it.formattedMessage })
     }
 
     @Test

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Afrita</string>
+    <string name="terminal_selection_more_options_description">Fleiri valkostir</string>
+    <string name="terminal_selection_select_all">Velja allt</string>
+    <string name="terminal_selection_select_all_visible">Velja allan sýnilegan texta</string>
+    <string name="terminal_selection_share">Deila</string>
+    <string name="terminal_selection_paste">Líma</string>
+    <string name="terminal_selection_mode_character">Hamur: stafur</string>
+    <string name="terminal_selection_mode_word">Hamur: orð</string>
+    <string name="terminal_selection_mode_line">Hamur: lína</string>
+</resources>

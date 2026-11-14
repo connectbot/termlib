@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopiera</string>
+    <string name="terminal_selection_more_options_description">Fler alternativ</string>
+    <string name="terminal_selection_select_all">Markera allt</string>
+    <string name="terminal_selection_select_all_visible">Markera all synlig text</string>
+    <string name="terminal_selection_share">Dela</string>
+    <string name="terminal_selection_paste">Klistra in</string>
+    <string name="terminal_selection_mode_character">Läge: Tecken</string>
+    <string name="terminal_selection_mode_word">Läge: Ord</string>
+    <string name="terminal_selection_mode_line">Läge: Rad</string>
+</resources>

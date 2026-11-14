@@ -227,9 +227,10 @@ package org.connectbot.terminal {
     property public int widthPixels;
   }
 
-  public sealed nonexhaustive interface TerminalEmulator {
+  public sealed nonexhaustive interface TerminalEmulator extends java.lang.AutoCloseable {
     method public void applyColorScheme(int[] ansiColors, int defaultForeground, int defaultBackground);
     method public void clearScreen();
+    method public void close();
     method @Deprecated public default void dispatchCharacter(int modifiers, char ch);
     method public void dispatchCharacter(int modifiers, int codepoint);
     method public void dispatchKey(int modifiers, int key);

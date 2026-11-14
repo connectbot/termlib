@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopírovat</string>
+    <string name="terminal_selection_more_options_description">Další možnosti</string>
+    <string name="terminal_selection_select_all">Vybrat vše</string>
+    <string name="terminal_selection_select_all_visible">Vybrat vše viditelné</string>
+    <string name="terminal_selection_share">Sdílet</string>
+    <string name="terminal_selection_paste">Vložit</string>
+    <string name="terminal_selection_mode_character">Režim: znak</string>
+    <string name="terminal_selection_mode_word">Režim: slovo</string>
+    <string name="terminal_selection_mode_line">Režim: řádek</string>
+</resources>

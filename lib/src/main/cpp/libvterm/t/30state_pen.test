@@ -113,6 +113,14 @@ PUSH "\e[m\e[37;1m"
   ?pen bold = on
   ?pen foreground = idx(15)
 
+!Bold+SGR 38 retains termlib indexed-colour compatibility
+PUSH "\e[m\e[1;38:5:3m"
+  ?pen bold = on
+  ?pen foreground = idx(3)
+PUSH "\e[m\e[38:5:3;1m"
+  ?pen bold = on
+  ?pen foreground = idx(11)
+
 !Super/Subscript
 PUSH "\e[73m"
   ?pen small = on

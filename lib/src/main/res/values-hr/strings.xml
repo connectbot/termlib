@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopiraj</string>
+    <string name="terminal_selection_more_options_description">Više opcija</string>
+    <string name="terminal_selection_select_all">Odaberi sve</string>
+    <string name="terminal_selection_select_all_visible">Odaberi sav vidljivi tekst</string>
+    <string name="terminal_selection_share">Podijeli</string>
+    <string name="terminal_selection_paste">Zalijepi</string>
+    <string name="terminal_selection_mode_character">Način: znak</string>
+    <string name="terminal_selection_mode_word">Način: riječ</string>
+    <string name="terminal_selection_mode_line">Način: redak</string>
+</resources>

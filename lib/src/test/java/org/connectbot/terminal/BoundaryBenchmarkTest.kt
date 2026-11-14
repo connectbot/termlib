@@ -17,6 +17,22 @@ import java.lang.management.ManagementFactory
 @RunWith(AndroidJUnit4::class)
 class BoundaryBenchmarkTest {
     @Test
+    fun smallNativeCalls() {
+        assumeTrue(System.getenv("TERMLIB_BENCHMARK") == "1")
+        val callbacks = NativeCallbackStub()
+        TerminalNative(callbacks).use { native ->
+            val input = "x\r".toByteArray()
+            repeat(20_000) { native.writeInput(input) }
+            val times = List(7) {
+                val start = System.nanoTime()
+                repeat(50_000) { native.writeInput(input) }
+                (System.nanoTime() - start) / 50_000
+            }
+            println("BOUNDARY_BENCH small-native ns/op=${times.sorted()[3]}")
+        }
+    }
+
+    @Test
     fun renderingScrollingAndOsc() {
         assumeTrue(System.getenv("TERMLIB_BENCHMARK") == "1")
         val allocations = ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean

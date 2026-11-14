@@ -29,6 +29,8 @@ internal class TerminalTextDecoder {
 
     private val messages = mutableMapOf<Pair<Int, Int>, Message>()
 
+    fun reset() = messages.clear()
+
     fun accept(kind: Int, command: Int, data: ByteArray, initial: Boolean, final: Boolean): String? {
         require(kind in OSC..CLIPBOARD)
         require(kind != PROPERTY || command in 4..5)

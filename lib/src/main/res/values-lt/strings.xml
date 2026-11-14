@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopijuoti</string>
+    <string name="terminal_selection_more_options_description">Daugiau parinkčių</string>
+    <string name="terminal_selection_select_all">Pažymėti viską</string>
+    <string name="terminal_selection_select_all_visible">Pažymėti visą matomą tekstą</string>
+    <string name="terminal_selection_share">Bendrinti</string>
+    <string name="terminal_selection_paste">Įklijuoti</string>
+    <string name="terminal_selection_mode_character">Režimas: simbolis</string>
+    <string name="terminal_selection_mode_word">Režimas: žodis</string>
+    <string name="terminal_selection_mode_line">Režimas: eilutė</string>
+</resources>

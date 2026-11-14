@@ -7,13 +7,18 @@ package org.connectbot.terminal
 
 /** Fixed-capacity JNI scratch. The owning emulator serializes all use. */
 internal class ScreenTransfer {
-    private val buffer = CellData.buffer()
+    private var buffer: java.nio.ByteBuffer? = CellData.buffer()
     var calls = 0L
         private set
     var bytes = 0L
         private set
 
+    fun close() {
+        buffer = null
+    }
+
     fun fetch(native: TerminalNative, ranges: IntArray, consume: (Int, Int, Int, java.nio.ByteBuffer, Int, Boolean) -> Unit) {
+        val buffer = checkNotNull(buffer)
         var row = 0
         var col = ranges.getOrElse(0) { 0 }
         while (row < ranges.size / 2) {

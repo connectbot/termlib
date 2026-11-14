@@ -46,6 +46,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.connectbot.terminal.InlineImageRequest
@@ -223,6 +225,13 @@ fun ShellScreen() {
             TerminalSession("Unicode", createTerminalEmulator(), R.raw.test_unicode),
             TerminalSession("Scrolling", createTerminalEmulator(), R.raw.test_scroll),
         )
+    }
+
+    DisposableEffect(sessions) {
+        onDispose {
+            scope.cancel()
+            sessions.forEach { it.emulator.close() }
+        }
     }
 
     fun applyInlineImageMode(mode: InlineImageMode) {

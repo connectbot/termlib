@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">ສຳເນົາ</string>
+    <string name="terminal_selection_more_options_description">ຕົວເລືອກເພີ່ມເຕີມ</string>
+    <string name="terminal_selection_select_all">ເລືອກທັງໝົດ</string>
+    <string name="terminal_selection_select_all_visible">ເລືອກຂໍ້ຄວາມທີ່ເຫັນທັງໝົດ</string>
+    <string name="terminal_selection_share">ແບ່ງປັນ</string>
+    <string name="terminal_selection_paste">ວາງ</string>
+    <string name="terminal_selection_mode_character">ໂໝດ: ຕົວອັກສອນ</string>
+    <string name="terminal_selection_mode_word">ໂໝດ: ຄຳ</string>
+    <string name="terminal_selection_mode_line">ໂໝດ: ແຖວ</string>
+</resources>

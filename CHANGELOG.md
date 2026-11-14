@@ -6,6 +6,42 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 <!-- Add user-facing changes here; use ## [version] headings when releasing. -->
 
+## [0.3.15][0.3.15]
+
+### Fixed
+- Clamp oversized CSI numeric arguments and reject excess parameters and subparameters to prevent parser overflow and out-of-bounds access
+- Ignore REP (repeat character) sequences when no preceding graphic character exists
+- Reset scroll regions invalidated by resize and reject empty or inverted scroll rectangles
+
+### Dependencies
+- Update vendored libvterm to revision 847 with additional Vim parser and resize fixes
+
+## [0.3.14][0.3.14]
+
+### Added
+- Add `TerminalEmulator.close()` to release native state, screen history, and inline images when disposing a session
+- Add translations for terminal text selection actions and accessibility descriptions
+
+### Fixed
+- Break JNI callback ownership cycles that prevented terminal sessions from being released
+- Advance the cursor to the last row of Kitty image placements without an extra linefeed or unwanted scrolling (by GlassOnTin)
+
+### Changed
+- Route terminal diagnostics through SLF4J; applications can supply a compatible logging provider to receive messages
+
+## [0.3.13][0.3.13]
+
+### Fixed
+- Prevent a crash in bidirectional text rendering when paragraph markers cross line boundaries
+
+### Changed
+- Reduce repeated draw calls when rendering stippled characters
+
+## [0.3.12][0.3.12]
+
+### Fixed
+- Clamp stale accessibility ranges and use terminal cell columns to handle wide and combining characters correctly
+
 ## [0.3.11][0.3.11]
 
 ### Fixed
@@ -42,6 +78,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Update AndroidX Core from 1.19.0 to 1.19.1
 
 
+[0.3.15]: https://github.com/connectbot/termlib/compare/0.3.14...0.3.15
+[0.3.14]: https://github.com/connectbot/termlib/compare/0.3.13...0.3.14
+[0.3.13]: https://github.com/connectbot/termlib/compare/0.3.12...0.3.13
+[0.3.12]: https://github.com/connectbot/termlib/compare/0.3.11...0.3.12
 [0.3.11]: https://github.com/connectbot/termlib/compare/0.3.10...0.3.11
 [0.3.10]: https://github.com/connectbot/termlib/compare/0.3.9...0.3.10
 [0.3.9]: https://github.com/connectbot/termlib/compare/0.3.8...0.3.9

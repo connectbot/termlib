@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Kopieer</string>
+    <string name="terminal_selection_more_options_description">Meer opsies</string>
+    <string name="terminal_selection_select_all">Kies alles</string>
+    <string name="terminal_selection_select_all_visible">Kies alles wat sigbaar is</string>
+    <string name="terminal_selection_share">Deel</string>
+    <string name="terminal_selection_paste">Plak</string>
+    <string name="terminal_selection_mode_character">Modus: Karakter</string>
+    <string name="terminal_selection_mode_word">Modus: Woord</string>
+    <string name="terminal_selection_mode_line">Modus: Reël</string>
+</resources>

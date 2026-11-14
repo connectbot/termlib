@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_selection_copy">Капіяваць</string>
+    <string name="terminal_selection_more_options_description">Дадатковыя параметры</string>
+    <string name="terminal_selection_select_all">Вылучыць усё</string>
+    <string name="terminal_selection_select_all_visible">Вылучыць увесь бачны тэкст</string>
+    <string name="terminal_selection_share">Падзяліцца</string>
+    <string name="terminal_selection_paste">Уставіць</string>
+    <string name="terminal_selection_mode_character">Рэжым: сімвал</string>
+    <string name="terminal_selection_mode_word">Рэжым: слова</string>
+    <string name="terminal_selection_mode_line">Рэжым: радок</string>
+</resources>
