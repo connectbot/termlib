@@ -19,9 +19,11 @@ package org.connectbot.terminal
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -36,14 +38,14 @@ class AccessibilityOverlayTest {
     @Test
     fun historySupportsAccessibilityScrolling() {
         val emulator = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 20)
-        emulator.writeInput((1..30).joinToString("\r\n") { "History $it" }.toByteArray())
+        emulator.writeInput((1..30).joinToString("\r\n") { if (it == 1) "Oldest row" else "History $it" }.toByteArray())
         (emulator as TerminalEmulatorImpl).processPendingUpdates()
         composeTestRule.setContent {
             AccessibilityOverlay(
                 screenState = rememberTerminalScreenState(emulator),
                 charHeight = 24f,
                 modifier = androidx.compose.ui.Modifier
-                    .then(androidx.compose.ui.Modifier.fillMaxSize())
+                    .fillMaxSize()
                     .testTag("history"),
             )
         }
@@ -52,6 +54,9 @@ class AccessibilityOverlayTest {
                 androidx.compose.ui.semantics.SemanticsActions.ScrollBy,
             ),
         )
+        composeTestRule.onNodeWithText("History 30", substring = true).assertIsFocused()
+        composeTestRule.onNodeWithTag("history").performScrollToIndex(0)
+        composeTestRule.onNodeWithText("Oldest row", substring = true).assertExists()
     }
 
     @Test
