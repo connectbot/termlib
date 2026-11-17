@@ -20,17 +20,22 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -44,6 +49,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
@@ -68,56 +75,164 @@ internal fun AccessibilityOverlay(
     modifier: Modifier = Modifier,
     onToggleReviewMode: () -> Unit = {},
     isReviewMode: Boolean = false,
+    touchExplorationEnabled: Boolean = true,
+    onFollowTailChange: (Boolean) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
 
     // State for live region announcements (replaces deprecated announceForAccessibility)
-    val announcementText = remember { mutableStateOf("") }
-    val announcementCounter = remember { mutableIntStateOf(0) }
+    val announcementText = remember(screenState) { mutableStateOf("") }
 
-    // Include both scrollback and visible lines in the list
-    val allLines by remember(screenState) {
-        derivedStateOf { screenState.snapshot.scrollback + screenState.snapshot.lines }
+    // Full-screen apps have their own screen, not the primary shell's history.
+    val historySize by remember(screenState) {
+        derivedStateOf { if (screenState.snapshot.alternateScreen) 0 else screenState.snapshot.scrollback.size }
     }
-
-    // Sync LazyColumn scroll with terminal scrollback position
-    LaunchedEffect(screenState.scrollbackPosition) {
-        if (!lazyListState.isScrollInProgress) {
-            // Convert scrollbackPosition to LazyColumn index
-            // scrollbackPosition = 0 means bottom (index = scrollback.size)
-            // scrollbackPosition = scrollback.size means top (index = 0)
-            val targetIndex = screenState.snapshot.scrollback.size - screenState.scrollbackPosition
-            if (targetIndex >= 0 && targetIndex < allLines.size) {
-                lazyListState.scrollToItem(targetIndex)
+    val allLines by remember(screenState) {
+        derivedStateOf {
+            if (screenState.snapshot.alternateScreen) screenState.snapshot.lines else screenState.snapshot.scrollback + screenState.snapshot.lines
+        }
+    }
+    val latestRow by remember(screenState) {
+        derivedStateOf {
+            val screenRow = screenState.snapshot.lines.indexOfLast { it.text.isNotBlank() }
+            if (screenRow >= 0) {
+                historySize + screenRow
+            } else if (historySize > 0) {
+                screenState.snapshot.scrollback.indexOfLast { it.text.isNotBlank() }
+            } else {
+                -1
             }
         }
     }
 
-    // Hidden live region for TalkBack announcements.
-    // When announcementCounter changes, TalkBack reads the updated contentDescription.
-    // This replaces the deprecated View.announceForAccessibility().
-    val counter = announcementCounter.intValue
-    if (counter > 0) {
-        Box(
-            modifier = Modifier
-                .height(with(density) { 0.toDp() })
-                .semantics {
-                    contentDescription = announcementText.value
-                    liveRegion = LiveRegionMode.Polite
-                },
-        )
+    var followTail by remember(screenState) { mutableStateOf(screenState.scrollbackPosition == 0) }
+    SideEffect { onFollowTailChange(followTail) }
+    var programmaticScrolls by remember(screenState) { mutableIntStateOf(0) }
+    var overlayScrollPosition by remember(screenState) { mutableStateOf<Int?>(null) }
+
+    fun tailStart(): Int {
+        val height = lazyListState.layoutInfo.viewportSize.height
+        val visibleRows = if (height > 0) {
+            (height / charHeight.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
+        } else {
+            screenState.snapshot.rows.coerceAtLeast(1)
+        }
+        // Align with the live screen when it fits. In a smaller viewport, keep
+        // the latest row at the bottom instead of pinning it to the top.
+        return maxOf(historySize, latestRow - visibleRows + 1)
     }
+
+    suspend fun scrollToRow(index: Int) {
+        if (index == lazyListState.firstVisibleItemIndex) return
+        programmaticScrolls++
+        try {
+            lazyListState.scrollToItem(index)
+        } finally {
+            programmaticScrolls--
+        }
+    }
+
+    LaunchedEffect(screenState, screenState.snapshot.alternateScreen) {
+        announcementText.value = ""
+
+        var announcedInitialLine = false
+        snapshotFlow { screenState.snapshot to lazyListState.layoutInfo.viewportSize.height }.collect { (_, height) ->
+            val latest = latestRow
+            if (latest >= 0 && height > 0 && followTail && !lazyListState.isScrollInProgress) scrollToRow(tailStart())
+            if (latest >= 0 && !announcedInitialLine) {
+                // Read the latest row once without confusing keyboard focus with
+                // accessibility focus or displacing an authentication/editor field.
+                val initialLineText = allLines[latest].text
+                withFrameNanos { }
+                announcementText.value = initialLineText
+                announcedInitialLine = true
+            }
+        }
+    }
+    LaunchedEffect(lazyListState, screenState) {
+        var previousFirst = lazyListState.firstVisibleItemIndex
+        var userWasScrolling = false
+        snapshotFlow { lazyListState.isScrollInProgress to lazyListState.firstVisibleItemIndex }.collect { (scrolling, firstVisible) ->
+            val moved = previousFirst != firstVisible
+            previousFirst = firstVisible
+            if (programmaticScrolls > 0) return@collect
+            if (scrolling) {
+                followTail = false
+                userWasScrolling = true
+            } else if (userWasScrolling || moved) {
+                val lastVisible = lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                followTail = latestRow < 0 || lastVisible >= latestRow
+                userWasScrolling = false
+            }
+            if (!followTail) {
+                val position = (historySize - firstVisible).coerceAtLeast(0)
+                if (position != screenState.scrollbackPosition) {
+                    overlayScrollPosition = position
+                    screenState.scrollBy(position - screenState.scrollbackPosition)
+                }
+            }
+        }
+    }
+
+    var previousAlternateScreen by remember(screenState) { mutableStateOf(screenState.snapshot.alternateScreen) }
+    LaunchedEffect(screenState.snapshot.alternateScreen) {
+        if (previousAlternateScreen != screenState.snapshot.alternateScreen) {
+            screenState.scrollToBottom()
+            followTail = true
+            if (latestRow >= 0) scrollToRow(tailStart())
+        }
+        previousAlternateScreen = screenState.snapshot.alternateScreen
+    }
+
+    // Synchronize explicit terminal scrolling, including a return to the live screen.
+    LaunchedEffect(screenState.scrollbackPosition) {
+        val position = screenState.scrollbackPosition
+        if (overlayScrollPosition == position) {
+            overlayScrollPosition = null
+            return@LaunchedEffect
+        }
+        if (!lazyListState.isScrollInProgress) {
+            followTail = position == 0
+            val targetIndex = if (followTail) {
+                tailStart()
+            } else {
+                historySize - position
+            }
+            if (targetIndex >= 0 && targetIndex < allLines.size) {
+                scrollToRow(targetIndex)
+            }
+        }
+    }
+
+    // Keep the live region present before its content changes; screen readers
+    // need a change event, not a newly inserted node with already populated text.
+    Box(
+        modifier = Modifier
+            .size(1.dp)
+            .semantics {
+                contentDescription = announcementText.value
+                liveRegion = LiveRegionMode.Polite
+            },
+    )
 
     LazyColumn(
         state = lazyListState,
         modifier = modifier,
-        userScrollEnabled = false,
+        userScrollEnabled = touchExplorationEnabled,
     ) {
         items(
             count = allLines.size,
-            key = { index -> allLines[index].row to allLines[index].lastModified },
+            // Frozen scrollback rows retain their existing identity when older rows
+            // are evicted. Active screen rows keep their node across CR redraws.
+            key = { index ->
+                if (index < historySize) {
+                    "history:${allLines[index].accessibilityId}"
+                } else {
+                    "screen:${allLines[index].row}"
+                }
+            },
         ) { index ->
             val line = allLines[index]
 
@@ -166,8 +281,11 @@ internal fun AccessibilityOverlay(
                                 CustomAccessibilityAction("Read Last Output") {
                                     val outputText = getLastCommandOutput(allLines)
                                     if (outputText != null) {
-                                        announcementText.value = outputText
-                                        announcementCounter.intValue++
+                                        coroutineScope.launch {
+                                            announcementText.value = ""
+                                            withFrameNanos { }
+                                            announcementText.value = outputText
+                                        }
                                         true
                                     } else {
                                         false
