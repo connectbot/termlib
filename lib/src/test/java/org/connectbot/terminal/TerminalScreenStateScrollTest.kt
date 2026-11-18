@@ -573,4 +573,34 @@ class TerminalScreenStateScrollTest {
         assertEquals("screen A", state.getVisibleLine(1).text.trimEnd())
         assertEquals("screen B", state.getVisibleLine(2).text.trimEnd())
     }
+
+    @Test
+    fun `updateSnapshot keeps viewport pinned when scrollback ring buffer is saturated`() {
+        val initial = snapshot(
+            rows = 3,
+            cols = 80,
+            screenLines = listOf("screen A", "screen B", "screen C"),
+            scrollback = listOf("sb1", "sb2", "sb3", "sb4"),
+            seqNum = 1,
+        ).copy(scrollbackEvictedCount = 10L)
+        val state = TerminalScreenState(initial)
+        state.scrollBy(2) // Scrolled 2 lines up: top visible is sb3
+
+        assertEquals("sb3", state.getVisibleLine(0).text.trimEnd())
+
+        // Ring buffer is full (size stays 4), 1 oldest line evicted (sb1), 1 new line added (screen A)
+        val next = snapshot(
+            rows = 3,
+            cols = 80,
+            screenLines = listOf("screen B", "screen C", "screen D"),
+            scrollback = listOf("sb2", "sb3", "sb4", "screen A"),
+            seqNum = 2,
+        ).copy(scrollbackEvictedCount = 11L)
+        state.updateSnapshot(next)
+
+        assertEquals(3, state.scrollbackPosition)
+        assertEquals("sb3", state.getVisibleLine(0).text.trimEnd())
+        assertEquals("sb4", state.getVisibleLine(1).text.trimEnd())
+        assertEquals("screen A", state.getVisibleLine(2).text.trimEnd())
+    }
 }
