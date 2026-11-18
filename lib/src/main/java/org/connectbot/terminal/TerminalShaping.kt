@@ -18,8 +18,9 @@ import androidx.compose.runtime.snapshots.Snapshot
 import java.util.IdentityHashMap
 
 /** UI-thread-only shaping state. Neither snapshots nor scrollback own glyph caches. */
-internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteLimit: Int = 256 * 1024) {
+internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteLimit: Int = 1024 * 1024) {
     private val cache = IdentityHashMap<PackedCells, ShapedLine>()
+    private val independentRows = IdentityHashMap<PackedCells, Boolean>()
     private val keys = ArrayList<PackedCells>()
     private val shapingPaint = Paint(sourcePaint).apply { fontFeatureSettings = "'liga' 0, 'clig' 0" }
     private var viewportRows = 1
@@ -29,16 +30,33 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
     private var width = Float.NaN
     private var contextLines: List<TerminalLine> = emptyList()
 
-    var retainedBytes = 0
+    private var rowBytes = 0
+    private var layoutBytes = 0
+    private val layouts = LinkedHashMap<LayoutKey, RetainedLayout>(16, 0.75f, true)
+    private var resolutionBytes = 0
+    private val resolutions = LinkedHashMap<ResolutionKey, ResolvedLine>(16, 0.75f, true)
+    var paragraphResolveCount = 0
+        private set
+    private var glyphBytes = 0
+    private val glyphRuns = LinkedHashMap<GlyphRunKey, GlyphRun>(16, 0.75f, true)
+    val retainedBytes: Int get() = rowBytes + glyphBytes + resolutionBytes + layoutBytes
+    var glyphShapeCount = 0
         private set
     val cachedRows: Int get() = cache.size
     var shapeCount = 0
         private set
 
     fun clear() {
+        layouts.clear()
+        layoutBytes = 0
+        resolutions.clear()
+        resolutionBytes = 0
+        glyphRuns.clear()
+        glyphBytes = 0
         cache.clear()
+        independentRows.clear()
         keys.clear()
-        retainedBytes = 0
+        rowBytes = 0
         viewport = null
         sequence = -1L
         contextLines = emptyList()
@@ -56,8 +74,9 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
             }
         ) {
             cache.clear()
+            independentRows.clear()
             keys.clear()
-            retainedBytes = 0
+            rowBytes = 0
             contextLines = newContext
         }
         sequence = state.snapshot.sequenceNumber
@@ -80,7 +99,8 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
 
     private fun remove(index: Int) {
         val key = keys.removeAt(index)
-        retainedBytes -= cache.remove(key)!!.bytes + key.shapingRetentionBytes
+        independentRows.remove(key)
+        rowBytes -= cache.remove(key)!!.bytes + key.shapingRetentionBytes
     }
 
     private fun visible(key: PackedCells): Boolean = Snapshot.withoutReadObservation {
@@ -98,9 +118,12 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
     @RequiresApi(31)
     fun layout(cells: PackedCells, cellWidth: Float): ShapedLine {
         if (width != cellWidth) {
+            layouts.clear()
+            layoutBytes = 0
             cache.clear()
+            independentRows.clear()
             keys.clear()
-            retainedBytes = 0
+            rowBytes = 0
             width = cellWidth
         }
         viewport?.let(::viewport)
@@ -127,9 +150,12 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
     fun layout(state: TerminalScreenState, row: Int, cellWidth: Float): ShapedLine? = Snapshot.withoutReadObservation {
         viewport(state)
         if (width != cellWidth) {
+            layouts.clear()
+            layoutBytes = 0
             cache.clear()
+            independentRows.clear()
             keys.clear()
-            retainedBytes = 0
+            rowBytes = 0
             width = cellWidth
         }
         val absolute = state.visibleLineIndex(row)
@@ -146,15 +172,41 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
         }
         val lines = (first..last).map(state::getLine)
         if (lines.none { it.cells.needsShaping() }) return@withoutReadObservation null
+        if (first == last) {
+            val cells = lines.single().cells
+            for (key in keys) {
+                if (independentRows.containsKey(key) && cells.sameParagraphShaping(key)) {
+                    // Keep one owner for identical independent rows. Charging a
+                    // shared layout once per physical row exhausts the history
+                    // budget on tall viewports and forces repeated shaping.
+                    return@withoutReadObservation cache[key]!!
+                }
+            }
+        }
+        val context = buildString {
+            for (line in lines) {
+                val raw = line.cells.shapingContextText()
+                append((raw.length ushr 16).toChar())
+                append(raw.length.toChar())
+                append(raw)
+            }
+        }
+        val target = state.getLine(absolute).cells
+        val targetKey = LayoutKey(context, absolute - first, target)
+        this.layouts[targetKey]?.let {
+            admit(target, it.line, independent = first == last)
+            return@withoutReadObservation it.line
+        }
         val layouts = shapeParagraph(lines)
         val visibleFirst = state.visibleLineIndex(0)
         val visibleLast = state.visibleLineIndex(state.snapshot.rows - 1)
         layouts.forEachIndexed { index, shaped ->
             if (first + index !in visibleFirst..visibleLast) return@forEachIndexed
             val cells = lines[index].cells
+            retainLayout(LayoutKey(context, index, cells), shaped)
             if (!cache.containsKey(cells)) {
                 shapeCount++
-                admit(cells, shaped)
+                admit(cells, shaped, independent = first == last)
             }
         }
         layouts[absolute - first]
@@ -181,7 +233,8 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
             starts.add(cellStarts)
             ends.add(cellEnds)
         }
-        val bidi = Bidi(paragraph.toString(), Bidi.DIRECTION_LEFT_TO_RIGHT)
+        val paragraphText = paragraph.toString()
+        var paragraphBidi: Bidi? = null
         return lines.indices.map { row ->
             val cells = lines[row].cells
             val logicalToVisual = IntArray(cells.size) { it }
@@ -191,21 +244,11 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
             data class UnitCell(val col: Int, val width: Int, val visual: Int)
             val units = ArrayList<UnitCell>()
             if (lineStarts[row] < lineEnds[row]) {
-                // Unicode paragraph separators can occur inside one terminal row.
-                // ICU requires each line range to stay inside a single bidi paragraph.
-                val lineVisual = IntArray(lineEnds[row] - lineStarts[row])
-                val lineLevels = ByteArray(lineVisual.size)
-                var segmentStart = lineStarts[row]
-                while (segmentStart < lineEnds[row]) {
-                    val segmentEnd = minOf(lineEnds[row], bidi.getParagraph(segmentStart).limit)
-                    val lineBidi = bidi.createLineBidi(segmentStart, segmentEnd)
-                    val offset = segmentStart - lineStarts[row]
-                    for (index in 0 until segmentEnd - segmentStart) {
-                        lineVisual[offset + index] = offset + lineBidi.getVisualIndex(index)
-                        lineLevels[offset + index] = lineBidi.getLevelAt(index)
-                    }
-                    segmentStart = segmentEnd
+                val resolved = resolveLine(paragraphText, lineStarts[row], lineEnds[row]) {
+                    paragraphBidi ?: Bidi(paragraphText, Bidi.DIRECTION_LEFT_TO_RIGHT).also { paragraphBidi = it }
                 }
+                val lineVisual = resolved.visual
+                val lineLevels = resolved.levels
                 for (col in cells.indices) {
                     val start = starts[row][col]
                     if (start < 0 || cells.width(col) == 0) continue
@@ -215,11 +258,7 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
                     for (index in localStart until localEnd) visual = minOf(visual, lineVisual[index])
                     val level = lineLevels[localStart]
                     levels[col] = level
-                    if (level.toInt() and 1 != 0) {
-                        val cp = Character.codePointAt(cells.text(col, col + 1), 0)
-                        val mirror = android.icu.lang.UCharacter.getMirror(cp)
-                        if (mirror != cp) mirrors[col] = mirror
-                    }
+                    mirrors[col] = resolved.mirrors[localStart]
                     val columns = cells.width(col).coerceAtLeast(1)
                     for (part in 1 until columns) levels[col + part] = level
                     units.add(UnitCell(col, columns, visual))
@@ -253,13 +292,88 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
         }
     }
 
-    private fun admit(cells: PackedCells, result: ShapedLine) {
+    private class LayoutKey(val context: String, val row: Int, val cells: PackedCells) {
+        override fun hashCode(): Int = (31 * context.hashCode() + row) * 31 + cells.paragraphShapingHash()
+        override fun equals(other: Any?): Boolean = other is LayoutKey && row == other.row && context == other.context && cells.sameParagraphShaping(other.cells)
+    }
+
+    private class RetainedLayout(val line: ShapedLine, val bytes: Int)
+
+    private fun retainLayout(key: LayoutKey, line: ShapedLine) {
+        if (layouts.containsKey(key)) return
+        val bytes = 128L + key.context.length * 2L + key.cells.shapingRetentionBytes + line.bytes
+        val limit = minOf(byteLimit * 3 / 4, byteLimit - rowBytes - glyphBytes - resolutionBytes)
+        if (bytes <= limit) {
+            val entries = layouts.entries.iterator()
+            while (layoutBytes + bytes > limit && entries.hasNext()) {
+                layoutBytes -= entries.next().value.bytes
+                entries.remove()
+            }
+            layouts[key] = RetainedLayout(line, bytes.toInt())
+            layoutBytes += bytes.toInt()
+        }
+    }
+
+    private data class ResolutionKey(val paragraph: String, val start: Int, val end: Int)
+
+    private class ResolvedLine(val visual: IntArray, val levels: ByteArray, val mirrors: IntArray, val bytes: Long)
+
+    // The key includes the complete hard-newline paragraph and the physical row
+    // bounds. A wrapped row cannot borrow ordering from an isolated equal string.
+    @RequiresApi(31)
+    private fun resolveLine(text: String, start: Int, end: Int, paragraph: () -> Bidi): ResolvedLine {
+        val key = ResolutionKey(text, start, end)
+        resolutions[key]?.let { return it }
+        val bidi = paragraph()
+        val visual = IntArray(end - start)
+        val levels = ByteArray(visual.size)
+        val mirrors = IntArray(visual.size)
+        var segmentStart = start
+        while (segmentStart < end) {
+            // ICU line ranges must stay within a single Unicode paragraph,
+            // including separators embedded in a physical terminal row.
+            val segmentEnd = minOf(end, bidi.getParagraph(segmentStart).limit)
+            val line = bidi.createLineBidi(segmentStart, segmentEnd)
+            val offset = segmentStart - start
+            for (index in 0 until segmentEnd - segmentStart) {
+                visual[offset + index] = offset + line.getVisualIndex(index)
+                levels[offset + index] = line.getLevelAt(index)
+            }
+            segmentStart = segmentEnd
+        }
+        var offset = 0
+        while (offset < visual.size) {
+            val cp = Character.codePointAt(text, start + offset)
+            if (levels[offset].toInt() and 1 != 0) {
+                val mirror = android.icu.lang.UCharacter.getMirror(cp)
+                if (mirror != cp) mirrors[offset] = mirror
+            }
+            offset += Character.charCount(cp)
+        }
+        paragraphResolveCount++
+        val bytes = 192L + text.length * 2L + visual.size * 9L
+        val result = ResolvedLine(visual, levels, mirrors, bytes)
+        val limit = minOf(byteLimit / 4, byteLimit - rowBytes - glyphBytes - layoutBytes)
+        if (bytes <= limit) {
+            val entries = resolutions.entries.iterator()
+            while (resolutionBytes + bytes > limit && entries.hasNext()) {
+                resolutionBytes -= entries.next().value.bytes.toInt()
+                entries.remove()
+            }
+            resolutions[key] = result
+            resolutionBytes += bytes.toInt()
+        }
+        return result
+    }
+
+    private fun admit(cells: PackedCells, result: ShapedLine, independent: Boolean = false) {
         val bytes = result.bytes.toLong() + cells.shapingRetentionBytes
         // Do not cycle through visible entries when a viewport exceeds the byte budget.
         if (cache.size < viewportRows && bytes <= byteLimit - retainedBytes) {
             cache[cells] = result
+            if (independent) independentRows[cells] = true
             keys.add(cells)
-            retainedBytes += bytes.toInt()
+            rowBytes += bytes.toInt()
         }
     }
 
@@ -311,8 +425,6 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
             var first = start
             while (first < end) {
                 val style = cells.flags(first) and 9
-                shapingPaint.isFakeBoldText = style and 1 != 0
-                shapingPaint.textSkewX = if (style and 8 != 0) -0.25f else 0f
                 var next = first + cells.width(first).coerceAtLeast(1)
                 // Draw a same-style script run as one unit. Splitting at every
                 // cursor boundary preserves contextual forms but snaps their
@@ -338,60 +450,97 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
                         logical += columns
                     }
                 }
-                val glyphs = TextRunShaper.shapeTextRun(
-                    text, offsets[first], offsets[next] - offsets[first], contextStart, contextEnd - contextStart,
-                    0f, 0f, rtl, shapingPaint,
-                )
+                val run = glyphRun(text, offsets[first], offsets[next] - offsets[first], contextStart, contextEnd, rtl, style, variants)
                 val targetWidth = (next - first) * width
-                val scale = if (glyphs.advance > targetWidth && targetWidth > 0f) targetWidth / glyphs.advance else 1f
-                val batches = ArrayList<GlyphBatch>()
-                var glyph = 0
-                while (glyph < glyphs.glyphCount()) {
-                    val font = glyphs.getFont(glyph)
-                    val weight = if (Build.VERSION.SDK_INT >= 35) glyphs.getWeightOverride(glyph) else Float.MIN_VALUE
-                    val italic = if (Build.VERSION.SDK_INT >= 35) glyphs.getItalicOverride(glyph) else Float.MIN_VALUE
-                    val fakeBold = Build.VERSION.SDK_INT >= 35 && glyphs.getFakeBold(glyph)
-                    val fakeItalic = Build.VERSION.SDK_INT >= 35 && glyphs.getFakeItalic(glyph)
-                    var limit = glyph + 1
-                    while (limit < glyphs.glyphCount() && glyphs.getFont(limit) == font &&
-                        (
-                            Build.VERSION.SDK_INT < 35 ||
-                                (
-                                    glyphs.getWeightOverride(limit) == weight && glyphs.getItalicOverride(limit) == italic &&
-                                        glyphs.getFakeBold(limit) == fakeBold && glyphs.getFakeItalic(limit) == fakeItalic
-                                    )
-                            )
-                    ) {
-                        limit++
-                    }
-                    val ids = IntArray(limit - glyph)
-                    val positions = FloatArray(ids.size * 2)
-                    for (i in ids.indices) {
-                        ids[i] = glyphs.getGlyphId(glyph + i)
-                        positions[i * 2] = glyphs.getGlyphX(glyph + i)
-                        positions[i * 2 + 1] = glyphs.getGlyphY(glyph + i)
-                    }
-                    val drawingFont = if (weight == Float.MIN_VALUE && italic == Float.MIN_VALUE) {
-                        font
-                    } else {
-                        variants.getOrPut(FontVariant(font, weight, italic)) {
-                            val axes = font.axes.orEmpty().filter {
-                                !(it.tag == "wght" && weight != Float.MIN_VALUE) && !(it.tag == "ital" && italic != Float.MIN_VALUE)
-                            }.toMutableList()
-                            if (weight != Float.MIN_VALUE) axes.add(FontVariationAxis("wght", weight))
-                            if (italic != Float.MIN_VALUE) axes.add(FontVariationAxis("ital", italic))
-                            Font.Builder(font).setFontVariationSettings(axes.toTypedArray()).build()
-                        }
-                    }
-                    batches.add(GlyphBatch(ids, positions, drawingFont, fakeBold, fakeItalic))
-                    glyph = limit
-                }
-                val cluster = ShapedCluster(visual, next - first, scale, batches.toTypedArray())
+                val scale = if (run.advance > targetWidth && targetWidth > 0f) targetWidth / run.advance else 1f
+                val cluster = ShapedCluster(visual, next - first, scale, run.batches)
                 for (i in first until next) clusters[i] = cluster
                 first = next
             }
         }
         return ShapedLine(logicalToVisual, visualToLogical, levels, bidiMirrors ?: IntArray(cells.size), clusters)
+    }
+
+    // Keep the complete shaping context and target bounds in the key: the same
+    // visible letters can have different joining forms across soft row wraps.
+    private data class GlyphRunKey(val context: String, val start: Int, val count: Int, val rtl: Boolean, val style: Int)
+
+    private class GlyphRun(val advance: Float, val batches: Array<GlyphBatch>, val bytes: Int)
+
+    @RequiresApi(31)
+    private fun glyphRun(
+        text: CharArray,
+        start: Int,
+        count: Int,
+        contextStart: Int,
+        contextEnd: Int,
+        rtl: Boolean,
+        style: Int,
+        variants: MutableMap<FontVariant, Font>,
+    ): GlyphRun {
+        val key = GlyphRunKey(String(text, contextStart, contextEnd - contextStart), start - contextStart, count, rtl, style)
+        glyphRuns[key]?.let { return it }
+        shapingPaint.isFakeBoldText = style and 1 != 0
+        shapingPaint.textSkewX = if (style and 8 != 0) -0.25f else 0f
+        val glyphs = TextRunShaper.shapeTextRun(text, start, count, contextStart, contextEnd - contextStart, 0f, 0f, rtl, shapingPaint)
+        glyphShapeCount++
+        val batches = ArrayList<GlyphBatch>()
+        var glyph = 0
+        while (glyph < glyphs.glyphCount()) {
+            val font = glyphs.getFont(glyph)
+            val weight = if (Build.VERSION.SDK_INT >= 35) glyphs.getWeightOverride(glyph) else Float.MIN_VALUE
+            val italic = if (Build.VERSION.SDK_INT >= 35) glyphs.getItalicOverride(glyph) else Float.MIN_VALUE
+            val fakeBold = Build.VERSION.SDK_INT >= 35 && glyphs.getFakeBold(glyph)
+            val fakeItalic = Build.VERSION.SDK_INT >= 35 && glyphs.getFakeItalic(glyph)
+            var limit = glyph + 1
+            while (limit < glyphs.glyphCount() && glyphs.getFont(limit) == font &&
+                (
+                    Build.VERSION.SDK_INT < 35 ||
+                        (
+                            glyphs.getWeightOverride(limit) == weight && glyphs.getItalicOverride(limit) == italic &&
+                                glyphs.getFakeBold(limit) == fakeBold && glyphs.getFakeItalic(limit) == fakeItalic
+                            )
+                    )
+            ) {
+                limit++
+            }
+            val ids = IntArray(limit - glyph)
+            val positions = FloatArray(ids.size * 2)
+            for (i in ids.indices) {
+                ids[i] = glyphs.getGlyphId(glyph + i)
+                positions[i * 2] = glyphs.getGlyphX(glyph + i)
+                positions[i * 2 + 1] = glyphs.getGlyphY(glyph + i)
+            }
+            val drawingFont = if (weight == Float.MIN_VALUE && italic == Float.MIN_VALUE) {
+                font
+            } else {
+                variants.getOrPut(FontVariant(font, weight, italic)) {
+                    val axes = font.axes.orEmpty().filter {
+                        !(it.tag == "wght" && weight != Float.MIN_VALUE) && !(it.tag == "ital" && italic != Float.MIN_VALUE)
+                    }.toMutableList()
+                    if (weight != Float.MIN_VALUE) axes.add(FontVariationAxis("wght", weight))
+                    if (italic != Float.MIN_VALUE) axes.add(FontVariationAxis("ital", italic))
+                    Font.Builder(font).setFontVariationSettings(axes.toTypedArray()).build()
+                }
+            }
+            batches.add(GlyphBatch(ids, positions, drawingFont, fakeBold, fakeItalic))
+            glyph = limit
+        }
+        val bytes = 160 + key.context.length * 2 + batches.sumOf { 112 + it.ids.size * 20 }
+        val result = GlyphRun(glyphs.advance, batches.toTypedArray(), bytes)
+        // This cache shares the layout budget, and reserves at least three
+        // quarters for visible rows. Oversized runs never evict useful entries.
+        val limit = minOf(byteLimit / 4, byteLimit - rowBytes - resolutionBytes - layoutBytes)
+        if (bytes <= limit) {
+            val entries = glyphRuns.entries.iterator()
+            while (glyphBytes + bytes > limit && entries.hasNext()) {
+                glyphBytes -= entries.next().value.bytes
+                entries.remove()
+            }
+            glyphRuns[key] = result
+            glyphBytes += bytes
+        }
+        return result
     }
 
     companion object {
@@ -431,7 +580,12 @@ internal class ShapedLine(
     private val clusters: Array<ShapedCluster?>,
 ) {
     private val clip = android.graphics.Rect()
-    val bytes: Int = 160 + logicalToVisual.size * 20 + clusters.indices.sumOf {
+    private val mirroredGlyphs = if (mirrors.any { it != 0 }) {
+        Array(mirrors.size) { col -> mirrors[col].takeIf { it != 0 }?.let { MirroredGlyph(String(Character.toChars(it))) } }
+    } else {
+        null
+    }
+    val bytes: Int = 160 + (mirroredGlyphs?.let { 16 + it.size * 4 + it.sumOf { glyph -> if (glyph == null) 0 else 112 + glyph.text.length * 4 } } ?: 0) + logicalToVisual.size * 20 + clusters.indices.sumOf {
         val cluster = clusters[it]
         if (cluster != null && (it == 0 || clusters[it - 1] !== cluster)) cluster.bytes else 0
     }
@@ -444,40 +598,61 @@ internal class ShapedLine(
         canvas.getClipBounds(clip)
     }
 
+    /** Exclusive logical end of the glyph run containing this cell. */
+    fun clusterEnd(col: Int): Int {
+        val cluster = clusters[col] ?: return col + 1
+        var end = col + 1
+        while (end < clusters.size && clusters[end] === cluster) end++
+        return end
+    }
+
     @RequiresApi(31)
-    fun drawCell(canvas: Canvas, col: Int, baseline: Float, paint: Paint, cellWidth: Float, columns: Int): Boolean {
+    fun drawCell(canvas: Canvas, col: Int, baseline: Float, paint: Paint, cellWidth: Float, columns: Int, endColumn: Int = col + columns): Boolean {
         val cluster = clusters[col]
         val mirror = mirrors.getOrElse(col) { 0 }
         if (cluster == null && mirror == 0) return false
         val saved = canvas.save()
         try {
-            val x = visualColumn(col) * cellWidth
+            val x = minOf(visualColumn(col), visualColumn(endColumn - 1)) * cellWidth
             // Clip only horizontally: preserve marks extending above/below the row.
-            canvas.clipRect(x, clip.top.toFloat(), x + cellWidth * columns, clip.bottom.toFloat())
+            canvas.clipRect(x, clip.top.toFloat(), x + cellWidth * (endColumn - col), clip.bottom.toFloat())
             if (cluster == null) {
-                val value = String(Character.toChars(mirror))
-                val advance = paint.measureText(value)
-                canvas.translate(x, baseline)
-                if (advance > cellWidth * columns && advance > 0f) canvas.scale(cellWidth * columns / advance, 1f)
-                canvas.drawText(value, 0f, 0f, paint)
+                val glyph = mirroredGlyphs!![col]!!
+                val advance = if (glyph.advance.isNaN()) {
+                    val measured = if (paint is TerminalTextPaint) paint.measureCell(glyph.characters, 0, glyph.characters.size) else paint.measureText(glyph.text)
+                    measured.also { glyph.advance = it }
+                } else {
+                    glyph.advance
+                }
+                if (advance > cellWidth * columns && advance > 0f) {
+                    canvas.translate(x, baseline)
+                    canvas.scale(cellWidth * columns / advance, 1f)
+                    canvas.drawText(glyph.text, 0f, 0f, paint)
+                } else {
+                    canvas.drawText(glyph.text, x, baseline, paint)
+                }
                 return true
             }
-            canvas.translate(cluster.visual * cellWidth, baseline)
-            if (cluster.scale != 1f) canvas.scale(cluster.scale, 1f)
+            val absolutePositions = cluster.scale == 1f
+            if (!absolutePositions) {
+                canvas.translate(cluster.visual * cellWidth, baseline)
+                canvas.scale(cluster.scale, 1f)
+            }
             for (batch in cluster.batches) {
+                val positions = if (absolutePositions) batch.at(cluster.visual * cellWidth, baseline) else batch.positions
                 if (batch.fakeBold || batch.fakeItalic) {
                     val bold = paint.isFakeBoldText
                     val skew = paint.textSkewX
                     try {
                         if (batch.fakeBold) paint.isFakeBoldText = true
                         if (skew == 0f && batch.fakeItalic) paint.textSkewX = -0.25f
-                        canvas.drawGlyphs(batch.ids, 0, batch.positions, 0, batch.ids.size, batch.font, paint)
+                        canvas.drawGlyphs(batch.ids, 0, positions, 0, batch.ids.size, batch.font, paint)
                     } finally {
                         paint.isFakeBoldText = bold
                         paint.textSkewX = skew
                     }
                 } else {
-                    canvas.drawGlyphs(batch.ids, 0, batch.positions, 0, batch.ids.size, batch.font, paint)
+                    canvas.drawGlyphs(batch.ids, 0, positions, 0, batch.ids.size, batch.font, paint)
                 }
             }
         } finally {
@@ -488,9 +663,30 @@ internal class ShapedLine(
 }
 
 internal class ShapedCluster(val visual: Int, val columns: Int, val scale: Float, val batches: Array<GlyphBatch>) {
-    val bytes: Int = 48 + batches.sumOf { 96 + it.ids.size * 12 }
+    val bytes: Int = 48 + batches.sumOf { 112 + it.ids.size * 20 }
 }
 
-internal class GlyphBatch(val ids: IntArray, val positions: FloatArray, val font: Font, val fakeBold: Boolean, val fakeItalic: Boolean)
+internal class GlyphBatch(val ids: IntArray, val positions: FloatArray, val font: Font, val fakeBold: Boolean, val fakeItalic: Boolean) {
+    private val drawingPositions = FloatArray(positions.size)
+    private var origin = Float.NaN
+    private var baseline = Float.NaN
+
+    fun at(x: Float, y: Float): FloatArray {
+        if (origin != x || baseline != y) {
+            for (glyph in ids.indices) {
+                drawingPositions[glyph * 2] = positions[glyph * 2] + x
+                drawingPositions[glyph * 2 + 1] = positions[glyph * 2 + 1] + y
+            }
+            origin = x
+            baseline = y
+        }
+        return drawingPositions
+    }
+}
 
 private data class FontVariant(val font: Font, val weight: Float, val italic: Float)
+
+private class MirroredGlyph(val text: String) {
+    val characters = text.toCharArray()
+    var advance = Float.NaN
+}

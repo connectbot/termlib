@@ -13,6 +13,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.graphics.Rect
 import android.graphics.Shader
 import kotlin.math.floor
 import kotlin.math.max
@@ -20,13 +21,142 @@ import kotlin.math.min
 import kotlin.math.round
 
 /** Font-independent geometry. One instance per renderer paint; no global mutable Canvas state. */
-internal class TerminalBoxDrawing {
-    private val paint = Paint()
+internal class TerminalBoxDrawing(private val cacheRows: Boolean = true) {
+    private var rows: TerminalBoxRows? = null
+    private val matrix = Matrix()
+    private val transform = FloatArray(9)
+    private var pixelAligned = false
+    private val paint = Paint().apply { isAntiAlias = false }
     private val path = Path()
+    private val clip = Rect()
     private val stippleShaders = arrayOfNulls<BitmapShader>(3)
+    private val stipplePaints = arrayOfNulls<Paint>(3)
+    private val stipplePaintColors = arrayOfNulls<Int>(3)
+    private val stippleScales = FloatArray(3) { Float.NaN }
     private val stippleMatrix = Matrix()
     private var stippleColor: Int? = null
     private var stippleFilter: PorterDuffColorFilter? = null
+    private var geometryColor: Int? = null
+    private var geometryWasCurved = false
+    private val rectangularGeometry = HashMap<GeometryKey, RectangularGeometry>()
+    private val positionedGeometry = Path()
+    private var geometryWidth = Float.NaN
+    private var geometryHeight = Float.NaN
+    private var geometryTextSize = Float.NaN
+    private var dashPeriod = 1L
+    private var geometryRectangleBytes = 0
+    private val batches = HashMap<Int, RectangleBatch>()
+    private val batchPaint = Paint().apply {
+        isAntiAlias = false
+        strokeCap = Paint.Cap.BUTT
+    }
+    private var batchCanvas: Canvas? = null
+    private var batchColor = 0
+    private var batchCapacityBytes = 0
+
+    val retainedRowPixelBytes: Int get() = rows?.retainedPixelBytes ?: 0
+
+    fun clearCaches() {
+        endBatch()
+        rows = null
+        rectangularGeometry.clear()
+        geometryRectangleBytes = 0
+        geometryWidth = Float.NaN
+        batches.clear()
+        batchCapacityBytes = 0
+        stippleShaders.fill(null)
+        stipplePaints.fill(null)
+        stipplePaintColors.fill(null)
+        stippleScales.fill(Float.NaN)
+        stippleFilter = null
+        stippleColor = null
+    }
+
+    fun beginBatch(canvas: Canvas, color: Int) {
+        if (batchCanvas !== canvas || batchColor != color) {
+            endBatch()
+            batchCanvas = canvas
+            batchColor = color
+        }
+    }
+
+    fun endBatch() {
+        flushBatch()
+        batchCanvas = null
+    }
+
+    private fun flushBatch() {
+        val canvas = batchCanvas ?: return
+        batchPaint.color = batchColor
+        for (batch in batches.values) {
+            if (batch.count == 0) continue
+            val drawingPaint = batch.shadePaint ?: batchPaint
+            drawingPaint.strokeWidth = batch.height.toFloat()
+            canvas.drawLines(batch.points, 0, batch.count, drawingPaint)
+            batch.count = 0
+        }
+    }
+
+    private fun rectangle(canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float, drawingPaint: Paint, shade: Int = -1) {
+        if (left >= right || top >= bottom) return
+        if (batchCanvas !== canvas) {
+            canvas.drawRect(left, top, right, bottom, drawingPaint)
+            return
+        }
+        val height = (bottom - top).toInt()
+        // Bound reusable scratch, including large viewports and unusual metrics.
+        if (height !in 1..4096) {
+            flushBatch()
+            canvas.drawRect(left, top, right, bottom, drawingPaint)
+            return
+        }
+        val key = height * 4 + shade + 1
+        val batch = batches[key] ?: run {
+            if (batchCapacityBytes + 128 * 4 > MAX_BATCH_BYTES) {
+                flushBatch()
+                canvas.drawRect(left, top, right, bottom, drawingPaint)
+                return
+            }
+            RectangleBatch(height, if (shade >= 0) drawingPaint else null).also {
+                batches[key] = it
+                batchCapacityBytes += it.points.size * 4
+            }
+        }
+        if (batch.count + 4 > batch.points.size) {
+            val extraBytes = batch.points.size * 4
+            if (batchCapacityBytes + extraBytes <= MAX_BATCH_BYTES) {
+                batch.points = batch.points.copyOf(batch.points.size * 2)
+                batchCapacityBytes += extraBytes
+            } else {
+                flushBatch()
+            }
+        }
+        batch.points[batch.count++] = left
+        batch.points[batch.count++] = (top + bottom) / 2f
+        batch.points[batch.count++] = right
+        batch.points[batch.count++] = (top + bottom) / 2f
+    }
+
+    fun prepareDraw(canvas: Canvas) {
+        canvas.getClipBounds(clip)
+        if (cacheRows) {
+            @Suppress("DEPRECATION")
+            canvas.getMatrix(matrix)
+            matrix.getValues(transform)
+            pixelAligned = transform[Matrix.MSCALE_X] == 1f && transform[Matrix.MSCALE_Y] == 1f &&
+                transform[Matrix.MSKEW_X] == 0f && transform[Matrix.MSKEW_Y] == 0f &&
+                transform[Matrix.MPERSP_0] == 0f && transform[Matrix.MPERSP_1] == 0f && transform[Matrix.MPERSP_2] == 1f &&
+                transform[Matrix.MTRANS_X] == round(transform[Matrix.MTRANS_X]) &&
+                transform[Matrix.MTRANS_Y] == round(transform[Matrix.MTRANS_Y])
+        }
+    }
+
+    fun drawRow(canvas: Canvas, cells: PackedCells, text: String, above: PackedCells?, below: PackedCells?, y: Float, width: Float, height: Float, textSize: Float): Boolean {
+        if (!cacheRows || !pixelAligned) return false
+        val color = cells.uniformBoxForeground() ?: return false
+        val cache = rows ?: TerminalBoxRows().also { rows = it }
+        return cache.draw(canvas, this, cells, text, above, below, y, width, height, color, textSize)
+    }
 
     private fun drawStipple(
         canvas: Canvas,
@@ -49,25 +179,29 @@ internal class TerminalBoxDrawing {
         }
         // Anchor the pattern to terminal coordinates across fractional and odd cell sizes.
         val tile = max(1f, floor(cellWidth / 12f))
-        stippleMatrix.setScale(tile, tile)
-        stippleMatrix.postTranslate(-left, -top)
-        shader.setLocalMatrix(stippleMatrix)
-        if (stippleColor != color) {
-            stippleColor = color
-            stippleFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
+        if (stippleScales[shade] != tile) {
+            flushBatch()
+            stippleMatrix.setScale(tile, tile)
+            shader.setLocalMatrix(stippleMatrix)
+            stippleScales[shade] = tile
         }
-        paint.color = android.graphics.Color.WHITE
-        paint.colorFilter = stippleFilter
-        paint.shader = shader
-        paint.isFilterBitmap = false
-        try {
-            // One draw operation per cell instead of one per stipple dot.
-            canvas.drawRect(0f, 0f, width, height, paint)
-        } finally {
-            paint.shader = null
-            paint.colorFilter = null
-            paint.color = color
+        val shadePaint = stipplePaints[shade] ?: Paint().apply {
+            isAntiAlias = false
+            this.color = android.graphics.Color.WHITE
+            this.shader = shader
+            isFilterBitmap = false
+        }.also { stipplePaints[shade] = it }
+        if (stipplePaintColors[shade] != color) {
+            flushBatch()
+            if (stippleColor != color) {
+                stippleColor = color
+                stippleFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
+            }
+            shadePaint.colorFilter = stippleFilter
+            stipplePaintColors[shade] = color
         }
+        // One draw operation per cell instead of one per stipple dot.
+        rectangle(canvas, left, top, left + width, top + height, shadePaint, shade)
     }
 
     fun draw(
@@ -80,21 +214,111 @@ internal class TerminalBoxDrawing {
         color: Int,
         textSize: Float,
         neighboringDashes: Int = 0,
+        clipPrepared: Boolean = false,
     ) {
         val left = round(x)
         val top = round(y)
         val w = round(x + width) - left
         val h = round(y + height) - top
         if (w <= 0 || h <= 0) return
-        paint.color = color
-        paint.style = Paint.Style.FILL
-        paint.isAntiAlias = false
-        val saved = canvas.save()
+        if (!clipPrepared) prepareDraw(canvas)
+        if (clip.isEmpty || left >= clip.right || top >= clip.bottom || left + w <= clip.left || top + h <= clip.top) return
+        if (ch.code in 0x2591..0x2593) {
+            drawStipple(canvas, ch.code - 0x2591, left, top, w, h, width, color)
+            return
+        }
+        if (geometryColor != color) {
+            paint.color = color
+            geometryColor = color
+        }
+        if (geometryWasCurved) {
+            paint.style = Paint.Style.FILL
+            paint.isAntiAlias = false
+            geometryWasCurved = false
+        }
+        // Rectangles can be clipped numerically. Curves still need Canvas clipping
+        // because their antialiased stroke extends past the cell boundary.
+        val curved = ch.code in 0x256D..0x2573
+        if (curved) flushBatch()
+        // Opaque rectangle unions have exactly the same pixels as their individual
+        // arms, but need only one Canvas command. Keep translucent overlaps on the
+        // original path so repeated source-over blending is preserved.
+        val cacheable = color ushr 24 == 255 && !curved && w < 4096 && h < 4096
+        var geometryKey: GeometryKey? = null
+        if (cacheable) {
+            if (geometryWidth != width || geometryHeight != height || geometryTextSize != textSize) {
+                rectangularGeometry.clear()
+                geometryRectangleBytes = 0
+                // All three possible cadences repeat after this common period.
+                // Including both origin phases preserves dashes across cells.
+                dashPeriod = 1L
+                for (count in 2..4) {
+                    val period = max(2, round(width / count).toInt()).toLong()
+                    var a = dashPeriod
+                    var b = period
+                    while (b != 0L) {
+                        val remainder = a % b
+                        a = b
+                        b = remainder
+                    }
+                    dashPeriod = dashPeriod / a * period
+                }
+                geometryWidth = width
+                geometryHeight = height
+                geometryTextSize = textSize
+            }
+            val dashed = neighboringDashes != 0 || ch.code in 0x2504..0x250B || ch.code in 0x254C..0x254F
+            geometryKey = GeometryKey(
+                (ch.code - 0x2500).toLong() or (w.toLong() shl 8) or (h.toLong() shl 20),
+                neighboringDashes,
+                if (dashed) Math.floorMod(left.toLong(), dashPeriod) else 0L,
+                if (dashed) Math.floorMod(top.toLong(), dashPeriod) else 0L,
+            )
+            rectangularGeometry[geometryKey]?.let {
+                if (batchCanvas === canvas) {
+                    val rectangles = it.rectangles
+                    for (index in rectangles.indices step 4) {
+                        rectangle(canvas, left + rectangles[index], top + rectangles[index + 1], left + rectangles[index + 2], top + rectangles[index + 3], paint)
+                    }
+                } else {
+                    it.path.offset(left, top, positionedGeometry)
+                    canvas.drawPath(positionedGeometry, paint)
+                }
+                return
+            }
+        }
+        val geometry = if (cacheable) Path() else null
+        val geometryRectangles = if (cacheable) ArrayList<Float>(32) else null
+        val saved = if (curved) canvas.save() else -1
         try {
-            if (!canvas.clipRect(left, top, left + w, top + h)) return
-            canvas.translate(left, top)
+            if (curved) {
+                if (!canvas.clipRect(left, top, left + w, top + h)) return
+                canvas.translate(left, top)
+            }
             // Consistent half-up rounding preserves one-pixel dash gaps.
-            fun rect(l: Float, t: Float, r: Float, b: Float) = canvas.drawRect(floor(l + 0.5f), floor(t + 0.5f), floor(r + 0.5f), floor(b + 0.5f), paint)
+            fun rect(l: Float, t: Float, r: Float, b: Float) {
+                val originX = if (curved) 0f else left
+                val originY = if (curved) 0f else top
+                val clippedLeft = floor(l + 0.5f).coerceIn(0f, w)
+                val clippedTop = floor(t + 0.5f).coerceIn(0f, h)
+                val clippedRight = floor(r + 0.5f).coerceIn(0f, w)
+                val clippedBottom = floor(b + 0.5f).coerceIn(0f, h)
+                if (geometry != null) {
+                    if (clippedLeft < clippedRight && clippedTop < clippedBottom) {
+                        geometry.addRect(clippedLeft, clippedTop, clippedRight, clippedBottom, Path.Direction.CW)
+                        geometryRectangles!!.add(clippedLeft)
+                        geometryRectangles.add(clippedTop)
+                        geometryRectangles.add(clippedRight)
+                        geometryRectangles.add(clippedBottom)
+                    }
+                } else {
+                    if (curved) {
+                        canvas.drawRect(clippedLeft, clippedTop, clippedRight, clippedBottom, paint)
+                    } else {
+                        rectangle(canvas, originX + clippedLeft, originY + clippedTop, originX + clippedRight, originY + clippedBottom, paint)
+                    }
+                }
+            }
             val cp = ch.code
             if (cp >= 0x2580) {
                 fun eighth(n: Int, extent: Float) = round(extent * n / 8)
@@ -106,10 +330,6 @@ internal class TerminalBoxDrawing {
                     in 0x2589..0x258F -> rect(0f, 0f, eighth(0x2590 - cp, w), h)
 
                     0x2590 -> rect(eighth(4, w), 0f, w, h)
-
-                    in 0x2591..0x2593 -> {
-                        drawStipple(canvas, cp - 0x2591, left, top, w, h, width, color)
-                    }
 
                     0x2594 -> rect(0f, 0f, w, eighth(1, h))
 
@@ -138,6 +358,7 @@ internal class TerminalBoxDrawing {
             val cy = round((h - thin) / 2) + thin / 2
             if (cp in 0x2571..0x2573) {
                 paint.isAntiAlias = true
+                geometryWasCurved = true
                 paint.strokeWidth = thin
                 paint.strokeCap = Paint.Cap.SQUARE
                 if (cp != 0x2572) canvas.drawLine(0f, h, w, 0f, paint)
@@ -151,8 +372,8 @@ internal class TerminalBoxDrawing {
                 in 0x2508..0x250B -> 3
                 else -> 0
             }
-            val dashStyles = IntArray(4) { d -> if (ownDash != 0 && arms[d] != '0') ownDash else (neighboringDashes shr (d * 2)) and 3 }
-            if (cp in 0x256D..0x2570 && dashStyles.all { it == 0 }) {
+            fun dashStyle(d: Int): Int = if (ownDash != 0 && arms[d] != '0') ownDash else (neighboringDashes shr (d * 2)) and 3
+            if (cp in 0x256D..0x2570 && neighboringDashes == 0) {
                 val sx = if (arms[1] != '0') 1 else -1
                 val sy = if (arms[3] != '0') 1 else -1
                 val radius = min(min(cx, w - cx), min(cy, h - cy))
@@ -162,6 +383,7 @@ internal class TerminalBoxDrawing {
                 path.quadTo(cx, cy, cx, cy + sy * radius)
                 path.lineTo(cx, if (sy > 0) h else 0f)
                 paint.isAntiAlias = true
+                geometryWasCurved = true
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = thin
                 paint.strokeCap = Paint.Cap.SQUARE
@@ -186,7 +408,7 @@ internal class TerminalBoxDrawing {
                     h
                 }
                 val weight = if (style == 2) 2 * thin else thin
-                val dashStyle = dashStyles[d]
+                val dashStyle = dashStyle(d)
                 if (dashStyle != 0) {
                     // Derive the cadence from cell width for both axes. This
                     // keeps square-looking dashes in the taller vertical cell.
@@ -249,11 +471,31 @@ internal class TerminalBoxDrawing {
                 }
             }
         } finally {
-            canvas.restoreToCount(saved)
+            if (geometry != null) {
+                val rectangles = geometryRectangles!!.toFloatArray()
+                if (batchCanvas === canvas) {
+                    for (index in rectangles.indices step 4) {
+                        rectangle(canvas, left + rectangles[index], top + rectangles[index + 1], left + rectangles[index + 2], top + rectangles[index + 3], paint)
+                    }
+                } else {
+                    geometry.offset(left, top, positionedGeometry)
+                    canvas.drawPath(positionedGeometry, paint)
+                }
+                // Bound both entry count and rectangle payload; long dashed arms
+                // may contain many more rectangles than a plain junction.
+                val bytes = rectangles.size * 4
+                if (rectangularGeometry.size < 256 && geometryRectangleBytes + bytes <= 32 * 1024) {
+                    rectangularGeometry[geometryKey!!] = RectangularGeometry(geometry, rectangles)
+                    geometryRectangleBytes += bytes
+                }
+            }
+            if (saved >= 0) canvas.restoreToCount(saved)
         }
     }
 
     private companion object {
+        const val MAX_BATCH_BYTES = 32 * 1024
+
         // Quadrant bits: upper-left, upper-right, lower-left, lower-right.
         val quadrants = intArrayOf(4, 8, 1, 13, 9, 7, 11, 2, 6, 14)
 
@@ -391,3 +633,12 @@ internal class TerminalBoxDrawing {
         )
     }
 }
+
+private class RectangularGeometry(val path: Path, val rectangles: FloatArray)
+
+private class RectangleBatch(val height: Int, val shadePaint: Paint?) {
+    var points = FloatArray(128)
+    var count = 0
+}
+
+private data class GeometryKey(val cell: Long, val neighbors: Int, val xPhase: Long, val yPhase: Long)

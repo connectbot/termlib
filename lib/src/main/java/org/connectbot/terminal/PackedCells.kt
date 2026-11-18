@@ -19,6 +19,61 @@ internal class PackedCells private constructor(
     private val placeholderIds: Map<Int, Int> = emptyMap(),
 ) : AbstractList<TerminalLine.Cell>() {
     override val size: Int get() = attributes.size
+    private var boxDrawing = -1
+    private var checkedBoxForeground = false
+    private var boxForeground: Int? = null
+    private var verticalDashes: String? = null
+    private var shapingHash: Int? = null
+    private var displayHash: Int? = null
+
+    fun paragraphShapingHash(): Int = shapingHash ?: run {
+        var value = 31 * text.contentHashCode() + offsets.contentHashCode()
+        for (attribute in attributes) value = value * 31 + (attribute and 0xFF000009.toInt())
+        value.also { shapingHash = it }
+    }
+
+    fun renderingHash(): Int = displayHash ?: (31 * paragraphShapingHash() + 31 * colors.contentHashCode() + attributes.contentHashCode()).also { displayHash = it }
+
+    fun sameRendering(other: PackedCells): Boolean = text.contentEquals(other.text) && offsets.contentEquals(other.offsets) &&
+        colors.contentEquals(other.colors) && attributes.contentEquals(other.attributes) && placeholderIds == other.placeholderIds
+
+    fun shapingContextText(): String = String(text)
+
+    fun hasDecorations(): Boolean = attributes.any { it and (6 or 128) != 0 }
+
+    fun uniformBoxForeground(): Int? {
+        if (checkedBoxForeground) return boxForeground
+        checkedBoxForeground = true
+        if (size == 0) return null
+        var foreground = 0
+        for (col in indices) {
+            if (width(col) != 1 || boxCodePoint(col) == 0 || flags(col) and (9 or 32 or CellData.DEFAULT_BACKGROUND).inv() != 0) return null
+            val color = colors[col * 2 + if (flags(col) and 32 != 0) 1 else 0]
+            if (color ushr 24 != 255 || (col > 0 && color != foreground)) return null
+            foreground = color
+        }
+        return foreground.also { boxForeground = it }
+    }
+
+    fun verticalDashSignature(): String {
+        verticalDashes?.let { return it }
+        val packed = CharArray((size + 7) / 8)
+        for (col in indices) {
+            val kind = when (boxCodePoint(col)) {
+                in 0x254E..0x254F -> 1
+                in 0x2506..0x2507 -> 2
+                in 0x250A..0x250B -> 3
+                else -> 0
+            }
+            packed[col / 8] = (packed[col / 8].code or (kind shl (col % 8 * 2))).toChar()
+        }
+        return String(packed).trimEnd('\u0000').also { verticalDashes = it }
+    }
+
+    fun hasBoxDrawing(): Boolean {
+        if (boxDrawing < 0) boxDrawing = if (text.any { it in '\u2500'..'\u259F' }) 1 else 0
+        return boxDrawing != 0
+    }
 
     fun needsShaping(): Boolean {
         if (measuredSizeAndScript.isNaN()) {
@@ -57,6 +112,10 @@ internal class PackedCells private constructor(
         for (col in indices) if ((attributes[col] xor other.attributes[col]) and 0xFF000009.toInt() != 0) return false
         return true
     }
+
+    // Paragraph BiDi depends on ASCII punctuation and digits as well as script
+    // text. Its row reuse requires exact logical text, unlike contained shaping.
+    fun sameParagraphShaping(other: PackedCells): Boolean = text.contentEquals(other.text) && sameShaping(other)
 
     // Account for the packed row retained by a cache entry, including array headers.
     val shapingRetentionBytes: Int get() = 128 + text.size * 2 + offsets.size * 4 + colors.size * 4 + attributes.size * 4
@@ -116,11 +175,13 @@ internal class PackedCells private constructor(
 
     fun columnText(): String = String(CharArray(size) { if (placeholder(it)) ' ' else charAt(it) })
 
-    fun boxCharacter(col: Int): Char? = if (col in indices && offsets[col + 1] - offsets[col] == 1) {
-        text[offsets[col]].takeIf { it in '\u2500'..'\u259F' }
-    } else {
-        null
+    fun boxCodePoint(col: Int): Int {
+        if (col !in indices || offsets[col + 1] - offsets[col] != 1) return 0
+        val cp = text[offsets[col]].code
+        return if (cp in 0x2500..0x259F) cp else 0
     }
+
+    fun boxCharacter(col: Int): Char? = boxCodePoint(col).takeIf { it != 0 }?.toChar()
 
     // One lazily allocated measurement array per retained row, replaced on font changes.
     private var measuredTypeface: android.graphics.Typeface? = null
