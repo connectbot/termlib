@@ -26,7 +26,7 @@ mockk = "1.14.12"
 junitClassic = "4.13.2"
 robolectric = "4.18"
 roborazzi = "1.79.0"
-ui = "1.12.1"
+ui = "1.13.0"
 
 [libraries]
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
