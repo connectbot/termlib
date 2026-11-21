@@ -263,6 +263,45 @@ class TerminalEmulatorFactory {
             autoDetectUrls: Boolean = false,
             boldAsBright: Boolean = true,
             inlineImages: InlineImages = InlineImages.Off,
+        ): TerminalEmulator = create(
+            maxScrollbackLines = 1000,
+            looper = looper,
+            initialRows = initialRows,
+            initialCols = initialCols,
+            defaultForeground = defaultForeground,
+            defaultBackground = defaultBackground,
+            onKeyboardInput = onKeyboardInput,
+            onBell = onBell,
+            onResize = onResize,
+            onClipboardCopy = onClipboardCopy,
+            onProgressChange = onProgressChange,
+            autoDetectUrls = autoDetectUrls,
+            boldAsBright = boldAsBright,
+            inlineImages = inlineImages,
+        )
+
+        /**
+         * Creates a terminal with a custom scrollback capacity. See the other [create] overload
+         * for the terminal options.
+         *
+         * @param maxScrollbackLines Maximum number of rows retained above the visible screen.
+         *                           Must be non-negative. Zero disables scrollback.
+         */
+        fun create(
+            maxScrollbackLines: Int,
+            looper: Looper = Looper.getMainLooper(),
+            initialRows: Int = 24,
+            initialCols: Int = 80,
+            defaultForeground: Color = Color.White,
+            defaultBackground: Color = Color.Black,
+            onKeyboardInput: (ByteArray) -> Unit = {},
+            onBell: (() -> Unit)? = null,
+            onResize: ((TerminalDimensions) -> Unit)? = null,
+            onClipboardCopy: ((String) -> Unit)? = null,
+            onProgressChange: ((ProgressState, Int) -> Unit)? = null,
+            autoDetectUrls: Boolean = false,
+            boldAsBright: Boolean = true,
+            inlineImages: InlineImages = InlineImages.Off,
         ): TerminalEmulator = TerminalEmulatorImpl(
             looper = looper,
             initialRows = initialRows,
@@ -277,6 +316,7 @@ class TerminalEmulatorFactory {
             autoDetectUrls = autoDetectUrls,
             boldAsBright = boldAsBright,
             inlineImages = inlineImages,
+            maxScrollbackLines = maxScrollbackLines,
         )
     }
 }
@@ -327,8 +367,13 @@ internal class TerminalEmulatorImpl(
     override val autoDetectUrls: Boolean = false,
     override val boldAsBright: Boolean = true,
     inlineImages: InlineImages = InlineImages.Off,
+    private val maxScrollbackLines: Int,
 ) : TerminalEmulator,
     TerminalCallbacks {
+
+    init {
+        require(maxScrollbackLines >= 0) { "Scrollback limit must be non-negative" }
+    }
 
     // Handler for escaping native mutex
     private val handler = Handler(looper)
@@ -522,7 +567,6 @@ internal class TerminalEmulatorImpl(
 
     // Scrollback buffer
     private val scrollback = ArrayDeque<TerminalLine>()
-    private val maxScrollbackLines = 1000
 
     // Cached immutable copy of scrollback - only recreate when scrollback changes
     private var scrollbackSnapshot: List<TerminalLine> = emptyList()
@@ -923,6 +967,7 @@ internal class TerminalEmulatorImpl(
     override fun cellBuffer(): ByteBuffer = checkNotNull(scrollbackCellBuffer)
 
     override fun pushScrollbackLine(cols: Int, start: Int, count: Int, cells: ByteBuffer, softWrapped: Boolean): Int {
+        if (maxScrollbackLines == 0) return 0
         if (start == 0) pendingScrollback = PackedCells.Builder(cols)
         val builder = checkNotNull(pendingScrollback)
         builder.read(cells, 0, count)
