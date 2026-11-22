@@ -230,6 +230,8 @@ dependencies {
     androidTestImplementation(libs.junit)
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    // Compose's transitive Espresso 3.5.0 reflects a removed InputManager API.
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

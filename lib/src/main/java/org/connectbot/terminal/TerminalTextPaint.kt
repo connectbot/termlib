@@ -18,6 +18,15 @@ import android.text.TextPaint
 internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() {
     private val glyphAdvances = FloatArray(512) { Float.NaN }
     val boxDrawing = TerminalBoxDrawing()
+    val usesSystemMonospace = typeface === Typeface.MONOSPACE
+    private var ascii: TerminalAsciiGlyphs? = null
+
+    @androidx.annotation.RequiresApi(31)
+    fun drawAscii(canvas: android.graphics.Canvas, cells: PackedCells, col: Int, width: Float, baseline: Float): Int {
+        val glyphs = ascii ?: TerminalAsciiGlyphs().also { ascii = it }
+        return glyphs.draw(canvas, this, cells, col, width, baseline)
+    }
+
     private var shaping: TerminalShaping? = null
     private var screen: TerminalScreenState? = null
 
@@ -62,11 +71,16 @@ internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() 
         isAntiAlias = true
     }
 
-    fun measureCell(text: CharArray, start: Int, count: Int): Float {
+    fun measureCell(text: CharArray, start: Int, count: Int, bold: Boolean = isFakeBoldText): Float {
         if (count != 1 || text[start].code >= 256) return measureText(text, start, count)
-        val index = text[start].code + if (isFakeBoldText) 256 else 0
+        val index = text[start].code + if (bold) 256 else 0
         val cached = glyphAdvances[index]
         if (!cached.isNaN()) return cached
-        return measureText(text, start, count).also { glyphAdvances[index] = it }
+        val skew = textSkewX
+        textSkewX = 0f
+        val advance = measureText(text, start, count)
+        textSkewX = skew
+        glyphAdvances[index] = advance
+        return advance
     }
 }

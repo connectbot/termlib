@@ -26,6 +26,10 @@ internal class PackedCells private constructor(
             var i = 0
             while (i < text.size) {
                 val cp = Character.codePointAt(text, i, text.size)
+                if (cp < 128) {
+                    i++
+                    continue
+                }
                 val direction = Character.getDirectionality(cp)
                 if (TerminalShaping.script(cp) != 0 ||
                     direction == Character.DIRECTIONALITY_RIGHT_TO_LEFT ||
@@ -102,6 +106,10 @@ internal class PackedCells private constructor(
     fun background(col: Int): Color = Color(colors[col * 2 + 1])
     fun charAt(col: Int): Char = if (width(col) == 0 && col > 0) charAt(col - 1) else text.getOrElse(offsets[col]) { '\u0000' }
     fun blank(col: Int): Boolean = width(col) != 0 && offsets[col + 1] - offsets[col] <= 1 && charAt(col).let { it == ' ' || it == '\u0000' }
+    fun appendCellText(target: StringBuilder, col: Int) {
+        target.append(text, offsets[col], offsets[col + 1] - offsets[col])
+    }
+
     fun text(start: Int = 0, end: Int = size): String {
         require(start in 0..end && end <= size)
         if (start == end) return ""
@@ -115,6 +123,12 @@ internal class PackedCells private constructor(
     }
 
     fun columnText(): String = String(CharArray(size) { if (placeholder(it)) ' ' else charAt(it) })
+
+    fun singleAscii(col: Int): Int {
+        if (width(col) != 1 || offsets[col + 1] - offsets[col] != 1) return -1
+        val ch = text[offsets[col]].code
+        return if (ch in 32..126) ch else -1
+    }
 
     fun boxCharacter(col: Int): Char? = if (col in indices && offsets[col + 1] - offsets[col] == 1) {
         text[offsets[col]].takeIf { it in '\u2500'..'\u259F' }
@@ -132,23 +146,14 @@ internal class PackedCells private constructor(
     private var advances: FloatArray? = null
 
     fun draw(canvas: android.graphics.Canvas, col: Int, x: Float, baseline: Float, paint: android.graphics.Paint, cellWidth: Float) {
-        if (measuredTypeface !== paint.typeface || abs(measuredSizeAndScript) != paint.textSize || advances == null) {
-            measuredTypeface = paint.typeface
-            measuredSizeAndScript = if (needsShaping()) -paint.textSize else paint.textSize
-            advances = FloatArray(size) { Float.NaN }
-        }
-        val measurements = advances!!
-        var advance = measurements[col]
-        if (advance.isNaN()) {
-            val skew = paint.textSkewX
-            paint.textSkewX = 0f
-            advance = if (paint is TerminalTextPaint) {
-                paint.measureCell(text, offsets[col], offsets[col + 1] - offsets[col])
-            } else {
-                paint.measureText(text, offsets[col], offsets[col + 1] - offsets[col])
-            }
-            paint.textSkewX = skew
-            measurements[col] = advance
+        val start = offsets[col]
+        val count = offsets[col + 1] - start
+        // Latin-1 advances belong to the fixed font/size paint. A newly damaged
+        // row can draw directly from that cache without allocating a row array.
+        val advance = if (paint is TerminalTextPaint && count == 1 && text[start].code < 256) {
+            paint.measureCell(text, start, count, flags(col) and 1 != 0)
+        } else {
+            rowAdvance(col, paint, start, count)
         }
         if (advance <= cellWidth || cellWidth <= 0f) {
             canvas.drawText(text, offsets[col], offsets[col + 1] - offsets[col], x, baseline, paint)
@@ -162,6 +167,23 @@ internal class PackedCells private constructor(
         } finally {
             canvas.restoreToCount(saved)
         }
+    }
+
+    private fun rowAdvance(col: Int, paint: android.graphics.Paint, start: Int, count: Int): Float {
+        if (measuredTypeface !== paint.typeface || abs(measuredSizeAndScript) != paint.textSize || advances == null) {
+            measuredTypeface = paint.typeface
+            measuredSizeAndScript = if (needsShaping()) -paint.textSize else paint.textSize
+            advances = FloatArray(size) { Float.NaN }
+        }
+        val measurements = advances!!
+        val cached = measurements[col]
+        if (!cached.isNaN()) return cached
+        val skew = paint.textSkewX
+        paint.textSkewX = 0f
+        val advance = paint.measureText(text, start, count)
+        paint.textSkewX = skew
+        measurements[col] = advance
+        return advance
     }
 
     // Compatibility for test fixtures and cold callers; rendering and snapshot construction

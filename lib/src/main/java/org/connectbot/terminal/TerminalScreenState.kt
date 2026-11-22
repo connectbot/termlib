@@ -45,8 +45,7 @@ internal class TerminalScreenState(
 
     private var cachedSequenceNumber = -1L
     private var cachedScrollbackPosition = -1
-    private var cachedAutoDetect = false
-    private var cachedUrlGrid = Array(0) { arrayOfNulls<String>(0) }
+    private var cachedUrlGrid = arrayOfNulls<Array<String?>>(0)
 
     /**
      * The current immutable terminal snapshot.
@@ -142,44 +141,34 @@ internal class TerminalScreenState(
 
         if (!autoDetectUrls) return null
 
-        if (snapshot.sequenceNumber != cachedSequenceNumber ||
-            scrollbackPosition != cachedScrollbackPosition ||
-            autoDetectUrls != cachedAutoDetect
-        ) {
-            rebuildUrlCache(autoDetect = true)
-        }
-
-        return if (row in cachedUrlGrid.indices && col in cachedUrlGrid[row].indices) {
-            cachedUrlGrid[row][col]
-        } else {
-            null
-        }
+        return detectedUrlsAt(row)?.getOrNull(col)
     }
 
-    private fun rebuildUrlCache(autoDetect: Boolean) {
-        cachedSequenceNumber = snapshot.sequenceNumber
-        cachedScrollbackPosition = scrollbackPosition
-        cachedAutoDetect = autoDetect
+    /** Shared with foreground drawing. Only rows containing detected links need cell storage. */
+    fun detectedUrlsAt(row: Int): Array<String?>? {
+        if (snapshot.sequenceNumber != cachedSequenceNumber || scrollbackPosition != cachedScrollbackPosition) {
+            rebuildUrlCache()
+        }
+        return cachedUrlGrid.getOrNull(row)
+    }
 
+    private fun rebuildUrlCache() {
         val numRows = snapshot.rows
         val cols = snapshot.cols
-        if (cachedUrlGrid.size != numRows || (numRows > 0 && cachedUrlGrid[0].size != cols)) {
-            cachedUrlGrid = Array(numRows) { arrayOfNulls<String>(cols) }
-        } else {
-            for (r in 0 until numRows) {
-                cachedUrlGrid[r].fill(null)
+        val lines = object : AbstractList<TerminalLine>() {
+            override val size: Int get() = numRows
+            override fun get(index: Int): TerminalLine = getVisibleLine(index)
+        }
+        val grid = arrayOfNulls<Array<String?>>(numRows)
+        for (link in resolveTerminalLinks(lines, autoDetect = true, includeOsc8 = false)) {
+            for ((row, start, end) in link.ranges) {
+                val cells = grid[row] ?: arrayOfNulls<String>(cols).also { grid[row] = it }
+                for (col in start until minOf(end, cols)) cells[col] = link.url
             }
         }
-
-        if (!autoDetect) return
-        val lines = (0 until numRows).map(::getVisibleLine)
-        for (link in resolveTerminalLinks(lines, autoDetect = true)) {
-            for (range in link.ranges) {
-                for (col in range.start until minOf(range.end, cols)) {
-                    cachedUrlGrid[range.row][col] = link.url
-                }
-            }
-        }
+        cachedUrlGrid = grid
+        cachedSequenceNumber = snapshot.sequenceNumber
+        cachedScrollbackPosition = scrollbackPosition
     }
 
     /**

@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import org.junit.Assert.assertEquals
@@ -318,6 +319,130 @@ abstract class TerminalShapingChecks {
             }
             actual.recycle()
             expected.recycle()
+        }
+    }
+
+    @Test
+    fun repeatedScriptRunsReuseGlyphsWithoutLosingStyleOrJoiningContext() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val source = paint()
+        val engine = TerminalShaping(source)
+        engine.resize(8)
+        engine.layout(cells("نص حكيم"), 12f)
+        val initial = engine.glyphShapeCount
+        val reordered = cells("حكيم نص")
+        val reused = engine.layout(reordered, 12f)
+        assertEquals(initial, engine.glyphShapeCount)
+        val fresh = TerminalShaping(source).layout(reordered, 12f)
+        fun pixels(layout: ShapedLine, row: PackedCells): Bitmap {
+            val bitmap = Bitmap.createBitmap(row.size * 12, 40, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            source.color = android.graphics.Color.WHITE
+            source.isFakeBoldText = false
+            source.textSkewX = 0f
+            layout.prepareDraw(canvas)
+            for (col in row.indices) {
+                if (!layout.drawCell(canvas, col, 28f, source, 12f, 1)) {
+                    row.draw(canvas, col, layout.visualColumn(col) * 12f, 28f, source, 12f)
+                }
+            }
+            return bitmap
+        }
+        val actual = pixels(reused, reordered)
+        val expected = pixels(fresh, reordered)
+        assertTrue(actual.sameAs(expected))
+        actual.recycle()
+        expected.recycle()
+        val bold = PackedCells.from(reordered.map { it.copy(bold = true) })
+        engine.layout(bold, 12f)
+        assertTrue(engine.glyphShapeCount > initial)
+        val afterBold = engine.glyphShapeCount
+        engine.layout(cells("نصحكيم"), 12f)
+        assertTrue("Joining context must participate in the cache key", engine.glyphShapeCount > afterBold)
+        assertTrue(engine.retainedBytes <= 256 * 1024)
+        engine.clear()
+        assertEquals(0, engine.retainedBytes)
+    }
+
+    @Test
+    fun positionedAsciiMatchesIndividuallyDrawnCells() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val text = (32..126).joinToString("") { it.toChar().toString() } + " ffi AV é日"
+        val line = TerminalLine(0, cells(text))
+        for (size in listOf(13f, 20f)) {
+            val paint = TerminalTextPaint(Typeface.MONOSPACE, size)
+            val scalar = TextPaint(paint)
+            for (width in listOf(paint.measureText("M"), 13.25f, 7f)) {
+                fun draw(p: TextPaint): Bitmap {
+                    val bitmap = Bitmap.createBitmap(1536, 50, Bitmap.Config.ARGB_8888)
+                    CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(bitmap.asImageBitmap()), Size(1536f, 50f)) {
+                        drawLine(line, 0, width, 40f, 27.5f, p, Paint(), Color.White, Color.Black, null)
+                    }
+                    return bitmap
+                }
+                assertTrue("size=$size width=$width", draw(paint).sameAs(draw(scalar)))
+            }
+        }
+    }
+
+    @Test
+    fun batchedGlyphRunsMatchPerCellClippingAcrossColorsAndSelection() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        for (text in listOf("AسلامZ", "Aक्षिZ", "Aنص (حكيم)Z", "Aنص١٢حكيمZ")) {
+            for (colored in listOf(false, true)) {
+                val cells = PackedCells.from(
+                    cells(text).mapIndexed { col, cell ->
+                        if (colored && col % 3 == 0) cell.copy(fgColor = Color.Red, reverse = true) else cell
+                    },
+                )
+                val line = TerminalLine(0, cells)
+                val state = TerminalScreenState(TerminalSnapshot.empty(1, cells.size).copy(lines = listOf(line)))
+                val paint = paint()
+                val layout = paint.layout(state, 0, 12f)!!
+                for (selected in listOf(false, true)) {
+                    val selection = if (selected) {
+                        SelectionManager().apply {
+                            startSelection(0, 2, cells.size)
+                            updateSelection(0, minOf(4, cells.lastIndex))
+                        }
+                    } else {
+                        null
+                    }
+                    fun bitmap() = Bitmap.createBitmap(cells.size * 12, 40, Bitmap.Config.ARGB_8888)
+                    val actual = bitmap()
+                    val expected = bitmap()
+                    fun backgrounds(bitmap: Bitmap) {
+                        CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(bitmap.asImageBitmap()), Size(bitmap.width.toFloat(), 40f)) {
+                            drawLine(line, 0, 12f, 40f, 28f, paint, Paint(), Color.White, Color.Black, selection, selectionBackgroundColor = Color(0xFFB3D7FF), backgroundsOnly = true, shapedLine = layout)
+                        }
+                    }
+                    backgrounds(actual)
+                    backgrounds(expected)
+                    CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(actual.asImageBitmap()), Size(actual.width.toFloat(), 40f)) {
+                        drawLine(line, 0, 12f, 40f, 28f, paint, Paint(), Color.White, Color.Black, selection, selectionBackgroundColor = Color(0xFFB3D7FF), backgroundsOnly = false, shapedLine = layout)
+                    }
+                    val canvas = android.graphics.Canvas(expected)
+                    layout.prepareDraw(canvas)
+                    for (col in cells.indices) {
+                        val flags = cells.flags(col)
+                        paint.color = if (selection?.isCellSelected(0, col, line) == true) {
+                            android.graphics.Color.BLACK
+                        } else if (flags and 32 != 0) {
+                            cells.background(col).toArgb()
+                        } else {
+                            cells.foreground(col).toArgb()
+                        }
+                        paint.isFakeBoldText = flags and 1 != 0
+                        paint.textSkewX = if (flags and 8 != 0) -0.25f else 0f
+                        if (!layout.drawCell(canvas, col, 28f, paint, 12f, 1)) {
+                            cells.draw(canvas, col, layout.visualColumn(col) * 12f, 28f, paint, 12f)
+                        }
+                    }
+                    assertTrue("$text colored=$colored selected=$selected", actual.sameAs(expected))
+                    actual.recycle()
+                    expected.recycle()
+                }
+            }
         }
     }
 

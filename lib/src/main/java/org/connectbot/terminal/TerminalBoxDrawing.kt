@@ -23,10 +23,10 @@ import kotlin.math.round
 internal class TerminalBoxDrawing {
     private val paint = Paint()
     private val path = Path()
-    private val stippleShaders = arrayOfNulls<BitmapShader>(3)
+    private val stipplePaints = arrayOfNulls<Paint>(3)
+    private val stippleScales = FloatArray(3)
+    private val stippleColors = IntArray(3)
     private val stippleMatrix = Matrix()
-    private var stippleColor: Int? = null
-    private var stippleFilter: PorterDuffColorFilter? = null
 
     private fun drawStipple(
         canvas: Canvas,
@@ -38,36 +38,32 @@ internal class TerminalBoxDrawing {
         cellWidth: Float,
         color: Int,
     ) {
-        val shader = stippleShaders[shade] ?: run {
+        val shadePaint = stipplePaints[shade] ?: run {
             val pixels = when (shade) {
                 0 -> intArrayOf(-1, 0, 0, 0)
                 1 -> intArrayOf(-1, 0, 0, -1)
                 else -> intArrayOf(0, -1, -1, -1)
             }
             val bitmap = Bitmap.createBitmap(pixels, 2, 2, Bitmap.Config.ARGB_8888)
-            BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT).also { stippleShaders[shade] = it }
+            Paint().apply {
+                this.color = android.graphics.Color.WHITE
+                isAntiAlias = false
+                isFilterBitmap = false
+                shader = BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+            }.also { stipplePaints[shade] = it }
         }
-        // Anchor the pattern to terminal coordinates across fractional and odd cell sizes.
+        // Draw in terminal coordinates so adjacent cells share the tile phase.
         val tile = max(1f, floor(cellWidth / 12f))
-        stippleMatrix.setScale(tile, tile)
-        stippleMatrix.postTranslate(-left, -top)
-        shader.setLocalMatrix(stippleMatrix)
-        if (stippleColor != color) {
-            stippleColor = color
-            stippleFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
+        if (stippleScales[shade] != tile) {
+            stippleScales[shade] = tile
+            stippleMatrix.setScale(tile, tile)
+            shadePaint.shader.setLocalMatrix(stippleMatrix)
         }
-        paint.color = android.graphics.Color.WHITE
-        paint.colorFilter = stippleFilter
-        paint.shader = shader
-        paint.isFilterBitmap = false
-        try {
-            // One draw operation per cell instead of one per stipple dot.
-            canvas.drawRect(0f, 0f, width, height, paint)
-        } finally {
-            paint.shader = null
-            paint.colorFilter = null
-            paint.color = color
+        if (stippleColors[shade] != color || shadePaint.colorFilter == null) {
+            stippleColors[shade] = color
+            shadePaint.colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
         }
+        canvas.drawRect(left, top, left + width, top + height, shadePaint)
     }
 
     fun draw(
@@ -92,6 +88,10 @@ internal class TerminalBoxDrawing {
         val saved = canvas.save()
         try {
             if (!canvas.clipRect(left, top, left + w, top + h)) return
+            if (ch in '\u2591'..'\u2593') {
+                drawStipple(canvas, ch.code - 0x2591, left, top, w, h, width, color)
+                return
+            }
             canvas.translate(left, top)
             // Consistent half-up rounding preserves one-pixel dash gaps.
             fun rect(l: Float, t: Float, r: Float, b: Float) = canvas.drawRect(floor(l + 0.5f), floor(t + 0.5f), floor(r + 0.5f), floor(b + 0.5f), paint)
@@ -106,10 +106,6 @@ internal class TerminalBoxDrawing {
                     in 0x2589..0x258F -> rect(0f, 0f, eighth(0x2590 - cp, w), h)
 
                     0x2590 -> rect(eighth(4, w), 0f, w, h)
-
-                    in 0x2591..0x2593 -> {
-                        drawStipple(canvas, cp - 0x2591, left, top, w, h, width, color)
-                    }
 
                     0x2594 -> rect(0f, 0f, w, eighth(1, h))
 
