@@ -19,6 +19,12 @@ android {
         }
     }
     experimentalProperties["android.experimental.self-instrumenting"] = true
+
+    // Allow an updated official processor when a newer Android trace format
+    // cannot be parsed by the binary bundled with AndroidX Benchmark.
+    providers.gradleProperty("benchmarkTraceProcessorAssets").orNull?.let {
+        sourceSets.getByName("benchmark").assets.srcDir(it)
+    }
 }
 
 androidComponents {

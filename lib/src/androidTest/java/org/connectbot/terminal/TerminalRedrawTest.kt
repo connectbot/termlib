@@ -6,16 +6,26 @@
 package org.connectbot.terminal
 
 import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.Build
+import android.text.TextPaint
 import android.view.Choreographer
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.platform.graphics.HardwareRendererCompat
 import org.junit.Assert.assertFalse
@@ -61,6 +71,28 @@ class TerminalRedrawTest {
     private fun terminal(text: String): TerminalEmulatorImpl = (TerminalEmulatorFactory.create(initialRows = 5, initialCols = 24) as TerminalEmulatorImpl).apply {
         writeInput(("\u001B[?25l" + text).toByteArray())
         processPendingUpdates()
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 31)
+    fun positionedAsciiMatchesScalarTextInHardwareWindow() {
+        val optimized = mutableStateOf(true)
+        val paint = TerminalTextPaint(Typeface.MONOSPACE, 21f)
+        val scalar = TextPaint(paint)
+        val width = paint.measureText("M") + 0.25f
+        val line = terminal("AVffi.,0123 xyz!").use { it.snapshot.value.lines.first() }
+        compose.setContent {
+            Canvas(Modifier.size(240.dp, 60.dp)) {
+                assertTrue(drawContext.canvas.nativeCanvas.isHardwareAccelerated)
+                val textPaint = if (optimized.value) paint else scalar
+                drawLine(line, 0, width, 40f, 27.5f, textPaint, Paint(), Color.White, Color.Black, null)
+            }
+        }
+        val actual = captureWindow()
+        compose.runOnIdle { optimized.value = false }
+        val expected = captureWindow()
+        assertTrue("Reference must contain text", (0 until 200).any { x -> (0 until 30).any { y -> expected.getPixel(x, y) != expected.getPixel(0, 0) } })
+        assertTrue("Positioned glyphs changed hardware window pixels", actual.sameAs(expected))
     }
 
     @Test

@@ -689,8 +689,12 @@ internal fun TerminalWithAccessibility(
     }
     LaunchedEffect(terminalEmulator, baseCharWidth, baseCharHeight) {
         val store = terminalEmulator.imageStore
-        snapshotFlow { Triple(screenState.snapshot, screenState.scrollbackPosition, store.frameUpdatesNeeded) }.collectLatest { (_, _, needsFrames) ->
-            val slices = (0 until screenState.snapshot.rows).flatMap { screenState.getVisibleLine(it).images }
+        snapshotFlow {
+            // Text-only frames share the empty viewport. Still publish scrolling
+            // and the transition to empty so the store can retire visible assets.
+            Triple(screenState.snapshot.takeIf { it.hasImageAssets }, screenState.scrollbackPosition, store.frameUpdatesNeeded)
+        }.collectLatest { (snapshot, _, needsFrames) ->
+            val slices = if (snapshot == null) emptyList() else (0 until snapshot.rows).flatMap { screenState.getVisibleLine(it).images }
             store.updateViewport(ImageViewport(-screenState.scrollbackPosition, slices, baseCharWidth, baseCharHeight, android.os.SystemClock.uptimeMillis()))
             if (slices.isEmpty() || !needsFrames) return@collectLatest
             while (true) {
@@ -2056,19 +2060,6 @@ private fun TerminalRows(
 ) {
     val rowCount by remember(screenState) { derivedStateOf { screenState.snapshot.rows } }
     Canvas(Modifier.fillMaxSize()) { TerminalFrameTrace.draw(screenState.snapshot) }
-    // Cross-row URL detection depends on visible contents, not cursor/sequence updates.
-    val hyperlinkMasks = remember(screenState, autoDetectUrls) {
-        derivedStateOf {
-            if (!autoDetectUrls) {
-                emptyList()
-            } else {
-                List(screenState.snapshot.rows) { row ->
-                    BooleanArray(screenState.snapshot.cols) { col -> screenState.getHyperlinkUrlAt(row, col, autoDetectUrls = true) != null }
-                }
-            }
-        }
-    }
-
     // Every display list covers the viewport, including ink outside its row.
     // Compose re-records changed rows; all backgrounds are below all glyphs.
     for (backgrounds in listOf(true, false)) {
@@ -2085,8 +2076,7 @@ private fun TerminalRows(
                         textPaint = textPaint, underlinePaint = underlinePaint,
                         defaultFg = defaultFg, defaultBg = defaultBg,
                         selectionManager = selectionManager,
-                        autoDetectUrls = autoDetectUrls,
-                        hyperlinkMask = hyperlinkMasks.value.getOrNull(row),
+                        detectedUrls = if (autoDetectUrls && !backgrounds) screenState.detectedUrlsAt(row) else null,
                         selectionBackgroundColor = selectionBackgroundColor,
                         selectionForegroundColor = selectionForegroundColor,
                         backgroundsOnly = backgrounds,
@@ -2111,7 +2101,7 @@ internal fun DrawScope.drawLine(
     defaultBg: Color,
     selectionManager: SelectionManager?,
     autoDetectUrls: Boolean = false,
-    hyperlinkMask: BooleanArray? = null,
+    detectedUrls: Array<String?>? = null,
     selectionBackgroundColor: Color = Color.Unspecified,
     selectionForegroundColor: Color = Color.Unspecified,
     backgroundsOnly: Boolean? = null,
@@ -2126,7 +2116,7 @@ internal fun DrawScope.drawLine(
             for (backgrounds in listOf(true, false)) {
                 drawLine(
                     line, row, charWidth, charHeight, charBaseline, textPaint, underlinePaint,
-                    defaultFg, defaultBg, selectionManager, autoDetectUrls, hyperlinkMask,
+                    defaultFg, defaultBg, selectionManager, autoDetectUrls, detectedUrls,
                     selectionBackgroundColor, selectionForegroundColor, backgrounds, aboveLine, belowLine,
                     shapedLine, selectionRow,
                 )
@@ -2157,10 +2147,10 @@ internal fun DrawScope.drawLine(
         it.selectionRange != null && !inverseSelection(selectionBackgroundColor, selectionForegroundColor)
     }
     if (backgroundsOnly) {
-        val behindBackground = line.images.filter { it.z < -1_073_741_824 }
-        if (behindBackground.isNotEmpty()) {
+        val behindBackground = line.images.any { it.z < -1_073_741_824 }
+        if (behindBackground) {
             drawRect(defaultBg, Offset(0f, y), Size(cells.size * charWidth, charHeight))
-            behindBackground.forEach { it.draw(drawContext.canvas.nativeCanvas, row, charWidth, charHeight) }
+            line.images.forEach { if (it.z < -1_073_741_824) it.draw(drawContext.canvas.nativeCanvas, row, charWidth, charHeight) }
         }
         // Coalesce adjacent backgrounds so a plain row needs a single rectangle.
         var runColor = Color.Unspecified
@@ -2182,7 +2172,7 @@ internal fun DrawScope.drawLine(
                 cells.background(col)
             }
             val x = visualCol * charWidth
-            val visible = behindBackground.isEmpty() || selected || cells.flags(col) and 32 != 0 || cells.flags(col) and CellData.DEFAULT_BACKGROUND == 0
+            val visible = !behindBackground || selected || cells.flags(col) and 32 != 0 || cells.flags(col) and CellData.DEFAULT_BACKGROUND == 0
             if (color != runColor || visible != runVisible) {
                 if (runEnd > runStart && runVisible) drawRect(runColor, Offset(runStart, y), Size(runEnd - runStart, charHeight))
                 runColor = color
@@ -2196,12 +2186,15 @@ internal fun DrawScope.drawLine(
     }
     val canvas = drawContext.canvas.nativeCanvas
     shaped?.prepareDraw(canvas)
-    line.images.filter { it.z in -1_073_741_824 until 0 }.forEach { it.draw(canvas, row, charWidth, charHeight) }
+    line.images.forEach { if (it.z in -1_073_741_824 until 0) it.draw(canvas, row, charWidth, charHeight) }
     textPaint.isUnderlineText = false
     textPaint.isStrikeThruText = false
     var paintedColor = Color.Unspecified
     var paintedStyle = -1
+    val plainForeground = activeSelection == null && detectedUrls == null && !autoDetectUrls && line.semanticSegments.isEmpty()
+    var drawnUntil = 0
     for (col in 0 until cells.size) {
+        if (col < drawnUntil) continue
         val width = cells.width(col)
         if (width == 0) continue
         val x = (shaped?.visualColumn(col) ?: col) * charWidth
@@ -2219,7 +2212,8 @@ internal fun DrawScope.drawLine(
         } else {
             cells.foreground(col)
         }
-        val hyperlink = hyperlinkMask?.getOrNull(col) ?: (line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
+        val hyperlink = detectedUrls?.getOrNull(col) != null ||
+            ((autoDetectUrls || line.semanticSegments.isNotEmpty()) && line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
         if (!cells.blank(col) && !cells.placeholder(col)) {
             if (fg != paintedColor) {
                 textPaint.color = fg.toArgb()
@@ -2240,14 +2234,27 @@ internal fun DrawScope.drawLine(
                     in if (horizontal) 0x2508..0x2509 else 0x250A..0x250B -> 3
                     else -> 0
                 }
-                val neighboringDashes =
+                val neighboringDashes = if (box >= '\u2580') {
+                    0
+                } else {
                     dashKind(cells.boxCharacter(col - 1), true) or
                         (dashKind(cells.boxCharacter(col + 1), true) shl 2) or
                         (dashKind(aboveLine?.cells?.boxCharacter(col), false) shl 4) or
                         (dashKind(belowLine?.cells?.boxCharacter(col), false) shl 6)
+                }
                 renderer.draw(canvas, box, x, y, cellWidth, charHeight, fg.toArgb(), textPaint.textSize, neighboringDashes)
             } else {
-                if (shaped == null || android.os.Build.VERSION.SDK_INT < 31 || !shaped.drawCell(canvas, col, y + charBaseline, textPaint, charWidth, width)) {
+                if (android.os.Build.VERSION.SDK_INT >= 31 && shaped == null && plainForeground && width == 1 &&
+                    flags and (1 or 6 or 8 or 32 or 128) == 0 && textPaint is TerminalTextPaint && textPaint.usesSystemMonospace && cells.singleAscii(col) >= 0
+                ) {
+                    drawnUntil = textPaint.drawAscii(canvas, cells, col, charWidth, y + charBaseline)
+                    if (col < drawnUntil) continue
+                }
+                val span = if (shaped != null && plainForeground) shaped.plainSpanWidth(cells, col) else width
+                val lastCell = if (span > width) col + span - 1 else col
+                if (shaped != null && android.os.Build.VERSION.SDK_INT >= 31 && shaped.drawCell(canvas, col, y + charBaseline, textPaint, charWidth, span, lastCell)) {
+                    drawnUntil = col + span
+                } else {
                     cells.draw(canvas, col, x, y + charBaseline, textPaint, cellWidth)
                 }
             }
@@ -2267,7 +2274,7 @@ internal fun DrawScope.drawLine(
             drawCurlyUnderline(x, y + charBaseline, cellWidth, charWidth, fg, underlinePaint)
         }
     }
-    line.images.filter { it.z >= 0 }.forEach { it.draw(canvas, row, charWidth, charHeight) }
+    line.images.forEach { if (it.z >= 0) it.draw(canvas, row, charWidth, charHeight) }
 }
 
 /**

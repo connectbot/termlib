@@ -53,16 +53,19 @@ internal data class TerminalLinkOccurrence(
 )
 
 /** Shared by hit testing, URL extraction and accessibility. Repeated URLs stay distinct. */
-internal fun resolveTerminalLinks(lines: List<TerminalLine>, autoDetect: Boolean): List<TerminalLinkOccurrence> {
+internal fun resolveTerminalLinks(lines: List<TerminalLine>, autoDetect: Boolean, includeOsc8: Boolean = true): List<TerminalLinkOccurrence> {
     val links = mutableListOf<TerminalLinkOccurrence>()
     val occupied = mutableMapOf<Int, MutableList<IntRange>>()
     lines.forEachIndexed { row, line ->
-        line.getSegmentsOfType(SemanticType.HYPERLINK).forEach { segment ->
-            val start = segment.startCol.coerceAtLeast(0)
-            val end = segment.endCol.coerceAtMost(line.cells.size)
-            val url = segment.metadata
-            if (!url.isNullOrEmpty() && start < end) {
-                links.add(TerminalLinkOccurrence(url, TerminalUrlSource.Osc8, listOf(TerminalLinkRange(row, start, end))))
+        if (includeOsc8) {
+            for (segment in line.semanticSegments) {
+                if (segment.semanticType != SemanticType.HYPERLINK) continue
+                val start = segment.startCol.coerceAtLeast(0)
+                val end = segment.endCol.coerceAtMost(line.cells.size)
+                val url = segment.metadata
+                if (!url.isNullOrEmpty() && start < end) {
+                    links.add(TerminalLinkOccurrence(url, TerminalUrlSource.Osc8, listOf(TerminalLinkRange(row, start, end))))
+                }
             }
         }
         if (autoDetect) {
@@ -82,7 +85,10 @@ internal fun resolveTerminalLinks(lines: List<TerminalLine>, autoDetect: Boolean
             }
         }
     }
-    return links.sortedWith(compareBy({ it.ranges.first().row }, { it.ranges.first().start }, { it.source != TerminalUrlSource.Osc8 }))
+    if (includeOsc8 && links.size > 1) {
+        links.sortWith(compareBy({ it.ranges.first().row }, { it.ranges.first().start }, { it.source != TerminalUrlSource.Osc8 }))
+    }
+    return links
 }
 
 private fun buildWrappedUrlSpans(lines: List<TerminalLine>, anchorRow: Int, anchorCol: Int): Map<Int, IntRange> {
@@ -159,7 +165,7 @@ private fun firstUrlSafeAfterPrefix(text: String): Int? {
 private fun readWrappedUrl(lines: List<TerminalLine>, spans: Map<Int, IntRange>): String? {
     if (spans.isEmpty()) return null
     val joined = buildString {
-        for ((spanRow, span) in spans.toSortedMap()) {
+        for ((spanRow, span) in spans) {
             val text = lines[spanRow].columnText
             val end = (span.last + 1).coerceAtMost(text.length)
             if (span.first < end) append(text.substring(span.first, end))
@@ -170,7 +176,7 @@ private fun readWrappedUrl(lines: List<TerminalLine>, spans: Map<Int, IntRange>)
 
 private fun spansOverlapOsc8(lines: List<TerminalLine>, spans: Map<Int, IntRange>): Boolean = spans.any { (row, span) ->
     val endCol = span.last + 1
-    lines.getOrNull(row)?.getSegmentsOfType(SemanticType.HYPERLINK)?.any {
-        it.startCol < endCol && span.first < it.endCol
+    lines.getOrNull(row)?.semanticSegments?.any {
+        it.semanticType == SemanticType.HYPERLINK && it.startCol < endCol && span.first < it.endCol
     } == true
 }

@@ -1346,6 +1346,7 @@ internal class TerminalEmulatorImpl(
             timestamp = System.currentTimeMillis(),
             sequenceNumber = sequenceNumber++,
             alternateScreen = isAltScreenActive,
+            hasImageAssets = hasImages,
         )
     }
 

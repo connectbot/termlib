@@ -70,13 +70,19 @@ row's Compose display list has viewport bounds, so changes invalidate previous
 ink outside the row without retaining a screen-sized bitmap. The magnifier uses
 the same two passes.
 
-Measurements are cached in one lazy float array per packed row, replaced when
-the font or size changes. The Compose renderer also uses a bounded 2 KiB
-single-glyph Latin-1 advance cache per font/size paint, with separate regular
-and bold entries. Complex clusters still use normal platform shaping. This
-avoids repeating text measurement just because row contents/colors changed.
-Regular glyphs use direct Canvas drawing; only
-oversized glyphs require a canvas transform.
+The Compose renderer shares single-glyph Latin-1 advances in a 2 KiB cache
+per font and size, with separate regular and bold entries. Other measurements
+use a lazy float array per packed row. Oversized glyphs are compressed to fit.
+
+On API 31 and newer, the renderer shapes printable regular system-monospace
+ASCII characters individually. It records adjacent glyphs of the same font
+and color in groups of up to 128, positioning each at its original column.
+Selection recoloring, decorations, links, and glyphs requiring compression
+use the per-cell path. Contiguous cells within one shaped script cluster can
+also share a single horizontal clip when their foreground and style match.
+Repeated script runs reuse positioned glyphs when their full joining context,
+target range, direction, and font style match. These entries use up to 32 KiB
+of the existing 256 KiB shaping budget. Visible row layouts take priority.
 
 On API 31 and newer, right-to-left presentation follows terminal-wg's
 implicit-LTR level-1 model. Hard-newline-delimited paragraphs are passed to
