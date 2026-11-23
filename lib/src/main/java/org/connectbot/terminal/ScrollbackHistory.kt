@@ -42,8 +42,7 @@ internal class ScrollbackHistory(private val limit: Int) {
         published = null
     }
 
-    fun lastOrNull(): TerminalLine? =
-        if (size == 0) null else pages.last().lines[(head + size - 1) % PAGE_SIZE]
+    fun lastOrNull(): TerminalLine? = if (size == 0) null else pages.last().lines[(head + size - 1) % PAGE_SIZE]
 
     fun removeLast() {
         check(size > 0)
@@ -83,7 +82,8 @@ internal class ScrollbackHistory(private val limit: Int) {
         private val pages: Array<Page>,
         private val head: Int,
         override val size: Int,
-    ) : AbstractList<TerminalLine>(), RandomAccess {
+    ) : AbstractList<TerminalLine>(),
+        RandomAccess {
         override fun get(index: Int): TerminalLine {
             if (index !in 0 until size) throw IndexOutOfBoundsException("Scrollback index $index")
             val slot = head + index

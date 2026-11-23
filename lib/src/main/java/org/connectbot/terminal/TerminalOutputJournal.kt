@@ -7,21 +7,28 @@ package org.connectbot.terminal
 
 /** Collected under the emulator damage lock, before StateFlow conflates frames. */
 internal class TerminalOutputJournal(initial: TerminalSnapshot) {
-    private var baseline = initial.lines.map { it.text }.toMutableList()
+    private val baseline = initial.lines.map { it.text }.toMutableList()
     private var cursor = initial.cursorRow to initial.cursorCol
     private var windowCursor = cursor
     private var alternate = initial.alternateScreen
     private var pushed = 0
     private var nextLineId = 0L
-    private var lineIds = initial.lines.map { nextLineId++ }.toMutableList()
+    private val lineIds = initial.lines.map { nextLineId++ }.toMutableList()
     private val windowBaselines = mutableMapOf<Long, String>()
     private val pending = linkedMapOf<Long, String>()
     private var characters = 0
     private var overflow = false
     private var changed = false
     private var cursorText: String? = null
-    private val finished = (initial.scrollback + initial.lines).flatMap { it.semanticSegments }
-        .filter { it.semanticType == SemanticType.COMMAND_FINISHED }.map { it.promptId }.toMutableSet()
+    private val finished = mutableSetOf<Int>().apply {
+        for (lines in listOf(initial.scrollback, initial.lines)) {
+            for (line in lines) {
+                for (segment in line.semanticSegments) {
+                    if (segment.semanticType == SemanticType.COMMAND_FINISHED) add(segment.promptId)
+                }
+            }
+        }
+    }
     private val completions = ArrayDeque<String?>()
 
     fun push(line: TerminalLine) {
@@ -53,8 +60,8 @@ internal class TerminalOutputJournal(initial: TerminalSnapshot) {
         // libvterm omits moverect when a merged scroll replaces the entire region.
         // Retire pushed identities before assigning the remaining screen changes.
         if (pushed > 0) {
-            baseline = baseline.drop(pushed).toMutableList()
-            lineIds = lineIds.drop(pushed).toMutableList()
+            baseline.subList(0, minOf(pushed, baseline.size)).clear()
+            lineIds.subList(0, minOf(pushed, lineIds.size)).clear()
         }
         // A different terminal buffer has no meaningful text diff against the old one.
         if (alternate != snapshot.alternateScreen) {
@@ -65,11 +72,13 @@ internal class TerminalOutputJournal(initial: TerminalSnapshot) {
         while (lineIds.size < snapshot.lines.size) lineIds.add(nextLineId++)
         var textChanged = changed
         for ((row, line) in snapshot.lines.withIndex()) {
+            val text = line.text
             val previous = baseline.getOrNull(row).orEmpty()
-            if (previous != line.text) {
-                appendChange(lineIds[row], previous, line.text)
+            if (previous != text) {
+                appendChange(lineIds[row], previous, text)
                 textChanged = true
             }
+            if (row < baseline.size) baseline[row] = text else baseline.add(text)
             for (segment in line.semanticSegments) {
                 if (segment.semanticType == SemanticType.COMMAND_FINISHED) complete(segment.promptId, segment.metadata)
             }
@@ -89,7 +98,7 @@ internal class TerminalOutputJournal(initial: TerminalSnapshot) {
                 }
             }
         }
-        baseline = snapshot.lines.map { it.text }.toMutableList()
+        if (baseline.size > snapshot.lines.size) baseline.subList(snapshot.lines.size, baseline.size).clear()
         cursor = nextCursor
         changed = false
         pushed = 0

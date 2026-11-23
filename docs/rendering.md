@@ -4,9 +4,27 @@
 
 Terminal input parsing remains synchronous: feed `writeInput` from the caller's
 reader/IO thread, not the UI thread. The input buffer can be reused when the
-call returns. Snapshot construction is coalesced on a background dispatcher;
-Compose applies the latest snapshot on its frame clock. Row content is read in
-the draw phase, so ordinary text damage does not recompose every row.
+call returns. A background dispatcher coalesces snapshot construction. It
+transfers damaged cell ranges in batches, reuses unchanged packed rows, and
+shares unchanged scrollback pages across snapshots. Compose reads row content
+during drawing.
+
+The ordinary update path applies the latest snapshot on the Compose frame clock.
+On API 31 and newer, the collector prepares shaping on a background dispatcher
+when the emitted snapshot contains complex text on screen, the viewport is at
+the bottom, and cell width is positive. It publishes that snapshot when
+preparation completes. The collector finishes its in-flight preparation before
+taking another snapshot, and `StateFlow` can conflate updates that arrive in the
+meantime. This skips intermediate display states while parsing every input byte.
+Waiting for preparation can increase input-to-present latency for the entire
+snapshot, including any ASCII rows it contains.
+
+Prepared layouts apply only to the same snapshot and cell width at the bottom
+of the viewport. The UI can shape rows on demand during scrollback or when a
+matching prepared layout is unavailable. This includes a complex snapshot
+that arrives while the ordinary path is waiting for its frame callback. That
+callback reads the latest snapshot and can apply it before preparation.
+
 Native cursor movement notifications are also coalesced within each
 `writeInput`: libvterm retains every logical movement, while rendering receives
 the final position, visibility, and the batch's original position once the
@@ -67,8 +85,9 @@ selection backgrounds. Complete cell text is shaped together at the cell's
 column origin. Oversized advances are compressed horizontally; normal advances
 and italic overhang are preserved. Decorations follow terminal columns. Each
 row's Compose display list has viewport bounds, so changes invalidate previous
-ink outside the row without retaining a screen-sized bitmap. The magnifier uses
-the same two passes.
+ink outside the row without retaining a screen-sized bitmap. A graphics layer
+lets both cursor inversion passes reuse the recorded rows. The magnifier uses
+the same background and foreground passes.
 
 The Compose renderer shares single-glyph Latin-1 advances in a 2 KiB cache
 per font and size, with separate regular and bold entries. Other measurements
@@ -81,8 +100,7 @@ Selection recoloring, decorations, links, and glyphs requiring compression
 use the per-cell path. Contiguous cells within one shaped script cluster can
 also share a single horizontal clip when their foreground and style match.
 Repeated script runs reuse positioned glyphs when their full joining context,
-target range, direction, and font style match. These entries use up to 32 KiB
-of the existing 256 KiB shaping budget. Visible row layouts take priority.
+target range, direction, and font style match.
 
 On API 31 and newer, right-to-left presentation follows terminal-wg's
 implicit-LTR level-1 model. Hard-newline-delimited paragraphs are passed to
@@ -92,8 +110,29 @@ cell contents, selection copies, and terminal coordinates remain logical while
 drawing, pointer hit testing, selection handles, and the cursor use visual
 columns. Mirrored punctuation and Arabic shaping use resolved run direction.
 Directional formatting controls are discarded, as required by level 1.
-Paragraphs over 500 rows fall back to logical LTR presentation as a safety cap.
+Paragraphs over 500 rows skip paragraph-wide BiDi layout. The renderer can
+still shape complex runs within each row. Cursor and pointer mapping use
+logical columns for this fallback.
 API 24–30 retain the legacy per-cell renderer.
+
+### Shaping and glyph cache limits
+
+- Each shaping engine accounts for up to 256 KiB of retained row layouts,
+  packed rows, and reusable glyph runs. Glyph runs can use up to 32 KiB within
+  that budget. Each engine admits at most the visible row count, with priority
+  given to visible row layouts. The viewport worker uses separate engines for
+  contextual and standalone row shaping. The UI creates its own engine on
+  demand.
+- Each prepared viewport accounts for up to 1 MiB of drawing layouts and row
+  entries. Preparation stops at that limit and the UI handles remaining rows.
+  Prepared rows can share layouts with the shaping engines.
+- On hardware Canvas, a renderer's paint caches up to 192 glyph display lists
+  and 512 KiB of estimated `RenderNode` memory. Cache keys include the glyph
+  batch, paint color, flags, and skew. Software Canvas draws the glyph batches
+  directly.
+
+These limits account for retained renderer data. Platform font and GPU caches
+and temporary shaping allocations contribute separately to process memory.
 
 ## Box drawing and block elements
 

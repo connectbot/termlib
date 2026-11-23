@@ -169,7 +169,8 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
         metricsReady = true
         charWidth = width.coerceAtLeast(1f)
         charHeight = height.coerceAtLeast(1f)
-        if (live.snapshot !== snapshot) live = TerminalReviewDocument(snapshot)
+        val previousLive = live.snapshot
+        if (previousLive !== snapshot) live = TerminalReviewDocument(snapshot)
         liveTop = if (snapshot.alternateScreen) 0 else snapshot.scrollback.size - scrollbackPosition
         review.resize(visibleRows, visibleColumns)
         val current = document.snapshot
@@ -179,8 +180,13 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
             if (focused != HOST) clearFocusNode()
             clearTouch()
             clearLinkSpans()
-            rowIds.clear()
-            idRows.clear()
+            val sameLiveGrid = !wasReviewing && !review.isReviewing &&
+                previousLive.alternateScreen == snapshot.alternateScreen && previousLive.rows == snapshot.rows &&
+                previousLive.scrollback === snapshot.scrollback
+            if (!sameLiveGrid) {
+                rowIds.clear()
+                idRows.clear()
+            }
             documentSnapshot = current
             event(HOST, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
@@ -204,6 +210,17 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
     internal fun id(row: Int): Int {
         val first = document.accessibleRows(row).first
         return rowIds.getOrPut(first) { nextId++.also { idRows[it] = first } }
+    }
+
+    private fun rowForId(id: Int): Int? {
+        val row = idRows[id] ?: return null
+        // A live update can merge a previously separate row into a blank run.
+        if (row !in document.lines.indices || document.accessibleRows(row).first != row) {
+            idRows.remove(id)
+            rowIds.remove(row)
+            return null
+        }
+        return row
     }
 
     internal val provider = object : AccessibilityNodeProviderCompat() {
@@ -243,7 +260,7 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
                     if (Build.VERSION.SDK_INT >= 37) extendedSelection().populate(this)
                 }
             }
-            val row = idRows[virtualViewId] ?: return null
+            val row = rowForId(virtualViewId) ?: return null
             val line = document.lines.getOrNull(row) ?: return null
             val range = document.accessibleRows(row)
             val count = range.last - range.first + 1
@@ -296,7 +313,7 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
         override fun addExtraDataToAccessibilityNodeInfo(virtualViewId: Int, info: AccessibilityNodeInfoCompat, extraDataKey: String, arguments: Bundle?) {
             ensureDocumentGeneration()
             if (Build.VERSION.SDK_INT < 26 || extraDataKey != CHARACTER_LOCATION || arguments == null) return
-            val row = idRows[virtualViewId] ?: return
+            val row = rowForId(virtualViewId) ?: return
             val text = document.accessibleText(row)
             val start = arguments.getInt(android.view.accessibility.AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_START_INDEX, -1)
             val length = arguments.getInt(android.view.accessibility.AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_LENGTH, -1)
@@ -325,7 +342,7 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
 
         override fun performAction(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean {
             ensureDocumentGeneration()
-            val row = idRows[virtualViewId]
+            val row = rowForId(virtualViewId)
             if (virtualViewId != HOST && row == null) return false
             if (Build.VERSION.SDK_INT >= 37 && action == android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_EXTENDED_SELECTION.id) {
                 if (virtualViewId != HOST) return false
@@ -734,7 +751,7 @@ internal class TerminalAccessibilityView(context: Context, val review: TerminalR
     }
 
     @androidx.annotation.RequiresApi(37)
-    private fun extendedSelection() = TerminalExtendedSelection(this, { document }, ::id, { idRows[it] })
+    private fun extendedSelection() = TerminalExtendedSelection(this, { document }, ::id, ::rowForId)
 
     internal val isMarking get() = selection.marking
 

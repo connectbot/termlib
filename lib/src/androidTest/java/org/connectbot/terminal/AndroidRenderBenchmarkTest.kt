@@ -74,10 +74,12 @@ class AndroidRenderBenchmarkTest {
             val cells = PackedCells.from(text.map { TerminalLine.Cell(it, fgColor = Color.White, bgColor = Color.Black) })
             TerminalLine(row, cells, softWrapped = row < totalRows - 1)
         }
-        val cropped = TerminalScreenState(TerminalSnapshot.empty(visibleRows, columns).copy(
-            lines = paragraph.takeLast(visibleRows),
-            scrollback = paragraph.dropLast(visibleRows),
-        ))
+        val cropped = TerminalScreenState(
+            TerminalSnapshot.empty(visibleRows, columns).copy(
+                lines = paragraph.takeLast(visibleRows),
+                scrollback = paragraph.dropLast(visibleRows),
+            ),
+        )
         val full = TerminalScreenState(TerminalSnapshot.empty(totalRows, columns).copy(lines = paragraph))
         val engine = TerminalShaping(TerminalTextPaint(Typeface.MONOSPACE, 20f), byteLimit = 4 * 1024 * 1024)
         data class Sample(val nanos: Long, val allocatedBytes: Long)
@@ -105,8 +107,7 @@ class AndroidRenderBenchmarkTest {
             fullSamples.add(measure(full, totalRows - visibleRows, totalRows))
             croppedSamples.add(measure(cropped, 0, visibleRows))
         }
-        fun median(samples: List<Sample>, value: (Sample) -> Long): Long =
-            samples.map(value).sorted()[samples.size / 2]
+        fun median(samples: List<Sample>, value: (Sample) -> Long): Long = samples.map(value).sorted()[samples.size / 2]
 
         val result = "wrapped-paragraph rows=$totalRows cropped=$visibleRows " +
             "cropped-ns=${median(croppedSamples, Sample::nanos)} full-ns=${median(fullSamples, Sample::nanos)} " +

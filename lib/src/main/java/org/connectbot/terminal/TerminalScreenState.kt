@@ -16,6 +16,8 @@
  */
 package org.connectbot.terminal
 
+import android.os.Build
+import android.os.Trace
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -23,6 +25,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Compose-specific state adapter for terminal screen rendering.
@@ -211,35 +216,46 @@ internal class TerminalScreenState(
     }
 }
 
-/**
- * Remember a TerminalScreenState that observes the given TerminalEmulator.
- *
- * This composable function creates a TerminalScreenState that automatically
- * updates when the TerminalEmulator emits new snapshots via StateFlow.
- *
- * @param terminalEmulator The terminal emulator to observe
- * @return A TerminalScreenState that tracks the current terminal snapshot
- */
+internal class PreparedViewport(val snapshot: TerminalSnapshot, val cellWidth: Float, val layouts: List<PreparedLine>)
+internal class PreparedLine(val contextual: ShapedLine?, val drawing: ShapedLine?)
+
 @Composable
 internal fun rememberTerminalScreenState(
     terminalEmulator: TerminalEmulatorImpl,
-): TerminalScreenState {
-    // Create state instance once per emulator, using the current value as initial
-    val state = remember(terminalEmulator) {
-        TerminalScreenState(terminalEmulator.snapshot.value)
-    }
+): TerminalScreenState = remember(terminalEmulator) { TerminalScreenState(terminalEmulator.snapshot.value) }
 
-    // Collecting in a LaunchedEffect keeps this adapter composable stable instead of
-    // recomposing it because of Flow collection in this function. Updates to
-    // state.snapshot still invalidate/recompose any composables that read it.
-    LaunchedEffect(terminalEmulator) {
+@Composable
+internal fun TerminalScreenState.observeViewport(
+    terminalEmulator: TerminalEmulatorImpl,
+    paint: TerminalTextPaint,
+    cellWidth: Float,
+) {
+    LaunchedEffect(this, terminalEmulator, paint, cellWidth) {
+        val shaper by lazy(LazyThreadSafetyMode.NONE) { TerminalShaping(paint) }
+        val standaloneShaper by lazy(LazyThreadSafetyMode.NONE) { TerminalShaping(paint) }
         terminalEmulator.snapshot.collect { newSnapshot ->
-            if (newSnapshot === state.snapshot) return@collect
-            androidx.compose.runtime.withFrameNanos {
-                state.updateSnapshot(terminalEmulator.snapshot.value)
+            if (newSnapshot === snapshot) return@collect
+            if (Build.VERSION.SDK_INT >= 31 && cellWidth > 0f && scrollbackPosition == 0 &&
+                newSnapshot.lines.any { it.cells.needsShaping() }
+            ) {
+                val engine = shaper
+                val standalone = standaloneShaper
+                val prepared = withContext(Dispatchers.Default) {
+                    Trace.beginSection("terminal.shaping.prepare")
+                    try {
+                        engine.prepareViewport(newSnapshot, cellWidth, standalone)
+                    } finally {
+                        Trace.endSection()
+                    }
+                }
+                paint.preparedViewport = prepared
+                updateSnapshot(newSnapshot)
+            } else {
+                withFrameNanos {
+                    paint.preparedViewport = null
+                    updateSnapshot(terminalEmulator.snapshot.value)
+                }
             }
         }
     }
-
-    return state
 }

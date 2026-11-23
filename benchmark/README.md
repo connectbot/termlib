@@ -184,6 +184,9 @@ The default existing workloads and 24-row viewport are unchanged.
 wrapping or scrolling. The tick marker occupies its own hard line, so its digits
 do not alter the shaped paragraphs used to measure layout reuse.
 
+`shaping-unique` streams seeded Arabic words with Indic text to exercise the
+renderer when most shaped glyph runs appear only once.
+
 The opt-in `AndroidRenderBenchmarkTest` now uses `TerminalTextPaint` and reports
 ART bytes/frame alongside software Canvas ns/frame for ASCII, Unicode, Arabic,
 and Indic text. Copy this same test harness to the baseline checkout before
@@ -191,17 +194,23 @@ comparing; its optional viewport setup also works against the older renderer.
 Run with `-Pandroid.testInstrumentationRunnerArguments.renderBenchmark=true`.
 Run allocation measurements separately from frame traces and CPU profiling.
 
-Shaping retains at most the visible row count and 256 KiB of accounted layout
-and packed-row data, plus at most 32 KiB of reusable advance scratch. These
-limits exclude platform-owned font caches and temporary shaping results;
-measure Java/native heaps and GC traffic as well as the cache's accounting.
-Over-budget rows render without admission and do not evict admitted visible
-rows. Font changes and renderer disposal release the cache. Color and selection
-changes reuse geometry. No glyph layouts are attached to scrollback snapshots.
+On API 31 and newer, `terminal.shaping.prepare` marks background viewport
+preparation. Compare both frame deadline compliance and input-to-present
+latency. Shaping outside the UI frame can improve deadline compliance while
+the snapshot waits longer for that work to finish. The software Canvas
+benchmark measures rendering work directly. Use the end-to-end workload to
+include snapshot handoff and hardware glyph recording.
+
+See [shaping and glyph cache limits](../docs/rendering.md#shaping-and-glyph-cache-limits)
+for per-engine layout budgets, the prepared viewport limit, and the hardware
+glyph display-list cache. Measure Java and native heaps and GC traffic
+alongside those accounting limits. Scrollback snapshots store packed cells
+and share history pages. The renderer owns the glyph layouts.
 
 Correctness coverage is shared between `TerminalShapingTest` (native Robolectric)
 and `AndroidShapingTest` (device), with API 24/30 fallback checks on the host.
 The accessibility overlay exposes entire rows in logical text order; those
 full-width bounds do not change. This component currently has no terminal mouse
-reporting path. Touch selection, hyperlinks, cursor and selection handles use
-the same logical/visual cell mapping.
+reporting path. When paragraph-wide BiDi layout is available, touch selection,
+hyperlinks, the cursor, and selection handles use the renderer's logical-to-visual
+cell mapping.

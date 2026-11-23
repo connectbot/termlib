@@ -7,6 +7,7 @@ package org.connectbot.terminal
 
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RenderNode
 import android.graphics.fonts.Font
 import android.graphics.fonts.FontVariationAxis
 import android.graphics.text.PositionedGlyphs
@@ -15,11 +16,13 @@ import android.icu.text.Bidi
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.ensureActive
 import java.util.Arrays
 import java.util.IdentityHashMap
+import kotlin.coroutines.coroutineContext
 
-/** UI-thread-only shaping state. Neither snapshots nor scrollback own glyph caches. */
-internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteLimit: Int = 256 * 1024) {
+/** Shaping state confined to a single renderer or background collector. */
+internal class TerminalShaping(sourcePaint: Paint, private val byteLimit: Int = 256 * 1024) {
     private val cache = IdentityHashMap<PackedCells, ShapedLine>()
     private val keys = ArrayList<PackedCells>()
     private val shapingPaint = Paint(sourcePaint).apply { fontFeatureSettings = "'liga' 0, 'clig' 0" }
@@ -38,6 +41,32 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
     val cachedRows: Int get() = cache.size
     var shapeCount = 0
         private set
+
+    @RequiresApi(31)
+    suspend fun prepareViewport(snapshot: TerminalSnapshot, cellWidth: Float, standalone: TerminalShaping): PreparedViewport? {
+        if (snapshot.lines.none { it.cells.needsShaping() }) return null
+        val viewport = TerminalScreenState(snapshot)
+        val layouts = ArrayList<PreparedLine>(snapshot.rows)
+        standalone.viewport(viewport)
+        var standaloneRows = 0
+        var remaining = 1024 * 1024
+        for (row in 0 until snapshot.rows) {
+            coroutineContext.ensureActive()
+            val contextual = layout(viewport, row, cellWidth)
+            val cells = snapshot.lines[row].cells
+            val drawing = if (contextual == null && cells.needsShaping()) {
+                standaloneRows++
+                standalone.layout(cells, cellWidth)
+            } else {
+                contextual
+            }
+            remaining -= (drawing?.bytes ?: 0) + 24
+            if (remaining < 0) break
+            layouts.add(PreparedLine(contextual, drawing))
+        }
+        android.os.Trace.setCounter("terminal.shaping.standaloneRows", standaloneRows.toLong())
+        return PreparedViewport(snapshot, cellWidth, layouts)
+    }
 
     fun clear() {
         glyphRuns.clear()
@@ -194,8 +223,10 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
         val visible = (state.visibleLineIndex(0) - first)..(state.visibleLineIndex(snapshot.rows - 1) - first)
         val rowsToShape = lines.indices.filter { index ->
             val cells = lines[index].cells
-            index == requested || (index in visible && cache.size < viewportRows &&
-                cells.shapingRetentionBytes < byteLimit - rowBytes && !cache.containsKey(cells))
+            index == requested || (
+                index in visible && cache.size < viewportRows &&
+                    cells.shapingRetentionBytes < byteLimit - rowBytes && !cache.containsKey(cells)
+                )
         }
         // Admit layouts together after shaping, so an early row cannot evict
         // glyph runs that are still useful to later rows in the paragraph.
@@ -588,13 +619,13 @@ internal class ShapedLine(
                     try {
                         if (batch.fakeBold) paint.isFakeBoldText = true
                         if (skew == 0f && batch.fakeItalic) paint.textSkewX = -0.25f
-                        canvas.drawGlyphs(batch.ids, 0, batch.positions, 0, batch.ids.size, batch.font, paint)
+                        batch.draw(canvas, paint)
                     } finally {
                         paint.isFakeBoldText = bold
                         paint.textSkewX = skew
                     }
                 } else {
-                    canvas.drawGlyphs(batch.ids, 0, batch.positions, 0, batch.ids.size, batch.font, paint)
+                    batch.draw(canvas, paint)
                 }
             }
         } finally {
@@ -608,6 +639,60 @@ internal class ShapedCluster(val visual: Int, val columns: Int, val scale: Float
     val bytes: Int = 48 + batches.sumOf { 96 + it.ids.size * 12 }
 }
 
-internal class GlyphBatch(val ids: IntArray, val positions: FloatArray, val font: Font, val fakeBold: Boolean, val fakeItalic: Boolean)
+internal class GlyphBatch(val ids: IntArray, val positions: FloatArray, val font: Font, val fakeBold: Boolean, val fakeItalic: Boolean) {
+    @RequiresApi(31)
+    fun draw(canvas: Canvas, paint: Paint) {
+        if (paint is TerminalTextPaint && canvas.isHardwareAccelerated) {
+            paint.glyphDisplayLists.draw(canvas, this, paint)
+        } else {
+            record(canvas, paint)
+        }
+    }
+
+    @RequiresApi(31)
+    fun record(canvas: Canvas, paint: Paint) {
+        canvas.drawGlyphs(ids, 0, positions, 0, ids.size, font, paint)
+    }
+}
+
+/** Retains immutable glyph commands. The caller applies the cell clip and translation. */
+internal class GlyphDisplayLists {
+    private val entries = LinkedHashMap<Key, Entry>(16, 0.75f, true)
+    private var bytes = 0L
+
+    private data class Key(val batch: GlyphBatch, val color: Int, val flags: Int, val skewX: Float)
+
+    private data class Entry(val node: RenderNode, val bytes: Long)
+
+    @RequiresApi(31)
+    fun draw(canvas: Canvas, batch: GlyphBatch, paint: TerminalTextPaint) {
+        val key = Key(batch, paint.color, paint.flags, paint.textSkewX)
+        val node = entries[key]?.node ?: RenderNode(null).also { newNode ->
+            newNode.setPosition(0, 0, canvas.width, canvas.height)
+            newNode.setClipToBounds(false)
+            val recording = newNode.beginRecording()
+            try {
+                batch.record(recording, paint)
+            } finally {
+                newNode.endRecording()
+            }
+            val size = newNode.computeApproximateMemoryUsage()
+            if (size <= MAX_BYTES) {
+                val oldest = entries.values.iterator()
+                while (entries.size >= 192 || bytes + size > MAX_BYTES) {
+                    bytes -= oldest.next().bytes
+                    oldest.remove()
+                }
+                entries[key] = Entry(newNode, size)
+                bytes += size
+            }
+        }
+        canvas.drawRenderNode(node)
+    }
+
+    private companion object {
+        const val MAX_BYTES = 512L * 1024
+    }
+}
 
 private data class FontVariant(val font: Font, val weight: Float, val italic: Float)

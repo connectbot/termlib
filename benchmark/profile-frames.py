@@ -13,14 +13,15 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("output", type=Path)
 parser.add_argument("--adb", default="adb")
 parser.add_argument("--serial", required=True)
-parser.add_argument("--workload", default="cacafire", choices=("text", "shaping", "shaping-static", "shaping-recolor", "shaping-even", "shaping-odd", "cacafire", "rgba", "png", "animation", "input", "idle"))
+parser.add_argument("--workload", default="cacafire", choices=("text", "shaping", "shaping-static", "shaping-recolor", "shaping-even", "shaping-odd", "shaping-unique", "cacafire", "rgba", "png", "animation", "input", "idle"))
+parser.add_argument("--rows", type=int, default=24)
 parser.add_argument("--duration", type=int, default=20)
 parser.add_argument("--frequency", type=int, default=500)
 args = parser.parse_args()
 if not re.fullmatch(r"[A-Za-z0-9_.-]+", args.output.name):
     parser.error("output directory name must contain only letters, numbers, dots, underscores or hyphens")
-if args.duration <= 0 or args.frequency <= 0:
-    parser.error("duration and frequency must be positive")
+if args.duration <= 0 or args.frequency <= 0 or args.rows <= 0:
+    parser.error("duration, frequency, and rows must be positive")
 args.output.mkdir(parents=True, exist_ok=False)
 adb = [args.adb, "-s", args.serial]
 package = "org.connectbot.terminal.testapp"
@@ -40,7 +41,7 @@ def require_foreground():
 try:
     subprocess.run(adb + ["shell", "cmd", "package", "compile", "-m", "speed", "-f", package], check=True, timeout=120)
     subprocess.run(adb + ["shell", "am", "start", "-W", "-S", "-n", package + "/.FrameBenchmarkActivity",
-                          "--es", "workload", args.workload], check=True, timeout=60)
+                          "--es", "workload", args.workload, "--ei", "rows", str(args.rows)], check=True, timeout=60)
     require_foreground()
     with (args.output / "record.txt").open("w") as log:
         subprocess.run(adb + ["shell", "simpleperf", "record", "--app", package,

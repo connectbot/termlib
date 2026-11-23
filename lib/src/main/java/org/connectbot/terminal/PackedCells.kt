@@ -8,7 +8,6 @@ package org.connectbot.terminal
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import java.nio.ByteBuffer
-import kotlin.math.abs
 
 /** Immutable column-addressed storage. Arrays never escape to mutable consumers. */
 internal class PackedCells private constructor(
@@ -21,7 +20,7 @@ internal class PackedCells private constructor(
     override val size: Int get() = attributes.size
 
     fun needsShaping(): Boolean {
-        if (measuredSizeAndScript.isNaN()) {
+        if (shapingClass == 0) {
             var complex = false
             var i = 0
             while (i < text.size) {
@@ -40,9 +39,9 @@ internal class PackedCells private constructor(
                 }
                 i += Character.charCount(cp)
             }
-            measuredSizeAndScript = if (complex) Float.NEGATIVE_INFINITY else Float.POSITIVE_INFINITY
+            shapingClass = if (complex) -1 else 1
         }
-        return measuredSizeAndScript.toRawBits() < 0
+        return shapingClass < 0
     }
 
     fun sameShaping(other: PackedCells, allowAsciiChanges: Boolean = true): Boolean {
@@ -140,10 +139,9 @@ internal class PackedCells private constructor(
     // One lazily allocated measurement array per retained row, replaced on font changes.
     private var measuredTypeface: android.graphics.Typeface? = null
 
-    // One word holds both the measurement size (magnitude) and script flag (sign).
-    // NaN means unclassified; +/-infinity means classified but not measured yet.
-    // Avoid an extra field on every parsed/scrollback row, including ASCII-only rows.
-    private var measuredSizeAndScript = Float.NaN
+    // The background shaper and the renderer classify the immutable text independently.
+    @Volatile private var shapingClass = 0
+    private var measuredSize = Float.NaN
     private var advances: FloatArray? = null
 
     fun draw(canvas: android.graphics.Canvas, col: Int, x: Float, baseline: Float, paint: android.graphics.Paint, cellWidth: Float) {
@@ -171,9 +169,9 @@ internal class PackedCells private constructor(
     }
 
     private fun rowAdvance(col: Int, paint: android.graphics.Paint, start: Int, count: Int): Float {
-        if (measuredTypeface !== paint.typeface || abs(measuredSizeAndScript) != paint.textSize || advances == null) {
+        if (measuredTypeface !== paint.typeface || measuredSize != paint.textSize || advances == null) {
             measuredTypeface = paint.typeface
-            measuredSizeAndScript = if (needsShaping()) -paint.textSize else paint.textSize
+            measuredSize = paint.textSize
             advances = FloatArray(size) { Float.NaN }
         }
         val measurements = advances!!

@@ -8,6 +8,7 @@ package org.connectbot.terminal
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.util.TreeMap
 
 /** Feedback preferences. Direct terminal input remains the default input mode. */
 data class TerminalAccessibilityOptions(
@@ -63,27 +64,30 @@ class TerminalAccessibilityState {
 
 /** A bounded, immutable document. Indices are stable for its entire review lifetime. */
 internal class TerminalReviewDocument(val snapshot: TerminalSnapshot) {
-    val lines = if (snapshot.alternateScreen) snapshot.lines else snapshot.scrollback + snapshot.lines
+    val lines: List<TerminalLine> = if (snapshot.alternateScreen || snapshot.scrollback.isEmpty()) {
+        snapshot.lines
+    } else {
+        object : AbstractList<TerminalLine>() {
+            private val historySize = snapshot.scrollback.size
+            override val size: Int get() = historySize + snapshot.lines.size
+            override fun get(index: Int): TerminalLine = if (index < historySize) snapshot.scrollback[index] else snapshot.lines[index - historySize]
+        }
+    }
     val cursorIndex = (if (snapshot.alternateScreen) 0 else snapshot.scrollback.size) + snapshot.cursorRow
 
     // One virtual item per blank run, including runs crossing viewport boundaries.
     // The physical lines remain intact for rendering, selection, and copying.
-    private val blankRuns by lazy {
-        arrayOfNulls<IntRange>(lines.size).also { runs ->
-            var row = 0
-            while (row < lines.size) {
-                if (!lines[row].text.isBlank()) {
-                    row++
-                    continue
-                }
-                val first = row
-                while (row < lines.size && lines[row].text.isBlank()) row++
-                val range = first until row
-                for (index in range) runs[index] = range
-            }
-        }
+    private val blankRuns = TreeMap<Int, IntRange>()
+
+    fun accessibleRows(row: Int): IntRange {
+        blankRuns.floorEntry(row)?.value?.let { if (row in it) return it }
+        if (!lines[row].text.isBlank()) return row..row
+        var first = row
+        var last = row
+        while (first > 0 && lines[first - 1].text.isBlank()) first--
+        while (last < lines.lastIndex && lines[last + 1].text.isBlank()) last++
+        return (first..last).also { blankRuns[first] = it }
     }
-    fun accessibleRows(row: Int): IntRange = blankRuns[row] ?: (row..row)
 
     private val groupedText = mutableMapOf<Int, String>()
     fun accessibleText(row: Int): String {
@@ -256,7 +260,7 @@ internal class TerminalReviewSession(
         val doc = document ?: return
         firstRow = firstRow.coerceIn(0, (doc.lines.size - viewportRows).coerceAtLeast(0))
         firstColumn = firstColumn.coerceIn(0, (doc.snapshot.cols - viewportColumns).coerceAtLeast(0))
-        val rows = doc.lines.drop(firstRow).take(viewportRows)
+        val rows = doc.lines.subList(firstRow, (firstRow + viewportRows).coerceAtMost(doc.lines.size))
         screenState.updateSnapshot(
             doc.snapshot.copy(
                 lines = rows,
