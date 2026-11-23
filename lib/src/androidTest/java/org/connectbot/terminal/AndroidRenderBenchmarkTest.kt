@@ -29,6 +29,93 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AndroidRenderBenchmarkTest {
     @Test
+    fun nativeCellFetchOverhead() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("renderBenchmark") == "true")
+        TerminalNative(NativeCallbackStub()).use { terminal ->
+            terminal.resize(24, 80)
+            terminal.writeInput(("سلام क्षि မြန်မာ ".repeat(4) + "\r\n").repeat(20).toByteArray())
+            val buffer = CellData.buffer()
+            val iterations = 2_000
+            for (records in listOf(0, 1, 80, 768, 0)) {
+                val requests = (records + 79) / 80
+                for (row in 0 until requests) {
+                    val header = row * 16
+                    buffer.putInt(header, row)
+                    buffer.putInt(header + 4, 0)
+                    buffer.putInt(header + 8, minOf(80, records - row * 80))
+                }
+                fun sample(): Long {
+                    var result = 0
+                    val start = System.nanoTime()
+                    repeat(iterations) { result += terminal.getCells(buffer, requests) }
+                    val elapsed = System.nanoTime() - start
+                    check(result == records * iterations)
+                    return elapsed / iterations
+                }
+                repeat(3) { sample() }
+                val samples = List(7) { sample() }.sorted()
+                val result = "native-getCells records=$records requests=$requests median-ns/call=${samples[3]}"
+                Log.i("TermRenderBenchmark", result)
+                InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("benchmark", result) })
+            }
+        }
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 31)
+    fun wrappedParagraphLayout() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("renderBenchmark") == "true")
+        val visibleRows = 24
+        val totalRows = 120
+        val columns = 80
+        val letters = "بتثجحخدذرزسشصضطظ"
+        val paragraph = List(totalRows) { row ->
+            val text = "سلام".repeat(19) + letters[row / letters.length] + letters[row % letters.length] + "00"
+            val cells = PackedCells.from(text.map { TerminalLine.Cell(it, fgColor = Color.White, bgColor = Color.Black) })
+            TerminalLine(row, cells, softWrapped = row < totalRows - 1)
+        }
+        val cropped = TerminalScreenState(TerminalSnapshot.empty(visibleRows, columns).copy(
+            lines = paragraph.takeLast(visibleRows),
+            scrollback = paragraph.dropLast(visibleRows),
+        ))
+        val full = TerminalScreenState(TerminalSnapshot.empty(totalRows, columns).copy(lines = paragraph))
+        val engine = TerminalShaping(TerminalTextPaint(Typeface.MONOSPACE, 20f), byteLimit = 4 * 1024 * 1024)
+        data class Sample(val nanos: Long, val allocatedBytes: Long)
+
+        val croppedSamples = mutableListOf<Sample>()
+        val fullSamples = mutableListOf<Sample>()
+        fun measure(state: TerminalScreenState, row: Int, expectedLayouts: Int): Sample {
+            engine.clear()
+            val count = engine.shapeCount
+            val allocated = Debug.getRuntimeStat("art.gc.bytes-allocated").toLong()
+            val start = System.nanoTime()
+            val layout = engine.layout(state, row, 12f)
+            val elapsed = System.nanoTime() - start
+            val bytes = Debug.getRuntimeStat("art.gc.bytes-allocated").toLong() - allocated
+            check(layout != null && engine.shapeCount - count == expectedLayouts)
+            return Sample(elapsed, bytes)
+        }
+        repeat(3) {
+            measure(cropped, 0, visibleRows)
+            measure(full, totalRows - visibleRows, totalRows)
+        }
+        repeat(5) {
+            croppedSamples.add(measure(cropped, 0, visibleRows))
+            fullSamples.add(measure(full, totalRows - visibleRows, totalRows))
+            fullSamples.add(measure(full, totalRows - visibleRows, totalRows))
+            croppedSamples.add(measure(cropped, 0, visibleRows))
+        }
+        fun median(samples: List<Sample>, value: (Sample) -> Long): Long =
+            samples.map(value).sorted()[samples.size / 2]
+
+        val result = "wrapped-paragraph rows=$totalRows cropped=$visibleRows " +
+            "cropped-ns=${median(croppedSamples, Sample::nanos)} full-ns=${median(fullSamples, Sample::nanos)} " +
+            "cropped-bytes=${median(croppedSamples, Sample::allocatedBytes)} full-bytes=${median(fullSamples, Sample::allocatedBytes)}"
+        Log.i("TermRenderBenchmark", result)
+        InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("benchmark", result) })
+    }
+
+    @Test
     @SdkSuppress(minSdkVersion = 29)
     fun shadedBlocksOnRecordingCanvas() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("renderBenchmark") == "true")

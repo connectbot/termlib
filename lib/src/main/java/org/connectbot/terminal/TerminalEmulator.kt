@@ -355,7 +355,6 @@ internal class TerminalEmulatorImpl(
         }
     }
     internal val commands = TerminalDispatcher()
-    private val snapshots = TerminalDispatcher()
     private var outputBatch: ByteArrayOutputStream? = null
 
     internal fun batchOutput(action: () -> Unit) = synchronized(damageLock) {
@@ -479,6 +478,7 @@ internal class TerminalEmulatorImpl(
     // MUST be initialized before terminalNative.
     private val damageLock = Any()
     private val pendingDamageRegions = mutableListOf<DamageRegion>()
+    private val snapshotTask = Runnable { processScheduledUpdates() }
     private var damagePosted = false
     private var nextSnapshotNanos = System.nanoTime()
     private var cursorMoved = false
@@ -533,13 +533,7 @@ internal class TerminalEmulatorImpl(
 
     @Volatile private var isAltScreenActive = false
 
-    // Scrollback buffer
-    private val scrollback = ArrayDeque<TerminalLine>()
-    private val maxScrollbackLines = 1000
-
-    // Cached immutable copy of scrollback - only recreate when scrollback changes
-    private var scrollbackSnapshot: List<TerminalLine> = emptyList()
-    private var scrollbackDirty = false
+    private val scrollback = ScrollbackHistory(limit = 1000)
 
     // Fixed-capacity direct scratch, independent of screen dimensions.
     private val screenTransfer = ScreenTransfer()
@@ -584,10 +578,11 @@ internal class TerminalEmulatorImpl(
         imagePolicy = InlineImages.Off
         imageStore.close()
         scrollback.clear()
-        scrollbackSnapshot = emptyList()
         currentLines.clear()
         pendingScrollback = null
         scrollbackCellBuffer = null
+        scrollbackWords = null
+        scrollbackRecords = null
         screenTransfer.close()
         pendingDamageRegions.clear()
         pendingSemanticSegments.clear()
@@ -818,24 +813,26 @@ internal class TerminalEmulatorImpl(
                 dest.endCol == cols && src.endCol == cols &&
                 dest.endRow - dest.startRow == src.endRow - src.startRow
             ) {
-                val previous = currentLines
-                val updated = previous.toMutableList()
-                for (offset in 0 until dest.endRow - dest.startRow) {
+                val count = dest.endRow - dest.startRow
+                val offsets = if (dest.startRow > src.startRow) count - 1 downTo 0 else 0 until count
+                for (offset in offsets) {
                     val destRow = dest.startRow + offset
                     val srcRow = src.startRow + offset
-                    if (destRow in updated.indices && srcRow in previous.indices) {
-                        updated[destRow] = previous[srcRow].copy(row = destRow)
+                    if (destRow in currentLines.indices && srcRow in currentLines.indices) {
+                        // Publish the new row number when its cells are reconciled.
+                        currentLines[destRow] = currentLines[srcRow]
                     }
                 }
-                currentLines = updated
 
-                val movedTexts = semanticSegmentTexts.entries.mapNotNull { (key, value) ->
-                    if (key.row !in src.startRow until src.endRow) return@mapNotNull null
-                    val destRow = dest.startRow + key.row - src.startRow
-                    if (destRow !in dest.startRow until dest.endRow) null else key.copy(row = destRow) to value
+                if (semanticSegmentTexts.isNotEmpty()) {
+                    val movedTexts = semanticSegmentTexts.entries.mapNotNull { (key, value) ->
+                        if (key.row !in src.startRow until src.endRow) return@mapNotNull null
+                        val destRow = dest.startRow + key.row - src.startRow
+                        if (destRow !in dest.startRow until dest.endRow) null else key.copy(row = destRow) to value
+                    }
+                    semanticSegmentTexts.keys.removeAll { it.row in dest.startRow until dest.endRow }
+                    semanticSegmentTexts.putAll(movedTexts)
                 }
-                semanticSegmentTexts.keys.removeAll { it.row in dest.startRow until dest.endRow }
-                semanticSegmentTexts.putAll(movedTexts)
             }
             for (row in dest.startRow until dest.endRow) {
                 movedSegmentRows.add(row)
@@ -932,14 +929,22 @@ internal class TerminalEmulatorImpl(
     }
 
     private var scrollbackCellBuffer: ByteBuffer? = CellData.buffer()
+    private var scrollbackWords = scrollbackCellBuffer?.asIntBuffer()
+    private var scrollbackRecords: IntArray? = null
     private var pendingScrollback: PackedCells.Builder? = null
 
     override fun cellBuffer(): ByteBuffer = checkNotNull(scrollbackCellBuffer)
 
-    override fun pushScrollbackLine(cols: Int, start: Int, count: Int, cells: ByteBuffer, softWrapped: Boolean): Int {
+    override fun pushScrollbackLine(cols: Int, start: Int, count: Int, wordCount: Int, cells: ByteBuffer, softWrapped: Boolean): Int {
         if (start == 0) pendingScrollback = PackedCells.Builder(cols)
         val builder = checkNotNull(pendingScrollback)
-        builder.read(cells, 0, count)
+        val words = checkNotNull(scrollbackWords)
+        check(wordCount in 1..words.capacity())
+        val records = scrollbackRecords?.takeIf { it.size >= wordCount }
+            ?: IntArray(wordCount).also { scrollbackRecords = it }
+        words.position(0)
+        words.get(records, 0, wordCount)
+        builder.read(records, 0, count)
         if (start + count < cols) return 0
         val cellList = builder.build()
         pendingScrollback = null
@@ -956,12 +961,7 @@ internal class TerminalEmulatorImpl(
             val line = TerminalLine(row = -1, cells = cellList, softWrapped = softWrapped, semanticSegments = line0Segments)
 
             outputJournal?.push(line)
-
-            scrollback.add(line)
-            if (scrollback.size > maxScrollbackLines) {
-                scrollback.removeFirst()
-            }
-            scrollbackDirty = true
+            scrollback.append(line)
 
             propertyChanged = true
             requestProcessPendingUpdatesLocked()
@@ -973,7 +973,6 @@ internal class TerminalEmulatorImpl(
         synchronized(damageLock) {
             imageStore.trimHistory(0)
             scrollback.clear()
-            scrollbackDirty = true
             propertyChanged = true
             requestProcessPendingUpdatesLocked()
         }
@@ -982,9 +981,7 @@ internal class TerminalEmulatorImpl(
 
     override fun popScrollbackLine(cols: Int, start: Int, count: Int, cells: ByteBuffer): Int {
         synchronized(damageLock) {
-            if (scrollback.isEmpty()) return 0
-
-            val line = scrollback.last()
+            val line = scrollback.lastOrNull() ?: return 0
             CellData.writeRange(cells, start, count, line.cells, currentDefaultForeground, currentDefaultBackground)
             // A narrower restore must not leave a dangling wide cell at the edge.
             if (start + count == cols && cols <= line.cells.size && cols > 0 && line.cells.width(cols - 1) == 2) {
@@ -994,7 +991,6 @@ internal class TerminalEmulatorImpl(
             }
             if (start + count < cols) return 1
             scrollback.removeLast()
-            scrollbackDirty = true
 
             propertyChanged = true
             requestProcessPendingUpdatesLocked()
@@ -1142,22 +1138,19 @@ internal class TerminalEmulatorImpl(
      */
     @VisibleForTesting
     fun processPendingUpdates(): Unit = synchronized(damageLock) {
-        if (closed) return@synchronized
-        // Collect pending changes
-        val damageRegions: List<DamageRegion>
-        val needsUpdate: Boolean
-        val movedRows: Set<Int>
-        synchronized(damageLock) {
-            damageRegions = pendingDamageRegions.toList()
-            pendingDamageRegions.clear()
-            movedRows = movedSegmentRows.toSet()
-            movedSegmentRows.clear()
-            needsUpdate = damageRegions.isNotEmpty() || cursorMoved || propertyChanged
-            cursorMoved = false
-            propertyChanged = false
-        }
+        processPendingUpdatesLocked()
+    }
 
-        if (!needsUpdate) return@synchronized
+    private fun processPendingUpdatesLocked() {
+        if (closed) return
+        val damageRegions = pendingDamageRegions.toList()
+        pendingDamageRegions.clear()
+        val movedRows = movedSegmentRows.toSet()
+        movedSegmentRows.clear()
+        val needsUpdate = damageRegions.isNotEmpty() || cursorMoved || propertyChanged
+        cursorMoved = false
+        propertyChanged = false
+        if (!needsUpdate) return
 
         // One range per row and one immutable replacement per changed row.
         for (row in 0 until rows) {
@@ -1181,28 +1174,31 @@ internal class TerminalEmulatorImpl(
             }
         }
         var builder: PackedCells.Builder? = null
-        screenTransfer.fetch(terminalNative, transferRanges) { row, start, count, buffer, offset, softWrapped ->
-            val previous = currentLines[row].cells
-            if (builder == null && (previous.size != cols || !previous.matches(buffer, offset, start, count))) {
-                builder = PackedCells.Builder(cols).apply { copy(previous, 0, start) }
+        val tracing = android.os.Build.VERSION.SDK_INT >= 29 && android.os.Trace.isEnabled()
+        if (tracing) android.os.Trace.beginSection("terminal.snapshot.rows")
+        try {
+            screenTransfer.fetch(terminalNative, transferRanges) { row, start, count, buffer, offset, softWrapped ->
+                val previous = currentLines[row].cells
+                if (builder == null && (previous.size != cols || !previous.matches(buffer, offset, start, count))) {
+                    builder = PackedCells.Builder(cols, previous).apply { copy(previous, 0, start) }
+                }
+                builder?.read(buffer, offset, count)
+                if (start + count == transferRanges[row * 2 + 1]) {
+                    val cells = builder?.let {
+                        if (start + count < cols) it.copy(previous, start + count, cols)
+                        it.build()
+                    } ?: previous
+                    updateLine(row, cells, softWrapped, damageRegions, row in movedRows)
+                    builder = null
+                }
             }
-            builder?.read(buffer, offset, count)
-            if (start + count == transferRanges[row * 2 + 1]) {
-                val cells = builder?.let {
-                    if (start + count < cols) it.copy(previous, start + count, cols)
-                    it.build()
-                } ?: previous
-                updateLine(row, cells, softWrapped, damageRegions, row in movedRows)
-                builder = null
-            }
+        } finally {
+            if (tracing) android.os.Trace.endSection()
         }
 
         // Apply pending semantic segments now that text content is available
-        val segmentsToApply: List<PendingSemanticSegment>
-        synchronized(damageLock) {
-            segmentsToApply = pendingSemanticSegments.toList()
-            pendingSemanticSegments.clear()
-        }
+        val segmentsToApply = pendingSemanticSegments.toList()
+        pendingSemanticSegments.clear()
 
         for (segment in segmentsToApply) {
             applySemanticSegment(segment)
@@ -1211,26 +1207,27 @@ internal class TerminalEmulatorImpl(
         // Build and emit new snapshot
         val newSnapshot = buildSnapshot()
         outputJournal?.update(newSnapshot)
+        TerminalFrameTrace.published(newSnapshot)
         _snapshot.value = newSnapshot
     }
 
     /**
      * Apply a semantic segment to a line.
-     * This is called during processPendingUpdates when the actual text is available.
+     * The snapshot worker holds damageLock and has already fetched the line's text.
      */
-    private fun applySemanticSegment(segment: PendingSemanticSegment) = synchronized(damageLock) {
+    private fun applySemanticSegment(segment: PendingSemanticSegment) {
         val row = segment.row
 
         // Ensure row is valid
         if (row < 0 || row >= currentLines.size) {
-            return@synchronized
+            return
         }
 
         val line = currentLines[row]
         if (segment.semanticType == SemanticType.HYPERLINK) {
-            if (!isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) return@synchronized
+            if (!isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) return
             val linkedText = cellText(line.cells, segment.startCol, segment.endCol)
-            if (linkedText.all { it == '\u0000' || it.isWhitespace() }) return@synchronized
+            if (linkedText.all { it == '\u0000' || it.isWhitespace() }) return
         }
 
         // Create new segment
@@ -1243,8 +1240,8 @@ internal class TerminalEmulatorImpl(
         )
 
         if (newSegment in line.semanticSegments) {
-            storeSegmentText(row, newSegment, line)
-            return@synchronized
+            storeSegmentTextLocked(row, newSegment, line)
+            return
         }
 
         // Add to existing segments (sorted by startCol)
@@ -1253,72 +1250,53 @@ internal class TerminalEmulatorImpl(
 
         // Update the line with new segments
         currentLines[row] = line.copy(semanticSegments = updatedSegments)
-        storeSegmentText(row, newSegment, line)
+        storeSegmentTextLocked(row, newSegment, line)
     }
 
     /**
-     * Update a single line by fetching cell data from the terminal.
+     * Update a cached line with its fetched cells while holding damageLock.
      */
     private fun updateLine(row: Int, cells: PackedCells, softWrapped: Boolean, damageRegions: List<DamageRegion>, preserveMovedSegments: Boolean) {
-        // Update cached line, preserving existing semantic segments only when they
-        // were not touched by terminal text damage. This prevents stale OSC 8
-        // links from surviving line redraws while allowing display-only
-        // invalidations, such as palette changes, to keep semantic metadata.
-        // Must synchronize to ensure visibility of segments added by addSemanticSegment
-        synchronized(damageLock) {
-            run {
-                val previousLine = currentLines[row]
-                val existingSegments = previousLine.semanticSegments
-                val preservedSegments = if (existingSegments.isEmpty()) {
-                    existingSegments
-                } else if (preserveMovedSegments) {
-                    existingSegments.filter { segment ->
-                        segment.endCol <= cells.size &&
-                            (!preserveMovedSegments || segmentTextStillMatches(row, segment, cells))
-                    }
-                } else {
-                    existingSegments.filter { segment ->
-                        segment.endCol <= cells.size &&
-                            damageRegions.none { region ->
-                                !region.preserveSegments && row >= region.startRow && row < region.endRow &&
-                                    segment.overlaps(region.startCol, region.endCol)
-                            }
-                    }
-                }
-                replaceStoredSegmentTexts(row, preservedSegments)
-                if (cells !== previousLine.cells || softWrapped != previousLine.softWrapped || preservedSegments != existingSegments) {
-                    currentLines[row] = TerminalLine(row, cells, softWrapped = softWrapped, semanticSegments = preservedSegments)
-                }
+        // Preserve links through display-only damage, such as palette changes.
+        val previousLine = currentLines[row]
+        val existingSegments = previousLine.semanticSegments
+        val preservedSegments = if (existingSegments.isEmpty()) {
+            existingSegments
+        } else if (preserveMovedSegments) {
+            existingSegments.filter { segment ->
+                segment.endCol <= cells.size &&
+                    segmentTextStillMatchesLocked(row, segment, cells)
             }
+        } else {
+            existingSegments.filter { segment ->
+                segment.endCol <= cells.size &&
+                    damageRegions.none { region ->
+                        !region.preserveSegments && row >= region.startRow && row < region.endRow &&
+                            segment.overlaps(region.startCol, region.endCol)
+                    }
+            }
+        }
+        replaceStoredSegmentTextsLocked(row, preservedSegments)
+        if (cells !== previousLine.cells || softWrapped != previousLine.softWrapped || preservedSegments != existingSegments) {
+            currentLines[row] = TerminalLine(row, cells, softWrapped = softWrapped, semanticSegments = preservedSegments)
+        } else if (previousLine.row != row) {
+            currentLines[row] = previousLine.copy(row = row)
         }
     }
 
-    /**
-     * Build a complete snapshot of terminal state.
-     */
-    private fun buildSnapshot(): TerminalSnapshot = synchronized(damageLock) {
-        // Read all mutable state under damageLock to ensure cross-thread visibility.
-        // addSemanticSegment writes currentLines on the JNI callback thread; without
-        // the lock here, the snapshot-building thread might see a stale reference.
-        val lines: List<TerminalLine>
-        val scrollbackCopy: List<TerminalLine>
-        synchronized(damageLock) {
-            if (scrollbackDirty) {
-                scrollbackSnapshot = scrollback.toList()
-                scrollbackDirty = false
-            }
-            val previous = _snapshot.value.lines
-            lines = if (previous.size == currentLines.size && currentLines.indices.all { currentLines[it] === previous[it] }) {
-                previous
-            } else {
-                currentLines.toList()
-            }
-            scrollbackCopy = scrollbackSnapshot // Reuse cached immutable copy
+    /** Build a snapshot while holding damageLock. */
+    private fun buildSnapshot(): TerminalSnapshot {
+        val previous = _snapshot.value.lines
+        val lines = if (previous.size == currentLines.size && currentLines.indices.all { currentLines[it] === previous[it] }) {
+            previous
+        } else {
+            currentLines.toList()
         }
+        val scrollbackCopy = scrollback.snapshot()
 
         val hasImages = imageStore.assets.isNotEmpty()
         if (hasImages) imageStore.preparePlaceholders(lines, scrollbackCopy)
-        TerminalSnapshot(
+        return TerminalSnapshot(
             lines = if (!hasImages) {
                 lines
             } else {
@@ -1382,7 +1360,7 @@ internal class TerminalEmulatorImpl(
     }
 
     /**
-     * Schedule snapshot work at display-frame cadence.
+     * Rate-limit snapshot work while leaving time for input and drawing.
      *
      * libvterm can report many small damage/cursor callbacks while a single PTY read is
      * processed. Running updateLine/buildSnapshot for every callback burst can outpace
@@ -1394,19 +1372,21 @@ internal class TerminalEmulatorImpl(
         if (closed || damagePosted) return
         damagePosted = true
         val waitNanos = nextSnapshotNanos - System.nanoTime()
-        if (waitNanos <= 0) {
-            snapshots.execute { processScheduledUpdates() }
-        } else {
-            snapshots.executeAfter((waitNanos + 999_999) / 1_000_000) { processScheduledUpdates() }
-        }
+        TerminalDispatcher.scheduleSnapshot(snapshotTask, waitNanos)
     }
 
     private fun processScheduledUpdates(): Unit = synchronized(damageLock) {
         damagePosted = false
-        // Limit sustained work to roughly one snapshot per refresh interval,
-        // without adding a full interval to every newly arriving input burst.
-        nextSnapshotNanos = System.nanoTime() + 16_000_000L
-        processPendingUpdates()
+        // Leave slack below a 60 Hz refresh interval so parsing and dispatcher
+        // jitter do not make a regular 60 Hz input stream wait for the limiter.
+        nextSnapshotNanos = System.nanoTime() + 12_000_000L
+        val tracing = android.os.Build.VERSION.SDK_INT >= 29 && android.os.Trace.isEnabled()
+        if (tracing) android.os.Trace.beginSection("terminal.snapshot.build")
+        try {
+            processPendingUpdatesLocked()
+        } finally {
+            if (tracing) android.os.Trace.endSection()
+        }
     }
 
     /**
@@ -1478,32 +1458,25 @@ internal class TerminalEmulatorImpl(
             eastAsianWidth == UCharacter.EastAsianWidth.WIDE
     }
 
-    private fun storeSegmentText(row: Int, segment: SemanticSegment, line: TerminalLine) {
-        synchronized(damageLock) {
-            if (!isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) return@synchronized
-            semanticSegmentTexts[SemanticSegmentKey(row, segment)] = cellText(line.cells, segment.startCol, segment.endCol)
-        }
+    private fun storeSegmentTextLocked(row: Int, segment: SemanticSegment, line: TerminalLine) {
+        if (!isValidCellRange(segment.startCol, segment.endCol, line.cells.size)) return
+        semanticSegmentTexts[SemanticSegmentKey(row, segment)] = cellText(line.cells, segment.startCol, segment.endCol)
     }
 
-    private fun segmentTextStillMatches(row: Int, segment: SemanticSegment, cells: PackedCells): Boolean {
-        return synchronized(damageLock) {
-            val expected = semanticSegmentTexts[SemanticSegmentKey(row, segment)] ?: return@synchronized true
-            if (!isValidCellRange(segment.startCol, segment.endCol, cells.size)) return@synchronized false
-            val actual = cellText(cells, segment.startCol, segment.endCol)
-            actual == expected
-        }
+    private fun segmentTextStillMatchesLocked(row: Int, segment: SemanticSegment, cells: PackedCells): Boolean {
+        val expected = semanticSegmentTexts[SemanticSegmentKey(row, segment)] ?: return true
+        if (!isValidCellRange(segment.startCol, segment.endCol, cells.size)) return false
+        return cellText(cells, segment.startCol, segment.endCol) == expected
     }
 
     private fun isValidCellRange(startCol: Int, endCol: Int, cellCount: Int): Boolean = startCol >= 0 && endCol >= startCol && endCol <= cellCount
 
     private fun cellText(cells: PackedCells, startCol: Int, endCol: Int): String = cells.text(startCol, endCol)
 
-    private fun replaceStoredSegmentTexts(row: Int, segments: List<SemanticSegment>) {
-        synchronized(damageLock) {
-            if (semanticSegmentTexts.isEmpty()) return
-            val keep = segments.mapTo(mutableSetOf()) { SemanticSegmentKey(row, it) }
-            semanticSegmentTexts.keys.removeAll { it.row == row && it !in keep }
-        }
+    private fun replaceStoredSegmentTextsLocked(row: Int, segments: List<SemanticSegment>) {
+        if (semanticSegmentTexts.isEmpty()) return
+        val keep = segments.mapTo(mutableSetOf()) { SemanticSegmentKey(row, it) }
+        semanticSegmentTexts.keys.removeAll { it.row == row && it !in keep }
     }
 
     private fun removeStoredSegmentTexts(row: Int) {

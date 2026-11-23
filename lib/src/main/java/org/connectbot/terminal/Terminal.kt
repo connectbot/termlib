@@ -1726,7 +1726,7 @@ internal fun TerminalWithAccessibility(
                                 )
                             }
                         }
-                    },
+                    }.graphicsLayer { }, // Record the rows once for both cursor inversion passes.
                 ) {
                     TerminalRows(
                         screenState = screenState,

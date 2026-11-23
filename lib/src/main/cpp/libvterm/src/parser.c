@@ -10,6 +10,24 @@ static bool is_intermed(unsigned char c)
   return c >= 0x20 && c <= 0x2f;
 }
 
+static size_t ascii_string_blocks(const char *bytes, size_t len)
+{
+  const uint64_t high = UINT64_C(0x8080808080808080);
+  size_t pos = 0;
+  while(len - pos >= sizeof(uint64_t)) {
+    uint64_t word;
+    memcpy(&word, bytes + pos, sizeof(word));
+    /* With the high bits clear, these additions cannot carry into the
+     * adjacent byte. Check for bytes below space or equal to DEL. */
+    if((word & high) ||
+        ((word + UINT64_C(0x6060606060606060)) & high) != high ||
+        ((word + UINT64_C(0x0101010101010101)) & high))
+      break;
+    pos += sizeof(word);
+  }
+  return pos;
+}
+
 static void do_control(VTerm *vt, unsigned char control)
 {
   if(vt->parser.callbacks && vt->parser.callbacks->control)
@@ -43,6 +61,34 @@ static void do_csi(VTerm *vt, char command)
       return;
 
   DEBUG_LOG("libvterm: Unhandled CSI %c\n", command);
+}
+
+/* A complete, unprefixed SGR with one short decimal parameter can skip the
+ * byte-by-byte CSI states. Leave fragmented and extended syntax to the parser. */
+static size_t parse_short_sgr(VTerm *vt, const char *bytes, size_t len)
+{
+  if(len < 4 || bytes[1] != '[')
+    return 0;
+
+  long arg = 0;
+  for(size_t pos = 2; pos < 5 && pos < len - 1; pos++) {
+    unsigned int digit = (unsigned char)bytes[pos] - '0';
+    if(digit > 9)
+      break;
+    arg = arg * 10 + digit;
+    if(bytes[pos + 1] == 'm') {
+      vt->parser.v.csi.leaderlen = 0;
+      vt->parser.v.csi.leader[0] = 0;
+      vt->parser.v.csi.argi = 1;
+      vt->parser.v.csi.args[0] = arg;
+      vt->parser.intermedlen = 0;
+      vt->parser.intermed[0] = 0;
+      vt->parser.state = CSI_INTERMED;
+      do_csi(vt, 'm');
+      return pos + 1;
+    }
+  }
+  return 0;
 }
 
 static void do_escape(VTerm *vt, char command)
@@ -164,6 +210,14 @@ size_t vterm_input_write(VTerm *vt, const char *bytes, size_t len)
       continue;
     }
     else if(c == 0x1b) { // ESC
+      if(vt->parser.state == NORMAL && !vt->parser.in_esc) {
+        size_t sgr_end = parse_short_sgr(vt, bytes + pos, len - pos);
+        if(sgr_end) {
+          pos += sgr_end;
+          ENTER_NORMAL_STATE();
+          continue;
+        }
+      }
       vt->parser.intermedlen = 0;
       if(!IS_STRING_STATE())
         vt->parser.state = NORMAL;
@@ -320,6 +374,11 @@ string_state:
       if(c == 0x07 || (c1_allowed && c == 0x9c)) {
         string_fragment(vt, string_start, string_len, true);
         ENTER_NORMAL_STATE();
+      }
+      else if(c >= 0x20 && c < 0x7f) {
+        /* Leave terminators, cancellations, and control bytes for the
+         * normal loop. The fragment still spans the same original bytes. */
+        pos += ascii_string_blocks(bytes + pos + 1, len - pos - 1);
       }
       break;
 

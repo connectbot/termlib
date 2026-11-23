@@ -75,22 +75,7 @@ internal class TerminalScreenState(
      * @param index Line index (0 = oldest scrollback, totalLines-1 = last visible line)
      * @return The terminal line at the specified index
      */
-    fun getLine(index: Int): TerminalLine = if (index < snapshot.scrollback.size) {
-        snapshot.scrollback[index]
-    } else {
-        val screenIndex = index - snapshot.scrollback.size
-        if (screenIndex in snapshot.lines.indices) {
-            snapshot.lines[screenIndex]
-        } else {
-            // Return empty line if index out of bounds
-            TerminalLine.empty(
-                row = screenIndex,
-                cols = snapshot.cols,
-                defaultFg = androidx.compose.ui.graphics.Color.White,
-                defaultBg = androidx.compose.ui.graphics.Color.Black,
-            )
-        }
-    }
+    fun getLine(index: Int): TerminalLine = snapshot.getLine(index)
 
     /**
      * Get the visible line at the specified row, accounting for scroll position.
@@ -218,6 +203,7 @@ internal class TerminalScreenState(
         val newScrollbackSize = newSnapshot.scrollback.size
         onSnapshotChanged?.invoke(snapshot, newSnapshot)
         snapshot = newSnapshot
+        TerminalFrameTrace.applied(newSnapshot)
         if (scrollbackPosition != 0) {
             val delta = newScrollbackSize - oldScrollbackSize
             scrollbackPosition = (scrollbackPosition + delta).coerceIn(0, newScrollbackSize)

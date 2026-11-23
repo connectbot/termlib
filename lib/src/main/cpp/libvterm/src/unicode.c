@@ -1,4 +1,5 @@
 #include "vterm_internal.h"
+#include <limits.h>
 #include <string.h>
 
 // ### The following from http://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c
@@ -181,7 +182,12 @@ static int bisearch(uint32_t ucs, const struct interval *table, int max) {
  */
 
 
-static int mk_wcwidth(uint32_t ucs)
+static bool is_combining(uint32_t ucs)
+{
+  return bisearch(ucs, combining, sizeof(combining) / sizeof(combining[0]) - 1);
+}
+
+static int mk_wcwidth_known_combining(uint32_t ucs, bool combining_mark)
 {
   /* test for 8-bit control characters */
   if (ucs == 0)
@@ -189,9 +195,7 @@ static int mk_wcwidth(uint32_t ucs)
   if (ucs < 32 || (ucs >= 0x7f && ucs < 0xa0))
     return -1;
 
-  /* binary search in table of non-spacing characters */
-  if (bisearch(ucs, combining,
-               sizeof(combining) / sizeof(struct interval) - 1))
+  if (combining_mark)
     return 0;
 
   /* if we arrive here, ucs is not a combining or C0/C1 control character */
@@ -212,6 +216,10 @@ static int mk_wcwidth(uint32_t ucs)
       (ucs >= 0x30000 && ucs <= 0x3fffd)));
 }
 
+static int mk_wcwidth(uint32_t ucs)
+{
+  return mk_wcwidth_known_combining(ucs, is_combining(ucs));
+}
 
 #ifdef USE_MK_WCWIDTH_CJK
 
@@ -308,19 +316,22 @@ static int default_emoji(uint32_t cp)
       sizeof(emoji_presentation) / sizeof(emoji_presentation[0]) - 1);
 }
 
-/* Return the matching trie node, or zero when this is not an emoji prefix. */
-static unsigned emoji_prefix(const uint32_t *chars, int count)
+static unsigned emoji_root(uint32_t codepoint)
 {
-  if(count == 0) return 0;
   int low = 0, high = sizeof(emoji_roots) / sizeof(emoji_roots[0]);
   while(low < high) {
     int middle = (low + high) / 2;
-    if(emoji_nodes[emoji_roots[middle]].cp < chars[0]) low = middle + 1;
+    if(emoji_nodes[emoji_roots[middle]].cp < codepoint) low = middle + 1;
     else high = middle;
   }
   if(low == sizeof(emoji_roots) / sizeof(emoji_roots[0]) ||
-      emoji_nodes[emoji_roots[low]].cp != chars[0]) return 0;
-  unsigned node = emoji_roots[low];
+      emoji_nodes[emoji_roots[low]].cp != codepoint) return 0;
+  return emoji_roots[low];
+}
+
+/* Return the matching trie node, or zero when this is not an emoji prefix. */
+static unsigned emoji_prefix(unsigned node, const uint32_t *chars, int count)
+{
   for(int i = 1; i < count; i++) {
     unsigned edge = emoji_nodes[node].child;
     while(edge && emoji_nodes[edge].cp < chars[i])
@@ -332,10 +343,40 @@ static unsigned emoji_prefix(const uint32_t *chars, int count)
   return node;
 }
 
-INTERNAL int vterm_unicode_can_extend(const uint32_t *chars, int count, uint32_t cp)
+static int unicode_width(uint32_t codepoint, bool combining_mark)
 {
-  if(count >= VTERM_MAX_CHARS_PER_CELL || cp < 0x80) return 0;
-  if(vterm_unicode_is_combining(cp)) return 1;
+  if(default_emoji(codepoint)) return 2;
+  if(bisearch(codepoint, fullwidth, sizeof(fullwidth) / sizeof(fullwidth[0]) - 1))
+    return 2;
+
+  return mk_wcwidth_known_combining(codepoint, combining_mark);
+}
+
+/* Only non-ASCII code points are cached, so a zero-initialized entry misses. */
+static unsigned unicode_properties_slot(VTermState *state, uint32_t codepoint)
+{
+  unsigned slot = (codepoint ^ (codepoint >> 6)) & 63;
+  if(state->unicode_cache[slot].codepoint != codepoint) {
+    bool mark = is_combining(codepoint);
+    state->unicode_cache[slot].codepoint = codepoint;
+    state->unicode_cache[slot].combining = mark;
+    state->unicode_cache[slot].width = unicode_width(codepoint, mark);
+    state->unicode_cache[slot].emoji_root = USHRT_MAX;
+  }
+  return slot;
+}
+
+/* The CJK Unified Ideographs block is wide and has no combining or emoji
+ * sequence code points. Avoid replacing cache entries when reading Han text. */
+static bool is_cjk_ideograph(uint32_t cp)
+{
+  return cp >= 0x4e00 && cp <= 0x9fff;
+}
+
+INTERNAL int vterm_unicode_can_extend(VTermState *state, const uint32_t *chars, int count, uint32_t cp)
+{
+  if(count >= VTERM_MAX_CHARS_PER_CELL || cp < 0x80 || is_cjk_ideograph(cp)) return 0;
+  if(state->unicode_cache[unicode_properties_slot(state, cp)].combining) return 1;
   /* Non-mark emoji extensions are a joined pictograph, a skin-tone modifier,
    * or the second regional indicator. Ordinary adjacent letters cannot join. */
   if(chars[count - 1] != 0x200D &&
@@ -346,39 +387,42 @@ INTERNAL int vterm_unicode_can_extend(const uint32_t *chars, int count, uint32_t
   uint32_t candidate[VTERM_MAX_CHARS_PER_CELL];
   memcpy(candidate, chars, count * sizeof(uint32_t));
   candidate[count] = cp;
-  return emoji_prefix(candidate, count + 1) != 0;
+  unsigned root = emoji_root(chars[0]);
+  return root && emoji_prefix(root, candidate, count + 1);
 }
 
-INTERNAL int vterm_unicode_cluster_width(const uint32_t *chars, int count)
+INTERNAL int vterm_unicode_cluster_width(VTermState *state, const uint32_t *chars, int count)
 {
+  if(is_cjk_ideograph(chars[0])) return 2;
   if(chars[0] >= 0x20 && chars[0] < 0x7F &&
       (count == 1 || (chars[0] != '#' && chars[0] != '*' &&
                       !(chars[0] >= '0' && chars[0] <= '9'))))
     return 1;
-  int width = vterm_unicode_width(chars[0]);
+  uint32_t base = chars[0];
+  unsigned slot = base < 0x80 ? 0 : unicode_properties_slot(state, base);
+  int width = base < 0x80 ? unicode_width(base, is_combining(base)) :
+      state->unicode_cache[slot].width;
   if(count == 1) return width > 0 ? width : 1;
+
+  unsigned root;
+  if(base < 0x80) {
+    root = emoji_root(base);
+  }
+  else {
+    if(state->unicode_cache[slot].emoji_root == USHRT_MAX)
+      state->unicode_cache[slot].emoji_root = emoji_root(base);
+    root = state->unicode_cache[slot].emoji_root;
+  }
+  if(!root) return width > 0 ? width : 1;
+
   /* Selectors alter presentation only for a standardized variation sequence. */
   if(count >= 2 && (chars[1] == 0xFE0E || chars[1] == 0xFE0F) &&
-      emoji_prefix(chars, 2)) {
+      emoji_prefix(root, chars, 2)) {
     if(chars[1] == 0xFE0E) return mk_wcwidth(chars[0]);
     width = 2;
   }
-  unsigned node = emoji_prefix(chars, count);
+  unsigned node = emoji_prefix(root, chars, count);
   if(node && emoji_nodes[node].complete && chars[count - 1] != 0xFE0E)
     width = 2;
   return width > 0 ? width : 1;
-}
-
-INTERNAL int vterm_unicode_width(uint32_t codepoint)
-{
-  if(default_emoji(codepoint)) return 2;
-  if(bisearch(codepoint, fullwidth, sizeof(fullwidth) / sizeof(fullwidth[0]) - 1))
-    return 2;
-
-  return mk_wcwidth(codepoint);
-}
-
-INTERNAL int vterm_unicode_is_combining(uint32_t codepoint)
-{
-  return bisearch(codepoint, combining, sizeof(combining) / sizeof(struct interval) - 1);
 }

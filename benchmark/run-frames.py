@@ -23,13 +23,17 @@ parser.add_argument("--workloads", default="idle,text,cacafire,png,rgba,animatio
 parser.add_argument("--iterations", default="5")
 parser.add_argument("--rows", type=int, default=24)
 parser.add_argument("--duration-ms", default="20000")
+parser.add_argument("--input-phase-us", type=int, help="Delay after a stable 60 Hz app frame, modulo the input period")
+parser.add_argument("--automation-accessibility", action="store_true", help="Keep UiAutomation accessibility enabled during measurement")
 parser.add_argument("--emulator", action="store_true", help="Explicitly suppress the emulator validity warning")
 parser.add_argument("--skip-runner-install", action="store_true", help="Reuse the identical runner APK already installed by a previous run")
 args = parser.parse_args()
+if args.input_phase_us is not None and not 0 <= args.input_phase_us < 16667:
+    parser.error("--input-phase-us must be between 0 and 16666")
 if not re.fullmatch(r"[A-Za-z0-9_.-]+", args.output.name):
     parser.error("output directory name must use only letters, numbers, dots, underscores or hyphens")
 workloads = args.workloads.split(",")
-if any(workload not in ("idle", "text", "shaping", "shaping-static", "cacafire", "png", "rgba", "animation", "input") for workload in workloads):
+if any(workload not in ("idle", "text", "shaping", "shaping-static", "shaping-recolor", "shaping-even", "shaping-odd", "cacafire", "png", "rgba", "animation", "input") for workload in workloads):
     parser.error("unknown workload")
 adb = [args.adb, "-s", args.serial]
 args.output.mkdir(parents=True, exist_ok=True)
@@ -43,7 +47,8 @@ for workload in workloads:
         raise RuntimeError(f"Refusing to mix new measurements with existing artifacts: {output}")
     output.mkdir(exist_ok=True)
     metadata = {"serial": args.serial, "checkout": str(args.checkout), "workload": workload,
-                "iterations": int(args.iterations), "duration_ms": int(args.duration_ms), "rows": args.rows}
+                "iterations": int(args.iterations), "duration_ms": int(args.duration_ms), "rows": args.rows,
+                "input_phase_us": args.input_phase_us, "automation_accessibility": args.automation_accessibility}
     for label, command in (("model", ["getprop", "ro.product.model"]),
                            ("build", ["getprop", "ro.build.fingerprint"]),
                            ("thermal_before", ["dumpsys", "thermalservice"]),
@@ -54,6 +59,10 @@ for workload in workloads:
     command = adb + ["shell", "am", "instrument", "-w", "-r",
                      "-e", "workload", workload, "-e", "rows", str(args.rows), "-e", "iterations", args.iterations,
                      "-e", "durationMs", args.duration_ms, "-e", "additionalTestOutputDir", remote]
+    if args.input_phase_us is not None:
+        command += ["-e", "inputPhaseUs", str(args.input_phase_us)]
+    if args.automation_accessibility:
+        command += ["-e", "automationAccessibility", "true"]
     if args.emulator:
         command += ["-e", "androidx.benchmark.suppressErrors", "EMULATOR"]
     command += ["org.connectbot.terminal.benchmark/androidx.test.runner.AndroidJUnitRunner"]

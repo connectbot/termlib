@@ -45,18 +45,79 @@ class NativeBoundaryTest {
     }
 
     @Test
+    fun compactScreenRecordsMatchFixedRecords() {
+        TerminalNative(Callbacks()).use { terminal ->
+            val columns = 24
+            terminal.resize(2, columns)
+            terminal.writeInput(
+                "\u001B[1;3;4;5;7;9;38;5;196;48;2;17;34;51m日e\u0301🎉\u001B[0mZ\u001B[?5h".toByteArray(),
+            )
+            val fixed = CellData.buffer()
+            fixed.putInt(0, 0).putInt(4, 0).putInt(8, columns)
+            assertEquals(columns, terminal.getCells(fixed, 1))
+            val expected = PackedCells.Builder(columns).apply {
+                read(fixed, CellData.HEADER_BYTES, columns)
+            }.build()
+            assertEquals(expected, readRow(terminal, columns))
+        }
+    }
+
+    @Test
+    fun paletteChangesApplyToExistingIndexedCells() {
+        TerminalNative(Callbacks()).use { terminal ->
+            terminal.resize(2, 12)
+            terminal.writeInput("\u001B[31mA\u001B[38;5;196mB\u001B[38;2;1;2;3mC".toByteArray())
+            val before = readRow(terminal, 12)
+            assertEquals(Color(0xFFFF0000), before[1].fgColor)
+            assertEquals(Color(0xFF010203), before[2].fgColor)
+
+            assertEquals(2, terminal.setPaletteColors(intArrayOf(0xFF000000.toInt(), 0xFF2468AC.toInt()), 2))
+            val after = readRow(terminal, 12)
+            assertEquals(Color(0xFF2468AC), after[0].fgColor)
+            assertEquals(before[1].fgColor, after[1].fgColor)
+            assertEquals(before[2].fgColor, after[2].fgColor)
+        }
+    }
+
+    @Test
+    fun scrollbackBorrowsScratchOncePerNativeCall() {
+        var borrows = 0
+        val callbacks = object : Callbacks() {
+            override fun cellBuffer(): ByteBuffer {
+                borrows++
+                return CellData.buffer()
+            }
+        }
+        TerminalNative(callbacks).use { terminal ->
+            terminal.resize(2, 80)
+            terminal.writeInput("a".toByteArray())
+            assertEquals(0, borrows)
+
+            terminal.writeInput("\r\nb\r\nc\r\n".toByteArray())
+            assertEquals(1, borrows)
+            terminal.writeInput("d\r\ne\r\n".toByteArray())
+            assertEquals(2, borrows)
+            assertEquals(listOf("a", "b", "c", "d"), callbacks.scrollback.map { PackedCells.from(it).text().trimEnd() })
+        }
+    }
+
+    @Test
     fun scrollbackChunksKeepWideCellsAcrossBufferBoundary() {
         val callbacks = Callbacks()
         TerminalNative(callbacks).use { terminal ->
-            terminal.resize(2, 3300)
-            val text = "a".repeat(CellData.BUFFER_BYTES / CellData.BYTES - 1) + "👩🏽‍❤️‍💋‍👨🏻\u0301Z"
+            val columns = 4200
+            terminal.resize(2, columns)
+            val firstWideColumn = CellData.BUFFER_BYTES / CellData.BYTES - 1
+            val secondWideColumn = CellData.BUFFER_BYTES / (CellData.SCREEN_WORDS * 4) - 1
+            val text = "a".repeat(firstWideColumn) + "界" +
+                "b".repeat(secondWideColumn - firstWideColumn - 2) + "界👩🏽‍❤️‍💋‍👨🏻\u0301Z"
             terminal.writeInput((text + "\r\nsecond\r\n").toByteArray())
             val saved = callbacks.scrollback.first() as PackedCells
             assertTrue(saved.text().startsWith(text))
-            terminal.resize(3, 3300)
+            terminal.resize(3, columns)
             val transfer = ScreenTransfer()
-            val builder = PackedCells.Builder(3300)
-            transfer.fetch(terminal, intArrayOf(0, 3300, 0, 0, 0, 0)) { _, _, count, buffer, offset, _ ->
+            val builder = PackedCells.Builder(columns)
+            transfer.fetch(terminal, intArrayOf(0, columns, 0, 0, 0, 0)) { _, _, count, buffer, offset, _ ->
                 builder.read(buffer, offset, count)
             }
             assertTrue(builder.build().text().startsWith(text))
@@ -76,6 +137,28 @@ class NativeBoundaryTest {
         cells.writeRecord(buffer, 0, 0)
         assertEquals(0x1F389, buffer.getInt(0))
         assertEquals(0x3FFFF, buffer.getInt(CellData.FLAGS))
+    }
+
+    @Test
+    fun compactScreenTransferResumesWhenExtraCodePointsFillBuffer() {
+        val columns = 2048
+        val text = "e\u0300\u0301\u0302\u0303\u0304\u0305".repeat(columns)
+        TerminalNative(Callbacks()).use { terminal ->
+            terminal.resize(2, columns)
+            terminal.writeInput(text.toByteArray())
+            val transfer = ScreenTransfer()
+            val builder = PackedCells.Builder(columns)
+            var expectedStart = 0
+            transfer.fetch(terminal, intArrayOf(0, columns, 0, 0)) { row, start, count, buffer, offset, _ ->
+                assertEquals(0, row)
+                assertEquals(expectedStart, start)
+                expectedStart += count
+                builder.read(buffer, offset, count)
+            }
+            assertEquals(columns, expectedStart)
+            assertEquals(2L, transfer.calls)
+            assertEquals(text, builder.build().text())
+        }
     }
 
     @Test
@@ -126,9 +209,11 @@ class NativeBoundaryTest {
         override fun bell() = 0
         override fun clearScrollback() = 0
         override fun onKeyboardInput(data: ByteArray) = 0
-        override fun pushScrollbackLine(cols: Int, start: Int, count: Int, cells: ByteBuffer, softWrapped: Boolean): Int {
+        override fun pushScrollbackLine(cols: Int, start: Int, count: Int, wordCount: Int, cells: ByteBuffer, softWrapped: Boolean): Int {
             if (start == 0) builder = PackedCells.Builder(cols)
-            builder!!.read(cells, 0, count)
+            val records = IntArray(wordCount)
+            cells.asIntBuffer().get(records)
+            builder!!.read(records, 0, count)
             if (start + count == cols) {
                 scrollback.add(builder!!.build())
                 builder = null

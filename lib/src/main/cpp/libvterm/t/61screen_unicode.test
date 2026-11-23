@@ -34,6 +34,18 @@ RESET
 PUSH "e\xCC\x81\xCC\x82\xCC\x83\xCC\x84\xCC\x85\xCC\x86\xCC\x87\xCC\x88\xCC\x89\xCC\x8A"
   ?screen_cell 0,0 = {0x65,0x301,0x302,0x303,0x304,0x305,0x306,0x307,0x308,0x309,0x30a} width=1 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)
 
+!Combining tails survive overlapping moves, erasure, and reuse
+RESET
+PUSH "e\xCC\x81\xCC\x82\xCC\x83\xCC\x84"x40
+PUSH "\e[H\e[@"
+PUSH "X"
+  ?screen_chars 0,0,1,2 = 0x58,0x65,0x301,0x302,0x303,0x304
+PUSH "\e[H\e[2P"
+  ?screen_cell 0,38 = {0x65,0x301,0x302,0x303,0x304} width=1 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)
+PUSH "\e[39G\e[K\e[Ha\xCC\x82\xCC\x83\xCC\x84\xCC\x85"
+  ?screen_chars 0,0,1,2 = 0x61,0x302,0x303,0x304,0x305,0x65,0x301,0x302,0x303,0x304
+  ?screen_eol 0,38 = 1
+
 !40 combining accents in two split writes of 20 should not crash
 RESET
 PUSH "e\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81"

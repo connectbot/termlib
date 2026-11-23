@@ -62,6 +62,31 @@ class TerminalMemoryTest {
     }
 
     @Test
+    fun overlappingScrollMovesReuseCellsAndPublishCorrectRowNumbers() {
+        val emulator = TerminalEmulatorFactory.create(initialRows = 5, initialCols = 10) as TerminalEmulatorImpl
+        emulator.use { terminal ->
+            terminal.writeInput("A\r\nB\r\nC\r\nD\r\nE".toByteArray())
+            terminal.processPendingUpdates()
+            val original = terminal.snapshot.value.lines
+
+            terminal.writeInput("\u001B[1S".toByteArray())
+            terminal.processPendingUpdates()
+            val up = terminal.snapshot.value.lines
+            for (row in 0..3) assertSame(original[row + 1].cells, up[row].cells)
+            assertEquals(listOf("B", "C", "D", "E", ""), up.map { it.text.trimEnd() })
+            assertEquals((0..4).toList(), up.map { it.row })
+
+            terminal.writeInput("\u001B[1T".toByteArray())
+            terminal.processPendingUpdates()
+            val down = terminal.snapshot.value.lines
+            for (row in 1..4) assertSame(up[row - 1].cells, down[row].cells)
+            assertEquals(listOf("", "B", "C", "D", "E"), down.map { it.text.trimEnd() })
+            assertEquals((0..4).toList(), down.map { it.row })
+            assertEquals(listOf("A", "B", "C", "D", "E"), original.map { it.text.trimEnd() })
+        }
+    }
+
+    @Test
     fun nativeWidthResizeClipsRowsWithoutReflow() {
         val terminal = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 6) as TerminalEmulatorImpl
         terminal.writeInput("abcdefghi".toByteArray())

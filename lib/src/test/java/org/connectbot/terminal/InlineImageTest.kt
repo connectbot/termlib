@@ -8,6 +8,7 @@ package org.connectbot.terminal
 import android.os.Handler
 import android.os.Looper
 import com.github.valfirst.slf4jtest.TestLoggerFactory
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -18,10 +19,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.zip.DeflaterOutputStream
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -540,6 +543,47 @@ class InlineImageTest {
     }
 
     @Test
+    fun kittyChecksPixelLengthForRawAndZlibUploads() {
+        val responses = mutableListOf<String>()
+        val terminal = TerminalEmulatorFactory.create(
+            initialRows = 6,
+            initialCols = 12,
+            onKeyboardInput = { responses.add(it.toString(Charsets.US_ASCII)) },
+            inlineImages = InlineImages.On(),
+        ) as TerminalEmulatorImpl
+        terminal.use {
+            fun compress(data: ByteArray) = ByteArrayOutputStream().also { buffer ->
+                DeflaterOutputStream(buffer).use { it.write(data) }
+            }.toByteArray()
+
+            var id = 0
+            fun send(format: Int, compression: String, data: ByteArray, expected: String) {
+                id++
+                terminal.write(kitty("a=t,f=$format,s=2,v=1,i=$id$compression", Base64.getEncoder().encodeToString(data)))
+                shadowOf(Looper.getMainLooper()).idle()
+                val reply = responses.single()
+                assertTrue(reply, reply.startsWith("\u001b_Gi=$id;") && reply.contains(expected))
+                responses.clear()
+                assertEquals(expected == ";OK", id.toLong() in terminal.imageStore.assets)
+                assertEquals(0, terminal.imageStore.uploadBytes)
+            }
+            for (format in listOf(24, 32)) {
+                val size = 2 * (format / 8)
+                val valid = ByteArray(size)
+                send(format, "", valid, ";OK")
+                send(format, "", ByteArray(size - 1), "EINVAL:short pixel data")
+                send(format, "", ByteArray(size + 1), "EINVAL:excess pixel data")
+                send(format, ",o=z", compress(valid), ";OK")
+                send(format, ",o=z", compress(ByteArray(size - 1)), "EINVAL:short pixel data")
+                send(format, ",o=z", compress(ByteArray(size + 1)), "EINVAL:excess pixel data")
+                val corrupt = compress(valid)
+                corrupt[corrupt.lastIndex] = (corrupt.last().toInt() xor 1).toByte()
+                send(format, ",o=z", corrupt, "EINVAL:")
+            }
+        }
+    }
+
+    @Test
     fun kittyHeaderOnlyChunksPreserveTransferOptions() {
         val payloads = mapOf(24 to "/wAA", 32 to "/wAA/w==", 100 to png)
         for ((format, data) in payloads) {
@@ -822,10 +866,29 @@ class InlineImageTest {
         for (invalid in listOf("A", "AA=", "AB==", "AAB=", "AA==AA==")) {
             val decoder = ImageBase64(ImageBytes.Builder(64))
             try {
-                invalid.forEach { decoder.accept(it.code) }
+                decoder.accept(invalid.toByteArray(), 0)
                 decoder.finish()
                 fail("Accepted $invalid")
             } catch (_: IllegalArgumentException) { }
+        }
+    }
+
+    @Test
+    fun bulkBase64PreservesBytesAcrossTransportFragmentsAndPaddedKittyChunks() {
+        val pixels = ByteArray(12_289) { (it * 37).toByte() }
+        val encoded = Base64.getEncoder().encode(pixels)
+        for (fragmentSize in listOf(5, 4096, encoded.size)) {
+            val builder = ImageBytes.Builder(pixels.size + 1)
+            val decoder = ImageBase64(builder)
+            for (start in encoded.indices step fragmentSize) {
+                val fragment = byteArrayOf('!'.code.toByte()) +
+                    encoded.copyOfRange(start, minOf(start + fragmentSize, encoded.size))
+                decoder.accept(fragment, 1)
+            }
+            decoder.finish()
+            decoder.accept("YQ==".toByteArray(), 0)
+            decoder.finish()
+            assertArrayEquals(pixels + 'a'.code.toByte(), builder.build().input().readBytes())
         }
     }
 

@@ -15,6 +15,7 @@ import android.icu.text.Bidi
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.snapshots.Snapshot
+import java.util.Arrays
 import java.util.IdentityHashMap
 
 /** UI-thread-only shaping state. Neither snapshots nor scrollback own glyph caches. */
@@ -60,7 +61,7 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
         // damage on screen need not visit thousands of unchanged scrollback rows.
         contextSnapshot = snapshot
         if (keys.isNotEmpty()) {
-            if (previous == null || !sameContext(previous.lines, snapshot.lines) || !sameContext(previous.scrollback, snapshot.scrollback)) {
+            if (previous == null || !sameContext(previous.scrollback, snapshot.scrollback) || !retainScreenLayouts(previous.lines, snapshot.lines, snapshot.scrollback.lastOrNull()?.softWrapped == true)) {
                 cache.clear()
                 keys.clear()
                 rowBytes = 0
@@ -83,6 +84,37 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
             if (!visible) remove(index)
             index--
         }
+    }
+
+    // Color changes create new packed rows, but paragraph geometry still has
+    // the same text, cell boundaries, font styles and soft-wrap boundaries.
+    private fun retainScreenLayouts(old: List<TerminalLine>, new: List<TerminalLine>, wrapsFromHistory: Boolean): Boolean {
+        if (old === new) return true
+        if (old.size != new.size) return false
+        for (row in old.indices) {
+            val before = old[row]
+            val after = new[row]
+            if (before.softWrapped != after.softWrapped) return false
+            if (before.cells === after.cells || after.cells.sameShaping(before.cells, allowAsciiChanges = false)) continue
+            val wrapsFromPrevious = if (row > 0) old[row - 1].softWrapped else wrapsFromHistory
+            // A standalone unshaped line does not contribute to any cached paragraph.
+            if (wrapsFromPrevious || after.softWrapped || before.cells.needsShaping() || after.cells.needsShaping()) return false
+        }
+        for (row in old.indices) {
+            val before = old[row].cells
+            val after = new[row].cells
+            if (before === after) continue
+            val index = keys.indexOfFirst { it === before }
+            if (index < 0) continue
+            if (cache.containsKey(after) || !after.sameShaping(before, allowAsciiChanges = false)) {
+                // A row identity already used elsewhere may have different
+                // paragraph context. Rebuild the cache in that case.
+                return false
+            }
+            cache[after] = cache.remove(before)!!
+            keys[index] = after
+        }
+        return true
     }
 
     private fun sameContext(old: List<TerminalLine>, new: List<TerminalLine>): Boolean = old === new ||
@@ -142,64 +174,79 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
             rowBytes = 0
             width = cellWidth
         }
+        val snapshot = state.snapshot
+        val totalLines = snapshot.scrollback.size + snapshot.rows
         val absolute = state.visibleLineIndex(row)
-        if (absolute !in 0 until state.totalLines) return@withoutReadObservation null
-        cache[state.getLine(absolute).cells]?.let { return@withoutReadObservation it }
+        if (absolute !in 0 until totalLines) return@withoutReadObservation null
+        cache[snapshot.getLine(absolute).cells]?.let { return@withoutReadObservation it }
 
         var first = absolute
-        while (first > 0 && state.getLine(first - 1).softWrapped && absolute - first < MAX_PARAGRAPH_ROWS) first--
+        while (first > 0 && snapshot.getLine(first - 1).softWrapped && absolute - first < MAX_PARAGRAPH_ROWS) first--
         var last = absolute
-        while (last + 1 < state.totalLines && state.getLine(last).softWrapped && last - first + 1 < MAX_PARAGRAPH_ROWS) last++
+        while (last + 1 < totalLines && snapshot.getLine(last).softWrapped && last - first + 1 < MAX_PARAGRAPH_ROWS) last++
         // A paragraph beyond the safety cap is displayed in explicit LTR order.
-        if ((first > 0 && state.getLine(first - 1).softWrapped) || (last + 1 < state.totalLines && state.getLine(last).softWrapped)) {
+        if ((first > 0 && snapshot.getLine(first - 1).softWrapped) || (last + 1 < totalLines && snapshot.getLine(last).softWrapped)) {
             return@withoutReadObservation null
         }
-        if ((first..last).none { state.getLine(it).cells.needsShaping() }) return@withoutReadObservation null
-        val lines = (first..last).map(state::getLine)
-        val layouts = shapeParagraph(lines)
-        val visibleFirst = state.visibleLineIndex(0)
-        val visibleLast = state.visibleLineIndex(state.snapshot.rows - 1)
-        layouts.forEachIndexed { index, shaped ->
-            if (first + index !in visibleFirst..visibleLast) return@forEachIndexed
+        if ((first..last).none { snapshot.getLine(it).cells.needsShaping() }) return@withoutReadObservation null
+        val lines = (first..last).map(snapshot::getLine)
+        val requested = absolute - first
+        val visible = (state.visibleLineIndex(0) - first)..(state.visibleLineIndex(snapshot.rows - 1) - first)
+        val rowsToShape = lines.indices.filter { index ->
             val cells = lines[index].cells
-            if (!cache.containsKey(cells)) {
+            index == requested || (index in visible && cache.size < viewportRows &&
+                cells.shapingRetentionBytes < byteLimit - rowBytes && !cache.containsKey(cells))
+        }
+        // Admit layouts together after shaping, so an early row cannot evict
+        // glyph runs that are still useful to later rows in the paragraph.
+        val layouts = shapeParagraph(lines, rowsToShape)
+        for (cacheIndex in rowsToShape.indices) {
+            val index = rowsToShape[cacheIndex]
+            val cells = lines[index].cells
+            if (index in visible && !cache.containsKey(cells)) {
                 shapeCount++
-                admit(cells, shaped)
+                admit(cells, layouts[cacheIndex])
             }
         }
-        layouts[absolute - first]
+        layouts[rowsToShape.indexOf(requested)]
     }
 
     @RequiresApi(31)
-    private fun shapeParagraph(lines: List<TerminalLine>): List<ShapedLine> {
+    private fun shapeParagraph(lines: List<TerminalLine>, rowsToShape: List<Int>): List<ShapedLine> {
         val paragraph = StringBuilder()
-        val starts = ArrayList<IntArray>(lines.size)
-        val ends = ArrayList<IntArray>(lines.size)
+        val cellRanges = arrayOfNulls<IntArray>(lines.size)
+        var nextRowToShape = 0
         val lineStarts = IntArray(lines.size)
         val lineEnds = IntArray(lines.size)
         lines.forEachIndexed { row, line ->
             lineStarts[row] = paragraph.length
-            val cellStarts = IntArray(line.cells.size) { -1 }
-            val cellEnds = IntArray(line.cells.size) { -1 }
+            val ranges = if (row == rowsToShape.getOrNull(nextRowToShape)) {
+                nextRowToShape++
+                IntArray(line.cells.size * 2) { -1 }.also { cellRanges[row] = it }
+            } else {
+                null
+            }
             for (col in line.cells.indices) {
                 if (line.cells.width(col) == 0 || line.cells.charAt(col) == '\u0000') continue
-                cellStarts[col] = paragraph.length
+                ranges?.set(col * 2, paragraph.length)
                 if (line.cells.placeholder(col)) paragraph.append('\uFFFC') else line.cells.appendCellText(paragraph, col)
-                cellEnds[col] = paragraph.length
+                ranges?.set(col * 2 + 1, paragraph.length)
             }
             lineEnds[row] = paragraph.length
-            starts.add(cellStarts)
-            ends.add(cellEnds)
         }
         val bidi = Bidi(paragraph.toString(), Bidi.DIRECTION_LEFT_TO_RIGHT)
-        return lines.indices.map { row ->
+        // Full paragraph BiDi and neighboring joining context are retained.
+        return rowsToShape.map { row ->
             val cells = lines[row].cells
             val logicalToVisual = IntArray(cells.size) { it }
             val visualToLogical = IntArray(cells.size) { it }
             val levels = ByteArray(cells.size)
             val mirrors = IntArray(cells.size)
-            data class UnitCell(val col: Int, val width: Int, val visual: Int)
-            val units = ArrayList<UnitCell>()
+            val ranges = checkNotNull(cellRanges[row])
+            // The high word orders by visual index. The low word keeps
+            // logical order for ties, matching the previous stable sort.
+            val order = LongArray(cells.size)
+            var orderedCells = 0
             if (lineStarts[row] < lineEnds[row]) {
                 // Unicode paragraph separators can occur inside one terminal row.
                 // ICU requires each line range to stay inside a single bidi paragraph.
@@ -217,10 +264,10 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
                     segmentStart = segmentEnd
                 }
                 for (col in cells.indices) {
-                    val start = starts[row][col]
+                    val start = ranges[col * 2]
                     if (start < 0 || cells.width(col) == 0) continue
                     val localStart = start - lineStarts[row]
-                    val localEnd = ends[row][col] - lineStarts[row]
+                    val localEnd = ranges[col * 2 + 1] - lineStarts[row]
                     var visual = Int.MAX_VALUE
                     for (index in localStart until localEnd) visual = minOf(visual, lineVisual[index])
                     val level = lineLevels[localStart]
@@ -232,21 +279,23 @@ internal class TerminalShaping(sourcePaint: TerminalTextPaint, private val byteL
                     }
                     val columns = cells.width(col).coerceAtLeast(1)
                     for (part in 1 until columns) levels[col + part] = level
-                    units.add(UnitCell(col, columns, visual))
+                    order[orderedCells++] = (visual.toLong() shl 32) or col.toLong()
                 }
             }
-            units.sortBy { it.visual }
+            Arrays.sort(order, 0, orderedCells)
             var visualCol = 0
-            for (unit in units) {
-                for (part in 0 until unit.width) {
-                    logicalToVisual[unit.col + part] = visualCol + part
-                    visualToLogical[visualCol + part] = unit.col + part
+            for (i in 0 until orderedCells) {
+                val col = order[i].toInt()
+                val columns = cells.width(col).coerceAtLeast(1)
+                for (part in 0 until columns) {
+                    logicalToVisual[col + part] = visualCol + part
+                    visualToLogical[visualCol + part] = col + part
                 }
-                visualCol += unit.width
+                visualCol += columns
             }
             // Erased cells are excluded from UAX #9 and occupy the trailing side.
             for (col in cells.indices) {
-                if (cells.width(col) == 0 || starts[row][col] >= 0) continue
+                if (cells.width(col) == 0 || ranges[col * 2] >= 0) continue
                 logicalToVisual[col] = visualCol
                 visualToLogical[visualCol] = col
                 visualCol++

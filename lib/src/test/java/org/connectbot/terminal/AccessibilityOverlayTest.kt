@@ -51,6 +51,15 @@ class AccessibilityOverlayTest {
         assertNull(view.provider.findFocus(Node.FOCUS_ACCESSIBILITY))
     }
 
+    @Test fun liveRowsKeepIdsWhenTextChanges() {
+        val row = snapshot.scrollback.size
+        val before = view.id(row)
+        snapshot = snapshot.copy(lines = listOf(accessibilityLine("updated")) + snapshot.lines.drop(1), sequenceNumber = 1)
+        view.update(snapshot, 0, 10f, 20f)
+        assertEquals(before, view.id(row))
+        assertEquals("updated", view.provider.createAccessibilityNodeInfo(before)!!.text.toString().trim())
+    }
+
     @Test fun standardScrollActionsReachOldestAndNewestRows() {
         val provider = view.provider
         val host = AccessibilityNodeProviderCompat.HOST_VIEW_ID

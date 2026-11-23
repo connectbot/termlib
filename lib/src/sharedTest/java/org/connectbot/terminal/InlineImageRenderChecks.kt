@@ -20,10 +20,44 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
+import java.util.zip.DeflaterOutputStream
 
 /** Identical pixel assertions on Robolectric's native renderer and an Android device. */
 abstract class InlineImageRenderChecks {
     private fun emulator() = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 8, inlineImages = InlineImages.On()) as TerminalEmulatorImpl
+
+    @Test
+    fun rawPixelBlocksPreserveRgbAndRgbaAcrossRowsAndSampling() {
+        val width = 1371
+        val height = 5
+        for (channels in 3..4) {
+            fun color(x: Int, y: Int) = android.graphics.Color.argb(
+                if (channels == 4 && (x + y) and 4 != 0) 128 else 255,
+                if (x and 2 == 0) 255 else 0,
+                if (y and 2 == 0) 255 else 0,
+                if (x and 8 == 0) 255 else 0,
+            )
+            val builder = ImageBytes.Builder(width * height * channels)
+            DeflaterOutputStream(builder).use { output ->
+                for (y in 0 until height) {
+                    for (x in 0 until width) {
+                        val pixel = color(x, y)
+                        output.write(android.graphics.Color.red(pixel))
+                        output.write(android.graphics.Color.green(pixel))
+                        output.write(android.graphics.Color.blue(pixel))
+                        if (channels == 4) output.write(android.graphics.Color.alpha(pixel))
+                    }
+                }
+            }
+            val bitmap = ImageSource(builder.build(), width, height, channels * 8).decode(width / 2, height / 2)
+            assertEquals((width + 1) / 2, bitmap.width)
+            assertEquals((height + 1) / 2, bitmap.height)
+            for (y in 0 until bitmap.height) {
+                for (x in 0 until bitmap.width) assertEquals(color(x * 2, y * 2), bitmap.getPixel(x, y))
+            }
+            bitmap.recycle()
+        }
+    }
 
     private fun render(terminal: TerminalEmulatorImpl): Bitmap {
         terminal.processPendingUpdates()

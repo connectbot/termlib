@@ -59,32 +59,54 @@ internal class InlineImageProtocol(
         }
         private val raw = !iterm && options["f"] in listOf(null, "24", "32") && options["o"] == null
         private val deflater = if (raw) Deflater() else null
-        val sink: OutputStream = if (deflater != null) BufferedOutputStream(DeflaterOutputStream(builder, deflater, ImageBytes.CHUNK), ImageBytes.CHUNK) else builder
-        var decoder = ImageBase64(sink)
-        var received = 0L
-        val counter = object : OutputStream() {
+        private val sink: OutputStream = if (deflater != null) BufferedOutputStream(DeflaterOutputStream(builder, deflater, ImageBytes.CHUNK), ImageBytes.CHUNK) else builder
+        private val decodedLimit = if (raw) store.limits.maxPixels.toLong() * 4 else store.limits.uploadBytes.toLong()
+        private var received = 0L
+        val decoder = ImageBase64(object : OutputStream() {
             override fun write(value: Int) {
-                received++
-                require(received <= if (raw) store.limits.maxPixels.toLong() * 4 else store.limits.uploadBytes.toLong()) {
-                    "E2BIG:pixel stream exceeds limit"
-                }
+                checkSize(1)
                 sink.write(value)
             }
-        }
 
-        init {
-            decoder = ImageBase64(counter)
-        }
-        fun nextChunk() {
-            decoder.finish()
-            decoder = ImageBase64(counter)
-        }
+            override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                checkSize(length)
+                sink.write(bytes, offset, length)
+            }
+
+            private fun checkSize(count: Int) {
+                received += count
+                require(received <= decodedLimit) { "E2BIG:pixel stream exceeds limit" }
+            }
+        })
+
         fun finish(): ImageBytes {
             decoder.finish()
             sink.close()
             dispose()
             return builder.build()
         }
+
+        fun validatePixels(bytes: ImageBytes, expected: Long) {
+            val count = if (raw) {
+                // The decoder counted every byte before sending it to our own deflater.
+                require(received <= expected) { "EINVAL:excess pixel data" }
+                received
+            } else {
+                val scratch = ByteArray(ImageBytes.CHUNK)
+                var inflated = 0L
+                InflaterInputStream(bytes.input()).use { input ->
+                    while (true) {
+                        val read = input.read(scratch)
+                        if (read < 0) break
+                        inflated += read
+                        require(inflated <= expected) { "EINVAL:excess pixel data" }
+                    }
+                }
+                inflated
+            }
+            require(count == expected) { "EINVAL:short pixel data" }
+        }
+
         fun dispose() {
             deflater?.end()
         }
@@ -111,12 +133,9 @@ internal class InlineImageProtocol(
         }
         if (discarded) return 0
         try {
-            for (byte in data) {
-                val value = byte.toInt() and 255
-                if (payload) {
-                    if (enabled) upload?.decoder?.accept(value)
-                    continue
-                }
+            var offset = 0
+            while (offset < data.size && !payload) {
+                val value = data[offset++].toInt() and 255
                 if ((kitty && value == ';'.code) || (!kitty && value == ':'.code && header.startsWith("File="))) {
                     startPayload()
                     payload = true
@@ -132,6 +151,7 @@ internal class InlineImageProtocol(
                     }
                 }
             }
+            if (payload && enabled) upload?.decoder?.accept(data, offset)
             if (!final) return 0
             if (!kitty && command == "other") {
                 otherOsc(ByteArray(header.length) { header[it].code.toByte() }.toString(Charsets.UTF_8), row, col)
@@ -145,7 +165,7 @@ internal class InlineImageProtocol(
             if (kitty) {
                 if (!payload) prepareKittyChunk(hasPayload = false)
                 if (keys["m"] == "1") {
-                    upload?.nextChunk()
+                    upload?.decoder?.finish()
                     return 0
                 }
                 return kittyCommand()
@@ -240,18 +260,7 @@ internal class InlineImageProtocol(
             "E2BIG:invalid image dimensions"
         }
         if (format != 100) {
-            val expected = width.toLong() * height * (format / 8)
-            var count = 0L
-            val scratch = ByteArray(ImageBytes.CHUNK)
-            InflaterInputStream(bytes.input()).use { input ->
-                while (true) {
-                    val read = input.read(scratch)
-                    if (read < 0) break
-                    count += read
-                    require(count <= expected) { "EINVAL:excess pixel data" }
-                }
-            }
-            require(count == expected) { "EINVAL:short pixel data" }
+            transfer.validatePixels(bytes, width.toLong() * height * (format / 8))
         }
         if (mime == "image/gif" && android.os.Build.VERSION.SDK_INT < 28) {
             require(width.toLong() * height * 12 + bytes.size.toLong() * 2 <= store.limits.decodedBytes) { "ENOSPC:animation decode exceeds memory limit" }

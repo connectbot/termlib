@@ -36,7 +36,6 @@ class BoundaryBenchmarkTest {
     fun renderingScrollingAndOsc() {
         assumeTrue(System.getenv("TERMLIB_BENCHMARK") == "1")
         val allocations = ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean
-        val threadId = Thread.currentThread().threadId()
         val workloads = linkedMapOf(
             "ascii" to listOf(("\u001B[H" + "abc def ".repeat(400)).toByteArray()),
             "unicode" to listOf(("\u001B[H" + "é日🎉e\u0301 ".repeat(200)).toByteArray()),
@@ -53,11 +52,11 @@ class BoundaryBenchmarkTest {
             val times = mutableListOf<Long>()
             val bytes = mutableListOf<Long>()
             repeat(5) {
-                val allocated = allocations.getThreadAllocatedBytes(threadId)
+                val allocated = allocations.currentThreadAllocatedBytes
                 val start = System.nanoTime()
                 repeat(100) { iteration() }
                 times.add((System.nanoTime() - start) / 100)
-                bytes.add((allocations.getThreadAllocatedBytes(threadId) - allocated) / 100)
+                bytes.add((allocations.currentThreadAllocatedBytes - allocated) / 100)
             }
             println("BOUNDARY_BENCH $name ns/op=${times.sorted()[2]} bytes/op=${bytes.sorted()[2]}")
         }
@@ -91,7 +90,6 @@ class BoundaryBenchmarkTest {
         if (end > start) frames.add(data.copyOfRange(start, end))
         val terminal = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80) as TerminalEmulatorImpl
         val allocations = ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean
-        val threadId = Thread.currentThread().threadId()
         fun replay() {
             frames.forEach {
                 terminal.writeInput(it)
@@ -104,11 +102,11 @@ class BoundaryBenchmarkTest {
         val transferCalls = terminal.transferCalls
         val transferBytes = terminal.transferBytes
         repeat(5) {
-            val allocated = allocations.getThreadAllocatedBytes(threadId)
+            val allocated = allocations.currentThreadAllocatedBytes
             val startTime = System.nanoTime()
             replay()
             times.add(System.nanoTime() - startTime)
-            bytes.add(allocations.getThreadAllocatedBytes(threadId) - allocated)
+            bytes.add(allocations.currentThreadAllocatedBytes - allocated)
         }
         println("BOUNDARY_BENCH cacafire bytes=${data.size} frames=${frames.size} ns/replay=${times.sorted()[2]} bytes/replay=${bytes.sorted()[2]}")
         println("BOUNDARY_TRANSFER cacafire calls/replay=${(terminal.transferCalls - transferCalls) / 5} bytes/replay=${(terminal.transferBytes - transferBytes) / 5}")

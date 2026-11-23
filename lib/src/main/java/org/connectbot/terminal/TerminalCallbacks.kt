@@ -34,7 +34,7 @@ internal interface TerminalCallbacks {
     fun onImageEdit(kind: Int, top: Int, bottom: Int, left: Int, right: Int, downward: Int, rightward: Int) = Unit
     fun onImageQuery(query: Int) = Unit
 
-    /** Fixed 64 KiB Kotlin-owned scratch, borrowed only during synchronous callbacks. */
+    /** Fixed 64 KiB Kotlin-owned scratch, reused across callbacks within one native call. */
     fun cellBuffer(): java.nio.ByteBuffer
 
     /**
@@ -92,7 +92,8 @@ internal interface TerminalCallbacks {
      * Called when a line is pushed to scrollback buffer.
      *
      * @param cols Number of columns in the line
-     * @param cells Array of screen cells
+     * @param wordCount Number of 32-bit words in this chunk
+     * @param cells Scratch buffer with this chunk's compact cell records at offset zero
      * @param softWrapped True if this line ended with a soft wrap (visual line break due to
      *                    terminal width), false if it ended with a hard break (actual newline).
      *                    This is used when copying text to avoid inserting spurious newlines
@@ -100,8 +101,8 @@ internal interface TerminalCallbacks {
      * @return 0 on success
      */
     // Chunks are sequential: start == 0 begins a row, start + count == cols completes it.
-    // The buffer contains count records at byte offset zero and is overwritten on return.
-    fun pushScrollbackLine(cols: Int, start: Int, count: Int, cells: java.nio.ByteBuffer, softWrapped: Boolean): Int
+    // The scratch buffer is overwritten on return.
+    fun pushScrollbackLine(cols: Int, start: Int, count: Int, wordCount: Int, cells: java.nio.ByteBuffer, softWrapped: Boolean): Int
 
     /**
      * Called when a line should be popped from scrollback buffer.

@@ -25,6 +25,18 @@ static void init_utf8(VTermEncoding *enc, void *data_)
   data->bytes_total     = 0;
 }
 
+static bool is_invalid_bmp(uint32_t cp)
+{
+  return (cp >= 0xD800 && cp <= 0xDFFF) || cp == 0xFFFE || cp == 0xFFFF;
+}
+
+#ifndef DEBUG_PRINT_UTF8
+static bool is_utf8_continuation(unsigned char byte)
+{
+  return (byte & 0xc0) == 0x80;
+}
+#endif
+
 static void decode_utf8(VTermEncoding *enc, void *data_,
                         uint32_t cp[], int *cpi, int cplen,
                         const char bytes[], size_t *pos, size_t bytelen)
@@ -92,9 +104,7 @@ static void decode_utf8(VTermEncoding *enc, void *data_,
           break;
         }
         // Now look for plain invalid ones
-        if((data->this_cp >= 0xD800 && data->this_cp <= 0xDFFF) ||
-           data->this_cp == 0xFFFE ||
-           data->this_cp == 0xFFFF)
+        if(is_invalid_bmp(data->this_cp))
           data->this_cp = UNICODE_INVALID;
 #ifdef DEBUG_PRINT_UTF8
         printf(" char: U+%04x\n", data->this_cp);
@@ -102,6 +112,23 @@ static void decode_utf8(VTermEncoding *enc, void *data_,
         cp[(*cpi)++] = data->this_cp;
       }
     }
+
+#ifndef DEBUG_PRINT_UTF8
+    /* Decode complete sequences without touching the streaming decoder state. */
+    else if(c >= 0xc2 && c < 0xe0 && !data->bytes_remaining && bytelen - *pos >= 2 &&
+            is_utf8_continuation(bytes[*pos + 1])) {
+      cp[(*cpi)++] = ((c & 0x1f) << 6) | (bytes[*pos + 1] & 0x3f);
+      (*pos)++;
+    }
+
+    else if(c >= 0xe0 && c < 0xf0 && !data->bytes_remaining && bytelen - *pos >= 3 &&
+            is_utf8_continuation(bytes[*pos + 1]) && is_utf8_continuation(bytes[*pos + 2])) {
+      uint32_t value = ((c & 0x0f) << 12) | ((bytes[*pos + 1] & 0x3f) << 6) |
+                       (bytes[*pos + 2] & 0x3f);
+      cp[(*cpi)++] = value < 0x0800 || is_invalid_bmp(value) ? UNICODE_INVALID : value;
+      *pos += 2;
+    }
+#endif
 
     else if(c >= 0xc0 && c < 0xe0) {
       if(data->bytes_remaining)
