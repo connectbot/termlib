@@ -23,6 +23,7 @@ internal object CellData {
     const val BUFFER_BYTES = 64 * 1024
     const val HEADER_BYTES = 4096
     const val MAX_REQUESTS = HEADER_BYTES / 16
+
     // Compact screen and scrollback push records use four base words, followed
     // by extra codepoints and, for image placeholders, a placement ID.
     // Scrollback restore uses fixed records.

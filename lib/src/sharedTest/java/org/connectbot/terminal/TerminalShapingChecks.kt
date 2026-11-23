@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -210,10 +211,12 @@ abstract class TerminalShapingChecks {
         val rows = listOf("سلامسلام", "رحمرحمرح", "حكيمحكيم", "عليمعليم", "نصنصنصنص").mapIndexed { row, text ->
             TerminalLine(row, cells(text), softWrapped = row < 4)
         }
-        val viewport = TerminalScreenState(TerminalSnapshot.empty(2, 8).copy(
-            lines = rows.takeLast(2),
-            scrollback = rows.dropLast(2),
-        ))
+        val viewport = TerminalScreenState(
+            TerminalSnapshot.empty(2, 8).copy(
+                lines = rows.takeLast(2),
+                scrollback = rows.dropLast(2),
+            ),
+        )
         val full = TerminalScreenState(TerminalSnapshot.empty(5, 8).copy(lines = rows))
         val engine = TerminalShaping(paint())
         val reference = TerminalShaping(paint())
@@ -566,6 +569,37 @@ abstract class TerminalShapingChecks {
         assertNotSame(old, engine.layout(replacement.cells, 12f))
         val beforeResize = engine.layout(replacement.cells, 12f)
         assertNotSame(beforeResize, engine.layout(replacement.cells, 8f))
+    }
+
+    @Test
+    fun preparedViewportPreservesWrappedFallbackAndRejectsStaleLayouts() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val wrapped = cells("سلامسلام")
+        val first = TerminalLine(0, wrapped)
+        val history = List(501) { TerminalLine(it, wrapped, softWrapped = true) }
+        val snapshot = TerminalSnapshot.empty(1, wrapped.size).copy(lines = listOf(first), scrollback = history)
+        val state = TerminalScreenState(snapshot)
+        val paint = paint()
+        val prepared = runBlocking {
+            checkNotNull(TerminalShaping(paint).prepareViewport(snapshot, 12f, TerminalShaping(paint)))
+        }
+        paint.preparedViewport = prepared
+        val layout = checkNotNull(paint.layout(state, 0, 12f, forDrawing = true))
+        assertSame(prepared.layouts.single().drawing, layout)
+        assertNull(paint.layout(state, 0, 12f))
+
+        val actual = render(wrapped, paint, layout)
+        val expected = render(wrapped, paint())
+        assertTrue(actual.sameAs(expected))
+        actual.recycle()
+        expected.recycle()
+
+        state.scrollBy(1)
+        assertNotSame(layout, paint.layout(state, 0, 12f, forDrawing = true))
+        state.scrollToBottom()
+        val replacement = TerminalLine(0, cells("رحمرحمرح"))
+        state.updateSnapshot(snapshot.copy(lines = listOf(replacement), scrollback = emptyList(), sequenceNumber = 1))
+        assertNotSame(layout, checkNotNull(paint.layout(state, 0, 12f, forDrawing = true)))
     }
 
     private fun render(cells: PackedCells, paint: TextPaint, shapedLine: ShapedLine? = null): Bitmap {

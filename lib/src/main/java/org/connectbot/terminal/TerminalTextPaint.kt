@@ -7,6 +7,7 @@ package org.connectbot.terminal
 
 import android.graphics.Typeface
 import android.text.TextPaint
+import androidx.compose.runtime.snapshots.Snapshot
 
 /**
  * Renderer-owned paint with fixed font geometry. Construct a new instance when
@@ -16,6 +17,7 @@ import android.text.TextPaint
  * ordinary scripts retain the per-cell renderer and its measurement cache.
  */
 internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() {
+    val glyphDisplayLists by lazy(LazyThreadSafetyMode.NONE) { GlyphDisplayLists() }
     private val glyphAdvances = FloatArray(512) { Float.NaN }
     val boxDrawing = TerminalBoxDrawing()
     val usesSystemMonospace = typeface === Typeface.MONOSPACE
@@ -29,6 +31,7 @@ internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() 
 
     private var shaping: TerminalShaping? = null
     private var screen: TerminalScreenState? = null
+    var preparedViewport: PreparedViewport? = null
 
     fun viewport(state: TerminalScreenState) {
         screen = state
@@ -39,6 +42,7 @@ internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() 
         shaping?.clear()
         shaping = null
         screen = null
+        preparedViewport = null
     }
 
     fun layout(cells: PackedCells, cellWidth: Float): ShapedLine? {
@@ -50,8 +54,15 @@ internal class TerminalTextPaint(typeface: Typeface, size: Float) : TextPaint() 
         return engine.layout(cells, cellWidth)
     }
 
-    fun layout(state: TerminalScreenState, row: Int, cellWidth: Float): ShapedLine? {
+    fun layout(state: TerminalScreenState, row: Int, cellWidth: Float, forDrawing: Boolean = false): ShapedLine? {
         if (android.os.Build.VERSION.SDK_INT < 31) return null
+        val prepared = preparedViewport
+        if (prepared != null && prepared.cellWidth == cellWidth && row in prepared.layouts.indices &&
+            Snapshot.withoutReadObservation { state.snapshot === prepared.snapshot && state.scrollbackPosition == 0 }
+        ) {
+            val line = prepared.layouts[row]
+            return if (forDrawing) line.drawing else line.contextual
+        }
         val engine = shaping ?: TerminalShaping(this).also {
             shaping = it
             it.viewport(state)

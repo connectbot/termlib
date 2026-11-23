@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.LockSupport
 import kotlin.concurrent.thread
 import kotlin.math.abs
+import kotlin.random.Random
 
 /** Same public-API-only workload is built against both library revisions. */
 class FrameBenchmarkActivity : ComponentActivity() {
@@ -72,13 +73,14 @@ class FrameBenchmarkActivity : ComponentActivity() {
         } else {
             val evenText = "سلام क्षि မြန်မာ "
             val oddText = "مرحبا র্ক ខ្មែរ "
+            val random = Random(42)
             List(1200) { tick ->
                 if (workload == "shaping-recolor") {
                     return@List buildString {
                         append("\u001b[3${tick % 8}m")
                         for (row in 2..dimensions.value.first) {
                             // Leave space at the right edge to keep each row a separate paragraph.
-                            append("\u001b[${row};1H")
+                            append("\u001b[$row;1H")
                             append(evenText.repeat(4))
                         }
                         append("\u001b[0m")
@@ -86,10 +88,23 @@ class FrameBenchmarkActivity : ComponentActivity() {
                 }
                 val content = when (workload) {
                     "text" -> "abc日é ".repeat(150)
+
                     "shaping" -> (if (tick % 2 == 0) evenText else oddText).repeat(dimensions.value.first * 7)
+
                     "shaping-even" -> evenText.repeat(dimensions.value.first * 7)
+
                     "shaping-odd" -> oddText.repeat(dimensions.value.first * 7)
+
+                    "shaping-unique" -> buildString {
+                        val letters = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي"
+                        repeat(dimensions.value.first * 7) {
+                            repeat(12) { append(letters[random.nextInt(letters.length)]) }
+                            append(" क्षि ")
+                        }
+                    }
+
                     "shaping-static" -> "سلام क्षि தமிழ் ".repeat(dimensions.value.first * 7)
+
                     else -> ""
                 }
                 ("\u001b[2;1H" + if (content.isNotEmpty()) "\u001b[3${tick % 8}m$content\u001b[0m" else "").toByteArray()
@@ -104,22 +119,24 @@ class FrameBenchmarkActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 var previousFrame = 0L
                 var stableFrames = 0
-                while (true) withFrameNanos { frameNanos ->
-                    if (clockReady?.count == 1L) {
-                        val interval = frameNanos - previousFrame
-                        previousFrame = frameNanos
-                        val rate = display?.refreshRate ?: 0f
-                        stableFrames = if (abs(rate - 60f) < 0.1f && interval in 16_000_000L..17_300_000L) {
-                            stableFrames + 1
-                        } else {
-                            0
+                while (true) {
+                    withFrameNanos { frameNanos ->
+                        if (clockReady?.count == 1L) {
+                            val interval = frameNanos - previousFrame
+                            previousFrame = frameNanos
+                            val rate = display?.refreshRate ?: 0f
+                            stableFrames = if (abs(rate - 60f) < 0.1f && interval in 16_000_000L..17_300_000L) {
+                                stableFrames + 1
+                            } else {
+                                0
+                            }
+                            if (stableFrames == 8) {
+                                anchorNanos = frameNanos
+                                clockReady.countDown()
+                            }
                         }
-                        if (stableFrames == 8) {
-                            anchorNanos = frameNanos
-                            clockReady.countDown()
-                        }
+                        pulse.longValue = frameNanos
                     }
-                    pulse.longValue = frameNanos
                 }
             }
             Box(Modifier.fillMaxSize()) {

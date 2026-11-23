@@ -5,10 +5,10 @@
  */
 package org.connectbot.terminal
 
-import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
+import kotlin.random.Random
 
 class ScrollbackHistoryTest {
     @Test
@@ -46,10 +46,12 @@ class ScrollbackHistoryTest {
                         history.clear()
                         expected.clear()
                     }
+
                     1, 2 -> if (expected.isNotEmpty()) {
                         history.removeLast()
                         expected.removeLast()
                     }
+
                     else -> append(step)
                 }
                 assertEquals(expected.lastOrNull(), history.lastOrNull())

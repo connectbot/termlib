@@ -96,6 +96,38 @@ class TerminalRedrawTest {
     }
 
     @Test
+    @SdkSuppress(minSdkVersion = 31)
+    fun recordedShapedGlyphsMatchDirectDrawInHardwareWindow() {
+        val recorded = mutableStateOf(true)
+        val paint = TerminalTextPaint(Typeface.MONOSPACE, 23f)
+        val direct = TextPaint(paint)
+        val width = paint.measureText("M") + 0.25f
+        val cells = terminal("سلام क्षि မြန်မာ").use { it.snapshot.value.lines.first().cells }
+        val layout = checkNotNull(paint.layout(cells, width))
+        compose.setContent {
+            Canvas(Modifier.size(260.dp, 90.dp)) {
+                drawRect(Color.Black)
+                val canvas = drawContext.canvas.nativeCanvas
+                assertTrue(canvas.isHardwareAccelerated)
+                val selectedPaint = if (recorded.value) paint else direct
+                layout.prepareDraw(canvas)
+                for (baseline in listOf(27.5f, 53.75f)) {
+                    for (column in cells.indices) {
+                        if (cells.width(column) == 0) continue
+                        selectedPaint.color = if (column % 2 == 0) android.graphics.Color.WHITE else android.graphics.Color.CYAN
+                        layout.drawCell(canvas, column, baseline, selectedPaint, width, cells.width(column))
+                    }
+                }
+            }
+        }
+        val actual = captureWindow()
+        compose.runOnIdle { recorded.value = false }
+        val expected = captureWindow()
+        assertTrue("Reference must contain text", (0 until 200).any { x -> (0 until 65).any { y -> expected.getPixel(x, y) != expected.getPixel(0, 0) } })
+        assertTrue("Recorded glyphs changed hardware window pixels", actual.sameAs(expected))
+    }
+
+    @Test
     fun cursorAndSelectionInvertRetainedWindowPixelsWithoutTrails() {
         val terminal = terminal("\u001B[?12l\u001B[2 q\u001B[32;44m█ colored 表 🎉\u001B[H")
         var selection: SelectionController? = null

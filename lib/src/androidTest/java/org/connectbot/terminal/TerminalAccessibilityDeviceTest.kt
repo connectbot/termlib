@@ -104,6 +104,9 @@ class TerminalAccessibilityDeviceTest {
             }
         }
         assertEquals("history 0", node { it.text?.toString()?.trim() == "history 0" }.text.toString().trim())
+        val host = node { it.className == "android.widget.ScrollView" && it.contentDescription == "Review output" }
+        assertTrue(host.performAction(R.id.terminal_a11y_resume))
+        node { it.text?.toString()?.trim() == "new 1099" }
     }
     private fun installHistory(count: Int = 20, toolbar: Boolean = false, content: String? = null, keyboard: Boolean = false): TerminalEmulatorImpl {
         lateinit var emulator: TerminalEmulatorImpl

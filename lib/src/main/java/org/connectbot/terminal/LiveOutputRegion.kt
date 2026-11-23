@@ -11,13 +11,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalResources
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /** Fixed windows keep continuous output from starving feedback. */
 @Composable
 internal fun AccessibleOutputFeedback(
     emulator: TerminalEmulatorImpl,
-    enabled: Boolean,
     live: Boolean,
     options: TerminalAccessibilityOptions,
     onMessage: (String) -> Unit,
@@ -26,15 +27,14 @@ internal fun AccessibleOutputFeedback(
     val currentLive by rememberUpdatedState(live)
     val currentOptions by rememberUpdatedState(options)
     val currentMessage by rememberUpdatedState(onMessage)
-    DisposableEffect(emulator, enabled) {
-        if (enabled) emulator.observeAccessibleOutput()
-        onDispose { if (enabled) emulator.stopObservingAccessibleOutput() }
+    DisposableEffect(emulator) {
+        emulator.observeAccessibleOutput()
+        onDispose { emulator.stopObservingAccessibleOutput() }
     }
-    LaunchedEffect(emulator, enabled) {
-        if (!enabled) return@LaunchedEffect
+    LaunchedEffect(emulator) {
         while (true) {
             delay(300)
-            val batch = emulator.drainAccessibleOutput() ?: continue
+            val batch = withContext(Dispatchers.Default) { emulator.drainAccessibleOutput() } ?: continue
             if (!currentLive) continue
             val text = buildList {
                 if (currentOptions.announceOutput) {

@@ -33,7 +33,7 @@ if args.input_phase_us is not None and not 0 <= args.input_phase_us < 16667:
 if not re.fullmatch(r"[A-Za-z0-9_.-]+", args.output.name):
     parser.error("output directory name must use only letters, numbers, dots, underscores or hyphens")
 workloads = args.workloads.split(",")
-if any(workload not in ("idle", "text", "shaping", "shaping-static", "shaping-recolor", "shaping-even", "shaping-odd", "cacafire", "png", "rgba", "animation", "input") for workload in workloads):
+if any(workload not in ("idle", "text", "shaping", "shaping-static", "shaping-recolor", "shaping-even", "shaping-odd", "shaping-unique", "cacafire", "png", "rgba", "animation", "input") for workload in workloads):
     parser.error("unknown workload")
 adb = [args.adb, "-s", args.serial]
 args.output.mkdir(parents=True, exist_ok=True)
