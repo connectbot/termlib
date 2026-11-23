@@ -83,9 +83,9 @@ static VTermState *vterm_state_new(VTerm *vt)
 
   state->bold_is_highbright = 0;
 
-  state->combine_chars_size = VTERM_MAX_CHARS_PER_CELL + 1;
+  state->combine_count = 0;
   state->combine_valid = 0;
-  state->combine_chars = vterm_allocator_malloc(state->vt, state->combine_chars_size * sizeof(state->combine_chars[0]));
+  state->combine_chars = vterm_allocator_malloc(state->vt, (VTERM_MAX_CHARS_PER_CELL + 1) * sizeof(state->combine_chars[0]));
 
   state->tabstops = vterm_allocator_malloc(state->vt, (state->cols + 7) / 8);
 
@@ -354,20 +354,22 @@ static int on_text(const char bytes[], size_t len, void *user)
   if(state->gsingle_set && npoints)
     state->gsingle_set = 0;
 
+  int rejected_extension = -1;
   for(int i = 0; i < npoints; i++) {
     uint32_t cp = codepoints[i];
     /* terminal-wg implicit BiDi level 1 discards directional controls. */
     if(is_bidi_control(cp))
       continue;
     int count = 0;
-    if(state->combine_valid)
-      while(state->combine_chars[count]) count++;
-    int extending = state->combine_valid &&
-        vterm_unicode_can_extend(state->combine_chars, count, cp);
+    bool extending = false;
+    if(cp >= 0x80 && state->combine_valid && i != rejected_extension) {
+      count = state->combine_count;
+      extending = vterm_unicode_can_extend(state, state->combine_chars, count, cp);
+    }
     if(!extending) count = 0;
     state->combine_chars[count++] = cp;
     state->combine_chars[count] = 0;
-    int width = vterm_unicode_cluster_width(state->combine_chars, count);
+    int width = cp >= 0x20 && cp < 0x7F ? 1 : vterm_unicode_cluster_width(state, state->combine_chars, count);
     int oldwidth = extending ? state->combine_width : 0;
 
     if(extending) {
@@ -409,15 +411,21 @@ static int on_text(const char bytes[], size_t len, void *user)
      * Width transitions still execute separately, preserving streaming wrap
      * semantics even when selectors arrive in the same write as their base. */
     while(i + 1 < npoints) {
-      if(is_bidi_control(codepoints[i + 1])) {
+      uint32_t next = codepoints[i + 1];
+      if(next < 0x80)
+        break;
+      if(is_bidi_control(next)) {
         i++;
         continue;
       }
-      if(!vterm_unicode_can_extend(state->combine_chars, count, codepoints[i + 1]))
+      if(!vterm_unicode_can_extend(state, state->combine_chars, count, next)) {
+        /* The next iteration examines the same code point against this glyph. */
+        rejected_extension = i + 1;
         break;
-      state->combine_chars[count] = codepoints[i + 1];
+      }
+      state->combine_chars[count] = next;
       state->combine_chars[count + 1] = 0;
-      int nextwidth = vterm_unicode_cluster_width(state->combine_chars, count + 1);
+      int nextwidth = vterm_unicode_cluster_width(state, state->combine_chars, count + 1);
       if(nextwidth != width) {
         state->combine_chars[count] = 0;
         break;
@@ -426,6 +434,7 @@ static int on_text(const char bytes[], size_t len, void *user)
       i++;
     }
     putglyph(state, state->combine_chars, width, state->pos);
+    state->combine_count = count;
     state->combine_width = width;
     state->combine_pos = state->pos;
     state->combine_valid = 1;

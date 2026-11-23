@@ -45,9 +45,10 @@ internal class PackedCells private constructor(
         return measuredSizeAndScript.toRawBits() < 0
     }
 
-    fun sameShaping(other: PackedCells): Boolean {
+    fun sameShaping(other: PackedCells, allowAsciiChanges: Boolean = true): Boolean {
         if (size != other.size || !offsets.contentEquals(other.offsets)) return false
         if (!text.contentEquals(other.text)) {
+            if (!allowAsciiChanges) return false
             for (col in indices) {
                 val start = offsets[col]
                 val end = offsets[col + 1]
@@ -210,35 +211,34 @@ internal class PackedCells private constructor(
     override fun equals(other: Any?): Boolean = if (other is PackedCells) contentEquals(other) else super.equals(other)
     override fun hashCode(): Int = super.hashCode()
 
-    fun matches(buffer: ByteBuffer, offset: Int, start: Int, count: Int): Boolean {
+    fun matches(buffer: IntArray, wordOffset: Int, start: Int, count: Int): Boolean {
         if (start < 0 || count > size - start) return false
-        for (i in 0 until count) {
-            val col = start + i
-            val base = offset + i * CellData.BYTES
-            if (width(col) != buffer.getInt(base + CellData.WIDTH) || flags(col) != buffer.getInt(base + CellData.FLAGS)) return false
-            // Continuation cells carry no independently rendered content or attributes.
-            if (width(col) == 0) continue
-            if (placeholder(col) && placeholderIds[col] != buffer.getInt(base + 14 * 4)) return false
-            if (colors[col * 2] != buffer.getInt(base + CellData.FOREGROUND) or (0xFF shl 24) ||
-                colors[col * 2 + 1] != buffer.getInt(base + CellData.BACKGROUND) or (0xFF shl 24)
-            ) {
-                return false
-            }
-            var index = offsets[col]
-            for (slot in 0 until CellData.CODE_POINTS) {
-                val raw = buffer.getInt(base + slot * 4)
-                if (slot > 0 && raw == 0) break
-                val cp = if (raw == 0) {
-                    32
-                } else if (CellData.isScalar(raw)) {
-                    raw
-                } else {
-                    0xFFFD
+        var base = wordOffset
+        for (col in start until start + count) {
+            val meta = buffer[base]
+            val span = meta ushr CellData.SCREEN_WIDTH_SHIFT
+            if (width(col) != span || flags(col) != buffer[base + 3]) return false
+            val first = meta and CellData.SCREEN_CODE_POINT_MASK
+            val extra = CellData.screenExtraCount(meta)
+            val isPlaceholder = first == CellData.IMAGE_PLACEHOLDER
+            val side = base + CellData.SCREEN_WORDS
+            if (span != 0) {
+                if (isPlaceholder && placeholderIds[col] != buffer[side + extra]) return false
+                if (colors[col * 2] != buffer[base + 1] or (0xFF shl 24) ||
+                    colors[col * 2 + 1] != buffer[base + 2] or (0xFF shl 24)
+                ) {
+                    return false
                 }
-                if (index >= offsets[col + 1] || Character.codePointAt(text, index, offsets[col + 1]) != cp) return false
-                index += Character.charCount(cp)
+                var index = offsets[col]
+                val end = offsets[col + 1]
+                for (slot in 0..extra) {
+                    val cp = displayCodePoint(if (slot == 0) first else buffer[side + slot - 1])
+                    if (index >= end || Character.codePointAt(text, index, end) != cp) return false
+                    index += Character.charCount(cp)
+                }
+                if (index != end) return false
             }
-            if (index != offsets[col + 1]) return false
+            base = side + extra + if (isPlaceholder) 1 else 0
         }
         return true
     }
@@ -259,73 +259,122 @@ internal class PackedCells private constructor(
         if (placeholder(col)) buffer.putInt(offset + 14 * 4, placeholderIds[col] ?: 0)
     }
 
-    class Builder(private val columns: Int) {
-        private var text = CharArray(columns)
+    class Builder(private val columns: Int, previous: PackedCells? = null) {
+        // A similarly shaped row often needs the same number of UTF-16 units.
+        private var text = CharArray(maxOf(columns, minOf(previous?.text?.size ?: 0, columns * 2)))
         private var used = 0
         private val offsets = IntArray(columns + 1)
         private val colors = IntArray(columns * 2)
         private val attributes = IntArray(columns)
         private var column = 0
-        private val placeholderIds = mutableMapOf<Int, Int>()
+        private var placeholderIds: MutableMap<Int, Int>? = null
 
-        private fun append(char: Char) {
-            if (used == text.size) text = text.copyOf(maxOf(16, used * 2))
-            text[used++] = char
+        private fun addPlaceholder(column: Int, id: Int) {
+            val ids = placeholderIds ?: mutableMapOf<Int, Int>().also { placeholderIds = it }
+            ids[column] = id
         }
 
         fun copy(source: PackedCells, start: Int, end: Int) {
-            for (col in start until end) {
-                source.placeholderIds[col]?.let { placeholderIds[column] = it }
+            if (start == end) return
+            val first = source.offsets[start]
+            val length = source.offsets[end] - first
+            if (length > text.size - used) text = text.copyOf(maxOf(used + length, text.size * 2))
+            source.text.copyInto(text, used, first, first + length)
+            source.colors.copyInto(colors, column * 2, start * 2, end * 2)
+            source.attributes.copyInto(attributes, column, start, end)
+            for (col in start..end) offsets[column + col - start] = used + (source.offsets[col] - first)
+            if (source.placeholderIds.isNotEmpty()) {
+                for (col in start until end) source.placeholderIds[col]?.let { addPlaceholder(column + col - start, it) }
+            }
+            used += length
+            column += end - start
+        }
+
+        fun read(buffer: ByteBuffer, offset: Int, count: Int) = readRecords(count) { buffer.getInt(offset + it * 4) }
+
+        fun read(buffer: IntArray, wordOffset: Int, count: Int) {
+            require(count in 0..columns - column)
+            var base = wordOffset
+            repeat(count) {
+                val meta = buffer[base]
+                val width = meta ushr CellData.SCREEN_WIDTH_SHIFT
+                require(width in 0..2 && width <= columns - column)
+                val first = meta and CellData.SCREEN_CODE_POINT_MASK
+                val extra = CellData.screenExtraCount(meta)
+                val side = base + CellData.SCREEN_WORDS
+                val isPlaceholder = first == CellData.IMAGE_PLACEHOLDER
+                if (isPlaceholder) addPlaceholder(column, buffer[side + extra])
+                if (width != 0) {
+                    appendCompactCodePoint(first)
+                    for (index in side until side + extra) appendCompactCodePoint(buffer[index])
+                }
+                colors[column * 2] = buffer[base + 1] or (0xFF shl 24)
+                colors[column * 2 + 1] = buffer[base + 2] or (0xFF shl 24)
+                attributes[column++] = (width shl 24) or buffer[base + 3]
                 offsets[column] = used
-                for (i in source.offsets[col] until source.offsets[col + 1]) append(source.text[i])
-                colors[column * 2] = source.colors[col * 2]
-                colors[column * 2 + 1] = source.colors[col * 2 + 1]
-                attributes[column++] = source.attributes[col]
-                offsets[column] = used
+                base = side + extra + if (isPlaceholder) 1 else 0
             }
         }
 
-        fun read(buffer: ByteBuffer, offset: Int, count: Int) {
+        // Keep the common one-unit write in the compact decoder's loop.
+        @Suppress("NOTHING_TO_INLINE")
+        private inline fun appendCompactCodePoint(raw: Int) {
+            if (raw in 0..0xFFFF && raw !in 0xD800..0xDFFF && used < text.size) {
+                text[used++] = if (raw == 0) ' ' else raw.toChar()
+            } else {
+                appendCodePoint(raw)
+            }
+        }
+
+        private fun appendCodePoint(raw: Int) {
+            val cp = displayCodePoint(raw)
+            val end = used + Character.charCount(cp)
+            if (end > text.size) text = text.copyOf(maxOf(16, text.size * 2, end))
+            if (cp <= 0xFFFF) {
+                text[used] = cp.toChar()
+            } else {
+                text[used] = Character.highSurrogate(cp)
+                text[used + 1] = Character.lowSurrogate(cp)
+            }
+            used = end
+        }
+
+        private inline fun readRecords(count: Int, getWord: (Int) -> Int) {
             require(count >= 0 && count <= columns - column)
             for (i in 0 until count) {
-                val base = offset + i * CellData.BYTES
-                val width = buffer.getInt(base + CellData.WIDTH)
-                if (buffer.getInt(base) == 0x10EEEE) placeholderIds[column] = buffer.getInt(base + 14 * 4)
+                val base = i * CellData.STRIDE
+                val width = getWord(base + CellData.WIDTH / 4)
+                val firstCodePoint = getWord(base)
+                if (firstCodePoint == CellData.IMAGE_PLACEHOLDER) addPlaceholder(column, getWord(base + 14))
                 require(width in 0..2 && width <= columns - column)
                 offsets[column] = used
                 if (width != 0) {
                     for (slot in 0 until CellData.CODE_POINTS) {
-                        val raw = buffer.getInt(base + slot * 4)
+                        val raw = if (slot == 0) firstCodePoint else getWord(base + slot)
                         if (slot > 0 && raw == 0) break
-                        val cp = if (raw == 0) {
-                            32
-                        } else if (CellData.isScalar(raw)) {
-                            raw
-                        } else {
-                            0xFFFD
-                        }
-                        if (cp <= 0xFFFF) {
-                            append(cp.toChar())
-                        } else {
-                            append(Character.highSurrogate(cp))
-                            append(Character.lowSurrogate(cp))
-                        }
+                        appendCodePoint(raw)
                     }
                 }
-                colors[column * 2] = buffer.getInt(base + CellData.FOREGROUND) or (0xFF shl 24)
-                colors[column * 2 + 1] = buffer.getInt(base + CellData.BACKGROUND) or (0xFF shl 24)
-                attributes[column++] = (width shl 24) or buffer.getInt(base + CellData.FLAGS)
+                colors[column * 2] = getWord(base + CellData.FOREGROUND / 4) or (0xFF shl 24)
+                colors[column * 2 + 1] = getWord(base + CellData.BACKGROUND / 4) or (0xFF shl 24)
+                attributes[column++] = (width shl 24) or getWord(base + CellData.FLAGS / 4)
                 offsets[column] = used
             }
         }
 
         fun build(): PackedCells {
             check(column == columns)
-            return PackedCells(if (used == text.size) text else text.copyOf(used), offsets, colors, attributes, placeholderIds.toMap())
+            return PackedCells(if (used == text.size) text else text.copyOf(used), offsets, colors, attributes, placeholderIds?.toMap().orEmpty())
         }
     }
 
     companion object {
+        private fun displayCodePoint(raw: Int): Int = when {
+            raw == 0 -> 32
+            CellData.isScalar(raw) -> raw
+            else -> 0xFFFD
+        }
+
         fun from(cells: List<TerminalLine.Cell>): PackedCells {
             if (cells is PackedCells) return cells
             val columns = cells.sumOf { it.width.coerceIn(1, 2) }

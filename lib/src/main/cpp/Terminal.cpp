@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 #include "Terminal.h"
+#include "libvterm/src/compact-screen.h"
 
 #include <cstring>
 #include <algorithm>
@@ -45,6 +46,10 @@ static constexpr int CELL_BYTES = CELL_STRIDE * sizeof(jint);
 static constexpr int BUFFER_BYTES = 64 * 1024;
 static constexpr int HEADER_BYTES = 4096;
 
+static jint packRgb(const VTermColor& color) {
+    return (color.rgb.red << 16) | (color.rgb.green << 8) | color.rgb.blue;
+}
+
 // Immutable JNI metadata is shared by every terminal created from this library
 // load. The global class references remain valid until JNI_OnUnload.
 struct CallbackCache {
@@ -72,6 +77,7 @@ struct CallbackCache {
     jmethodID imageEditMethod{};
     jmethodID imageQueryMethod{};
     jmethodID cellBufferMethod{};
+    jmethodID bufferIsReadOnlyMethod{};
 };
 
 static CallbackCache gCallbackCache;
@@ -105,7 +111,7 @@ static bool initializeCallbackCache(JNIEnv* env) {
         "(ILorg/connectbot/terminal/TerminalProperty;)I");
     cache.bellMethod = env->GetMethodID(callbacksClass, "bell", "()I");
     cache.pushScrollbackMethod = env->GetMethodID(callbacksClass, "pushScrollbackLine",
-        "(IIILjava/nio/ByteBuffer;Z)I");
+        "(IIIILjava/nio/ByteBuffer;Z)I");
     cache.popScrollbackMethod = env->GetMethodID(callbacksClass, "popScrollbackLine",
         "(IIILjava/nio/ByteBuffer;)I");
     cache.clearScrollbackMethod = env->GetMethodID(callbacksClass, "clearScrollback", "()I");
@@ -116,6 +122,11 @@ static bool initializeCallbackCache(JNIEnv* env) {
     cache.imageQueryMethod = env->GetMethodID(callbacksClass, "onImageQuery", "(I)V");
     cache.cellBufferMethod = env->GetMethodID(callbacksClass, "cellBuffer", "()Ljava/nio/ByteBuffer;");
     if (env->ExceptionCheck()) return false;
+
+    ScopedLocalRef<jclass> byteBufferClass(env, env->FindClass("java/nio/ByteBuffer"));
+    if (!byteBufferClass.get()) return false;
+    cache.bufferIsReadOnlyMethod = env->GetMethodID(byteBufferClass, "isReadOnly", "()Z");
+    if (!cache.bufferIsReadOnlyMethod || env->ExceptionCheck()) return false;
 
     cache.termRectClass = globalClass(env, "org/connectbot/terminal/TermRect");
     cache.cursorPositionClass = globalClass(env, "org/connectbot/terminal/CursorPosition");
@@ -139,11 +150,8 @@ static uint8_t* writableBuffer(JNIEnv* env, jobject buffer, jlong minimum) {
     if (!buffer) return nullptr;
     auto* bytes = static_cast<uint8_t*>(env->GetDirectBufferAddress(buffer));
     const jlong capacity = env->GetDirectBufferCapacity(buffer);
-    ScopedLocalRef<jclass> type(env, env->GetObjectClass(buffer));
-    if (!type.get()) return nullptr;
-    const auto method = env->GetMethodID(type, "isReadOnly", "()Z");
-    if (!method || env->ExceptionCheck()) return nullptr;
-    if (!bytes || capacity < minimum || env->CallBooleanMethod(buffer, method)) return nullptr;
+    if (!bytes || capacity < minimum ||
+        env->CallBooleanMethod(buffer, gCallbackCache.bufferIsReadOnlyMethod)) return nullptr;
     return env->ExceptionCheck() ? nullptr : bytes;
 }
 static_assert(VTERM_MAX_CHARS_PER_CELL == 16);
@@ -218,17 +226,19 @@ Terminal::Terminal(JNIEnv* env, jobject callbacks, int rows, int cols)
         .resize = nullptr,  // We handle resize explicitly
         .sb_pushline = termSbPushline,
         .sb_popline = termSbPopline,
-        .sb_clear = termSbClear,
-        .edit = termImageEdit,
-        .scroll = termImageScroll,
-        .clear_images = termImageClear,
-        .image_resize = termImageResize
+        .sb_clear = termSbClear
     };
     vterm_screen_set_callbacks(mVts, &mScreenCallbacks, this);
+    vterm_screen_set_compact_scrollback_callback(mVts, termSbPushCompactRow);
 
     // Set up OSC fallback handlers for shell integration. These follow the same
     // no-synchronous-reentry rule as screen callbacks above.
     VTermState* state = vterm_obtain_state(mVt);
+    for (int i = 0; i < 256; ++i) {
+        VTermColor color;
+        vterm_state_get_palette_color(state, i, &color);
+        mPackedPalette[i] = packRgb(color);
+    }
     VTermStateFallbacks fallbacks = {
         .control = termControlFallback,
         .csi = termCsiFallback,
@@ -336,6 +346,7 @@ int Terminal::setPaletteColors(const uint32_t* colors, int count) {
                        colors[i] & 0xFF);         // Blue
 
         vterm_state_set_palette_color(state, i, &vtColor);
+        mPackedPalette[i] = packRgb(vtColor);
     }
 
     return colorCount;
@@ -447,28 +458,55 @@ void Terminal::packCell(const VTermScreenCell& cell, jint* out) {
     for (int i = 0; i < VTERM_MAX_CHARS_PER_CELL && cell.chars[i]; ++i)
         out[i] = static_cast<jint>(cell.chars[i]);
     out[CELL_WIDTH] = cell.width;
-    uint8_t r, g, b;
-    resolveColor(cell.fg, r, g, b);
-    out[CELL_FG] = (r << 16) | (g << 8) | b;
-    resolveColor(cell.bg, r, g, b);
-    out[CELL_BG] = (r << 16) | (g << 8) | b;
+    packCellStyle(cell, out + CELL_FG);
     if (cell.chars[0] == 0x10eeee) {
-        auto colorId = [](const VTermColor& color) -> jint {
-            if (VTERM_COLOR_IS_DEFAULT_FG(&color)) return 0;
-            return VTERM_COLOR_IS_INDEXED(&color) ? color.indexed.idx :
-                (color.rgb.red << 16) | (color.rgb.green << 8) | color.rgb.blue;
-        };
-        out[CELL_FG] = colorId(cell.fg);
-        // Placeholder text needs at most four codepoints; reserve a tail slot
-        // for the placement colour without widening ordinary cell records.
+        // Keep the placement color after the placeholder's codepoint terminator.
         out[4] = 0;
         out[14] = cell.chars[14];
     }
-    out[CELL_FLAGS] = cell.attrs.bold | (cell.attrs.underline << 1) | (cell.attrs.italic << 3)
+}
+
+int Terminal::packCompactCell(const VTermScreenCell& cell, int width, uint8_t* out, int available) {
+    const auto base = width ? cell.chars[0] : 0u;
+    const bool placeholder = base == 0x10eeee;
+    unsigned extra = 0;
+    const unsigned limit = placeholder ? 4 : VTERM_MAX_CHARS_PER_CELL;
+    while (base && extra + 1 < limit && cell.chars[extra + 1]) ++extra;
+    const int length = (4 + extra + placeholder) * sizeof(jint);
+    if (length > available) return 0;
+
+    jint record[CELL_STRIDE];
+    record[0] = vterm_compact_meta(base, extra, width);
+    if (width) {
+        packCellStyle(cell, record + 1);
+    } else {
+        std::fill_n(record + 1, 3, 0);
+    }
+    if (extra) std::memcpy(record + 4, cell.chars + 1, extra * sizeof(jint));
+    if (placeholder) record[4 + extra] = cell.chars[14];
+    std::memcpy(out, record, length);
+    return length;
+}
+
+jint Terminal::resolveColor(const VTermColor& color) const {
+    return VTERM_COLOR_IS_INDEXED(&color) ? mPackedPalette[color.indexed.idx] : packRgb(color);
+}
+
+void Terminal::packCellStyle(const VTermScreenCell& cell, jint* out) {
+    if (cell.chars[0] == 0x10eeee) {
+        const auto& color = cell.fg;
+        if (VTERM_COLOR_IS_DEFAULT_FG(&color)) out[0] = 0;
+        else if (VTERM_COLOR_IS_INDEXED(&color)) out[0] = color.indexed.idx;
+        else out[0] = packRgb(color);
+    } else {
+        out[0] = resolveColor(cell.fg);
+    }
+    out[1] = resolveColor(cell.bg);
+    out[2] = cell.attrs.bold | (cell.attrs.underline << 1) | (cell.attrs.italic << 3)
         | (cell.attrs.blink << 4) | (cell.attrs.reverse << 5) | (cell.attrs.conceal << 6)
         | (cell.attrs.strike << 7) | (cell.attrs.font << 8) | (cell.attrs.dwl << 12)
         | (cell.attrs.dhl << 13) | (cell.attrs.small << 15) | (cell.attrs.baseline << 16);
-    if (VTERM_COLOR_IS_DEFAULT_BG(&cell.bg)) out[CELL_FLAGS] |= 1 << 18;
+    if (VTERM_COLOR_IS_DEFAULT_BG(&cell.bg)) out[2] |= 1 << 18;
 }
 
 static void unpackCell(const jint* in, VTermScreenCell& cell) {
@@ -495,43 +533,63 @@ static void unpackCell(const jint* in, VTermScreenCell& cell) {
 
 // A header consists of 16-byte row/column/count/continuation descriptors.
 // Cell records follow the fixed header. All requests are validated before writes.
-int Terminal::getCells(JNIEnv* env, jobject output, int requests) {
+// Compact screen records use four words followed by extra codepoints and
+// the image placement ID, when present. The first word holds the base
+// codepoint, extra-codepoint count, and width, in that order.
+// On return, compact headers hold the fulfilled count and the payload word
+// count shifted left by one, leaving the low bit for the soft-wrap flag.
+int Terminal::getCells(JNIEnv* env, jobject output, int requests, bool compact) {
     std::scoped_lock lock(mLock);
     auto* bytes = writableBuffer(env, output, BUFFER_BYTES);
     if (!bytes || requests < 0 || requests > HEADER_BYTES / 16) {
         argumentError(env, "Invalid batch buffer or request count"); return 0;
     }
     int total = 0;
+    const int minimumCellBytes = compact ? 4 * sizeof(jint) : CELL_BYTES;
     for (int i = 0; i < requests; ++i) {
         jint request[4];
         std::memcpy(request, bytes + i * 16, 16);
         if (request[0] < 0 || request[0] >= mRows || request[1] < 0 ||
             request[1] >= mCols || request[2] <= 0 || request[2] > mCols - request[1] ||
-            request[2] > (BUFFER_BYTES - HEADER_BYTES) / CELL_BYTES - total) {
+            request[2] > (BUFFER_BYTES - HEADER_BYTES) / minimumCellBytes - total) {
             argumentError(env, "Invalid cell range"); return 0;
         }
         total += request[2];
     }
     int offset = HEADER_BYTES;
+    bool bufferFull = false;
     for (int i = 0; i < requests; ++i) {
         jint request[4];
         std::memcpy(request, bytes + i * 16, 16);
         const auto* info = request[0] + 1 < mRows ? vterm_state_get_lineinfo(vterm_obtain_state(mVt), request[0] + 1) : nullptr;
         request[3] = info && info->continuation;
-        std::memcpy(bytes + i * 16, request, 16);
-        for (int col = request[1]; col < request[1] + request[2]; ++col) {
-            VTermScreenCell cell{};
-            jint record[CELL_STRIDE]{};
-            if (!vterm_screen_get_cell(mVts, {request[0], col}, &cell)) return 0;
-            if (cell.chars[0] != UINT32_MAX) {
+        if (compact) {
+            int copied = bufferFull ? 0 : request[2];
+            const auto length = copied ? vterm_screen_pack_row(mVts, {request[0], request[1]}, &copied,
+                bytes + offset, BUFFER_BYTES - offset, mPackedPalette) : 0;
+            bufferFull = copied < request[2];
+            request[2] = copied;
+            request[3] |= (length / sizeof(jint)) << 1;
+            offset += static_cast<int>(length);
+        } else {
+            for (int copied = 0; copied < request[2]; ++copied) {
+                const int col = request[1] + copied;
+                VTermScreenCell cell{};
+                if (!vterm_screen_get_cell(mVts, {request[0], col}, &cell)) return 0;
                 if (cell.width == 2 && col + 1 >= mCols) { cell = {}; cell.width = 1; }
-                packCell(cell, record);
+                jint record[CELL_STRIDE];
+                if (cell.chars[0] == UINT32_MAX) {
+                    std::fill_n(record, CELL_STRIDE, 0);
+                } else {
+                    packCell(cell, record);
+                }
+                std::memcpy(bytes + offset, record, CELL_BYTES);
+                offset += CELL_BYTES;
             }
-            std::memcpy(bytes + offset, record, CELL_BYTES);
-            offset += CELL_BYTES;
         }
+        std::memcpy(bytes + i * 16, request, 16);
     }
-    return total;
+    return compact ? (offset - HEADER_BYTES) / sizeof(jint) : total;
 }
 
 // Callback implementations
@@ -573,22 +631,12 @@ int Terminal::termBell(void* user) {
 }
 
 int Terminal::termSbPushline(int cols, const VTermScreenCell* cells, void* user) {
-    auto* term = static_cast<Terminal*>(user);
-
-    // Check if row 1 (the next line after the one being pushed) is a continuation.
-    // If row 1 has continuation=1, it means the line being pushed (row 0) ended with
-    // a soft wrap rather than a hard line break.
-    VTermState* state = vterm_obtain_state(term->mVt);
-    bool softWrapped = false;
-    if (state && term->mRows > 1) {
-        const VTermLineInfo* nextLineInfo = vterm_state_get_lineinfo(state, 1);
-        if (nextLineInfo) {
-            softWrapped = nextLineInfo->continuation != 0;
-        }
-    }
-
-    term->invokePushScrollbackLine(cols, cells, softWrapped);
+    static_cast<Terminal*>(user)->invokePushScrollbackLine(cols, 0, cells);
     return 1;
+}
+
+void Terminal::termSbPushCompactRow(int row, int cols, void* user) {
+    static_cast<Terminal*>(user)->invokePushScrollbackLine(cols, row, nullptr);
 }
 
 int Terminal::termSbPopline(int cols, VTermScreenCell* cells, void* user) {
@@ -656,7 +704,13 @@ jlong Terminal::imageFragment(bool kitty, VTermStringFragment frag) {
         if (env->ExceptionCheck()) return 0;
         offset += count;
     } while (offset < frag.len);
-    if (result >= 0) mImageTracking = true;
+    if (result >= 0 && !mScreenCallbacks.edit) {
+        // Start tracking screen edits before reserving cells for the first image.
+        mScreenCallbacks.edit = termImageEdit;
+        mScreenCallbacks.scroll = termImageScroll;
+        mScreenCallbacks.clear_images = termImageClear;
+        mScreenCallbacks.image_resize = termImageResize;
+    }
     if (result > 0) {
         int rows = (result >> 32) & 0xffff;
         int cols = (result >> 1) & 0xffff;
@@ -674,7 +728,8 @@ int Terminal::termApcFallback(VTermStringFragment frag, void* user) {
 
 int Terminal::termControlFallback(unsigned char control, void* user) {
     if (control != 0x18) return 0;
-    return static_cast<Terminal*>(user)->imageEdit(4, {});
+    auto* term = static_cast<Terminal*>(user);
+    return term->mScreenCallbacks.edit ? term->imageEdit(4, {}) : 1;
 }
 
 int Terminal::termCsiFallback(const char* leader, const long args[], int argcount, const char* intermed, char command, void* user) {
@@ -692,7 +747,6 @@ int Terminal::termImageResize(int buffer, int delta, int rows, int cols, void* u
 }
 
 int Terminal::imageEdit(int kind, VTermRect rect, int downward, int rightward) {
-    if (!mImageTracking) return 1;
     if (mReservingImage && kind != 1) return 1;
     JNIEnv* env = mEnv;
     if (!env || env->ExceptionCheck()) return 0;
@@ -817,9 +871,9 @@ void Terminal::invokeSetTermProp(VTermProp prop, VTermValue* val) {
             return;
 
         case VTERM_VALUETYPE_COLOR: {
-            uint8_t r, g, b;
-            resolveColor(val->color, r, g, b);
-            propValue = ScopedLocalRef<jobject>(env, env->NewObject(mTerminalPropertyColorClass, mTerminalPropertyColorConstructor, r, g, b));
+            const jint rgb = resolveColor(val->color);
+            propValue = ScopedLocalRef<jobject>(env, env->NewObject(mTerminalPropertyColorClass, mTerminalPropertyColorConstructor,
+                (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF));
             break;
         }
 
@@ -848,48 +902,67 @@ void Terminal::invokeBell() {
     if (env->ExceptionCheck()) return;
 }
 
-void Terminal::invokePushScrollbackLine(int cols, const VTermScreenCell* cells, bool softWrapped) {
+uint8_t* Terminal::scrollbackBuffer() {
+    if (!mEnv || mEnv->ExceptionCheck()) return nullptr;
+    if (mScrollbackBytes) return mScrollbackBytes;
+
+    mScrollbackBuffer = mEnv->CallObjectMethod(mCallbacks, mCellBufferMethod);
+    if (mEnv->ExceptionCheck()) return nullptr;
+    mScrollbackBytes = writableBuffer(mEnv, mScrollbackBuffer, BUFFER_BYTES);
+    if (!mScrollbackBytes) {
+        argumentError(mEnv, "Invalid scrollback buffer");
+        return nullptr;
+    }
+    return mScrollbackBytes;
+}
+
+void Terminal::invokePushScrollbackLine(int cols, int row, const VTermScreenCell* cells) {
+    auto* bytes = scrollbackBuffer();
+    if (!bytes) return;
     JNIEnv* env = mEnv;
-    if (!env || env->ExceptionCheck()) return;
-    ScopedLocalRef<jobject> buffer(env, env->CallObjectMethod(mCallbacks, mCellBufferMethod));
-    if (env->ExceptionCheck()) return;
-    auto* bytes = writableBuffer(env, buffer, BUFFER_BYTES);
-    if (!bytes) { argumentError(env, "Invalid scrollback buffer"); return; }
-    constexpr int capacity = BUFFER_BYTES / CELL_BYTES;
+
+    // Retain the resize and scrollback callbacks' existing wrap metadata.
+    VTermState* state = vterm_obtain_state(mVt);
+    const auto* nextLine = mRows > 1 ? vterm_state_get_lineinfo(state, 1) : nullptr;
+    const bool softWrapped = nextLine && nextLine->continuation;
+
     bool continuation = false;
-    for (int start = 0; start < cols; start += capacity) {
-        const int count = std::min(capacity, cols - start);
-        for (int i = 0; i < count; ++i) {
-            jint record[CELL_STRIDE]{};
-            if (continuation) { continuation = false; }
-            else {
-                packCell(cells[start + i], record);
-                continuation = cells[start + i].width == 2;
-                if (continuation && start + i + 1 == cols) {
-                    std::fill_n(record, CELL_STRIDE, 0);
-                    record[CELL_WIDTH] = 1;
-                    continuation = false;
-                }
+    for (int start = 0; start < cols;) {
+        int count = cols - start;
+        size_t length = 0;
+        if (cells) {
+            count = 0;
+            for (int end = start; end < cols; ++end, ++count) {
+                const auto& cell = cells[end];
+                const int width = continuation ? 0 : cell.width;
+                const int cellLength = width == 2 && end + 1 == cols
+                    ? packCompactCell(VTermScreenCell{}, 1, bytes + length, BUFFER_BYTES - length)
+                    : packCompactCell(cell, width, bytes + length, BUFFER_BYTES - length);
+                if (!cellLength) break;
+                length += cellLength;
+                continuation = width == 2;
             }
-            std::memcpy(bytes + i * CELL_BYTES, record, CELL_BYTES);
+        } else {
+            length = vterm_screen_pack_scrollback(mVts, {row, start}, &count, bytes,
+                BUFFER_BYTES, mPackedPalette, &continuation);
         }
-        env->CallIntMethod(mCallbacks, mPushScrollbackMethod, cols, start, count, buffer.get(), (jboolean)softWrapped);
+        if (!count) return;
+        env->CallIntMethod(mCallbacks, mPushScrollbackMethod, cols, start, count,
+            static_cast<jint>(length / sizeof(jint)), mScrollbackBuffer, (jboolean)softWrapped);
         if (env->ExceptionCheck()) return;
+        start += count;
     }
 }
 
 int Terminal::invokePopScrollbackLine(int cols, VTermScreenCell* cells) {
+    auto* bytes = scrollbackBuffer();
+    if (!bytes) return 0;
     JNIEnv* env = mEnv;
-    if (!env || env->ExceptionCheck()) return 0;
-    ScopedLocalRef<jobject> buffer(env, env->CallObjectMethod(mCallbacks, mCellBufferMethod));
-    if (env->ExceptionCheck()) return 0;
-    auto* bytes = writableBuffer(env, buffer, BUFFER_BYTES);
-    if (!bytes) { argumentError(env, "Invalid scrollback buffer"); return 0; }
     constexpr int capacity = BUFFER_BYTES / CELL_BYTES;
     bool continuation = false;
     for (int start = 0; start < cols; start += capacity) {
         const int count = std::min(capacity, cols - start);
-        const auto result = env->CallIntMethod(mCallbacks, mPopScrollbackMethod, cols, start, count, buffer.get());
+        const auto result = env->CallIntMethod(mCallbacks, mPopScrollbackMethod, cols, start, count, mScrollbackBuffer);
         if (env->ExceptionCheck() || !result) return 0;
         for (int i = 0; i < count; ++i) {
             auto& cell = cells[start + i];
@@ -967,41 +1040,6 @@ int Terminal::invokeTextFragment(int kind, int command, VTermStringFragment frag
         offset += count;
     } while (offset < frag.len);
     return result;
-}
-
-void Terminal::resolveColor(const VTermColor& color, uint8_t& r, uint8_t& g, uint8_t& b) {
-    if (VTERM_COLOR_IS_INDEXED(&color)) {
-        // Get color from palette
-        VTermColor resolved;
-        VTermState* state = vterm_obtain_state(mVt);
-        vterm_state_get_palette_color(state, color.indexed.idx, &resolved);
-        r = resolved.rgb.red;
-        g = resolved.rgb.green;
-        b = resolved.rgb.blue;
-    } else if (VTERM_COLOR_IS_RGB(&color)) {
-        r = color.rgb.red;
-        g = color.rgb.green;
-        b = color.rgb.blue;
-    } else if (VTERM_COLOR_IS_DEFAULT_FG(&color)) {
-        // Get configured default foreground from libvterm
-        VTermState* state = vterm_obtain_state(mVt);
-        VTermColor fg, bg;
-        vterm_state_get_default_colors(state, &fg, &bg);
-        r = fg.rgb.red;
-        g = fg.rgb.green;
-        b = fg.rgb.blue;
-    } else if (VTERM_COLOR_IS_DEFAULT_BG(&color)) {
-        // Get configured default background from libvterm
-        VTermState* state = vterm_obtain_state(mVt);
-        VTermColor fg, bg;
-        vterm_state_get_default_colors(state, &fg, &bg);
-        r = bg.rgb.red;
-        g = bg.rgb.green;
-        b = bg.rgb.blue;
-    } else {
-        // Fallback
-        r = g = b = 128;
-    }
 }
 
 // JNI function implementations
@@ -1122,10 +1160,10 @@ Java_org_connectbot_terminal_TerminalNative_nativePaste(JNIEnv* env, jobject, jl
 }
 
 JNIEXPORT jint JNICALL
-Java_org_connectbot_terminal_TerminalNative_nativeGetCells(JNIEnv* env, jobject, jlong ptr, jobject callbacks, jobject buffer, jint requests) {
+Java_org_connectbot_terminal_TerminalNative_nativeGetCells(JNIEnv* env, jobject, jlong ptr, jobject callbacks, jobject buffer, jint requests, jboolean compact) {
     auto* term = reinterpret_cast<Terminal*>(ptr);
     Terminal::CallbackScope scope(*term, env, callbacks);
-    return term->getCells(env, buffer, requests);
+    return term->getCells(env, buffer, requests, compact);
 }
 
 JNIEXPORT jint JNICALL

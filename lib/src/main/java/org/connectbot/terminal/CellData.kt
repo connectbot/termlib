@@ -23,6 +23,16 @@ internal object CellData {
     const val BUFFER_BYTES = 64 * 1024
     const val HEADER_BYTES = 4096
     const val MAX_REQUESTS = HEADER_BYTES / 16
+    // Compact screen and scrollback push records use four base words, followed
+    // by extra codepoints and, for image placeholders, a placement ID.
+    // Scrollback restore uses fixed records.
+    const val SCREEN_WORDS = 4
+    const val SCREEN_CODE_POINT_MASK = 0x1FFFFF
+    const val SCREEN_EXTRA_SHIFT = 21
+    const val SCREEN_WIDTH_SHIFT = 25
+    const val IMAGE_PLACEHOLDER = 0x10EEEE
+
+    fun screenExtraCount(meta: Int): Int = (meta ushr SCREEN_EXTRA_SHIFT) and 15
     fun buffer(): ByteBuffer = ByteBuffer.allocateDirect(BUFFER_BYTES).order(ByteOrder.nativeOrder())
 
     fun read(data: ByteBuffer, columns: Int): PackedCells = PackedCells.Builder(columns).apply { read(data, 0, columns) }.build()

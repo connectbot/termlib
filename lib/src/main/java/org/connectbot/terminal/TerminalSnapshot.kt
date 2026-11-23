@@ -67,6 +67,23 @@ internal data class TerminalSnapshot(
     val alternateScreen: Boolean = false,
     val hasImageAssets: Boolean = false,
 ) {
+    fun getLine(index: Int): TerminalLine = if (index < scrollback.size) {
+        scrollback[index]
+    } else {
+        val screenIndex = index - scrollback.size
+        if (screenIndex in lines.indices) {
+            lines[screenIndex]
+        } else {
+            // Return empty line if index out of bounds
+            TerminalLine.empty(
+                row = screenIndex,
+                cols = cols,
+                defaultFg = androidx.compose.ui.graphics.Color.White,
+                defaultBg = androidx.compose.ui.graphics.Color.Black,
+            )
+        }
+    }
+
     companion object {
         /**
          * Create an empty snapshot with default values.

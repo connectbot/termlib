@@ -30,6 +30,13 @@ alternate). Image transport is split into 4 KiB reads; decoding is triggered by
 actual Compose display. The benchmark keeps a tiny independent draw heartbeat
 running to expose responsiveness even when terminal content stalls.
 
+The runner uses UiAutomation accessibility to synchronize activity launch, then
+disconnects its accessibility service during measurement. Pass
+`--automation-accessibility` to keep the service connected and exercise the
+terminal's accessibility overlay. The trace summary reports how many samples
+the app observed accessibility enabled. Compare captures with the same
+effective mode.
+
 `FrameTimingMetric` records CPU duration and deadline overrun through Android's
 Compose/main-thread/RenderThread pipeline. Positive overrun means a missed
 deadline; compare p95, p99, and the fraction of missed deadlines, not only the
@@ -64,10 +71,22 @@ Use the same device, refresh rate (the activity requests 60 Hz when available),
 capture, font, terminal size, compilation mode, and iteration count. Run without
 competing builds or tests. Alternate revision order for confirmation runs.
 
-Suggested physical-device acceptance: at least 99% of frames meet deadlines,
-text input-to-present p95 stays within two refresh intervals, and content lag
-does not grow during sustained input. Investigate regressions above 5% rather
-than dismissing them as noise. Also test scrollback, platform GIF/WebP,
+To compare at a controlled input timing, pass `--input-phase-us` to both runs
+with the same value between 0 and 16666. The reader anchors its 60 Hz clock to
+a Compose frame after the display stabilizes at 60 Hz, plus that offset. Rebuild both benchmark APKs before
+using this option. Check `input_to_expected_frame_ms` in each trace summary
+to confirm comparable observed timing. Scheduler jitter and refresh-rate
+differences can shift the observed phase during the capture.
+For workloads that update terminal content, compare `content_by_input_phase`
+in overlapping 0.5 ms timing bins. Each bin gives the numbers of incoming,
+drawn, and presented updates, with 100 ms trimmed from each capture edge.
+`max_content_present_gap_ms` reports the longest gap between distinct updates
+at presentation, with the capture edges included.
+
+Use at least 95% of frames meeting deadlines in each workload as the
+physical-device frame target. Report text input-to-present p95 against a budget
+of two refresh intervals and track content lag during sustained input.
+Investigate regressions above 5%. Also test scrollback, platform GIF/WebP,
 detach/reattach, and actual remote keyboard echo on representative devices;
 this synthetic suite alone does not certify those cases.
 
@@ -155,9 +174,15 @@ protocol rejections without packaging the fixture in the library or test APK.
 
 `shaping` alternates Arabic/Indic/Southeast Asian content; `shaping-static`
 changes colors while retaining text geometry. Both use the production renderer.
+Use `--workloads shaping-even,shaping,shaping-odd` to compare alternating
+content with each of its two strings held fixed under the same color cycle.
 Pass `--workloads shaping,shaping-static --rows 128` (also test 64 and 256)
 to exercise large viewports. The row count is recorded with the capture conditions.
 The default existing workloads and 24-row viewport are unchanged.
+
+`shaping-recolor` cycles foreground colors on fixed complex text without
+wrapping or scrolling. The tick marker occupies its own hard line, so its digits
+do not alter the shaped paragraphs used to measure layout reuse.
 
 The opt-in `AndroidRenderBenchmarkTest` now uses `TerminalTextPaint` and reports
 ART bytes/frame alongside software Canvas ns/frame for ASCII, Unicode, Arabic,

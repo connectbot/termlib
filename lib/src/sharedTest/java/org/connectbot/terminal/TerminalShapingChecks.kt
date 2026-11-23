@@ -205,6 +205,67 @@ abstract class TerminalShapingChecks {
     }
 
     @Test
+    fun wrappedHistoryProvidesContextWithoutShapingOffscreenGlyphs() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val rows = listOf("سلامسلام", "رحمرحمرح", "حكيمحكيم", "عليمعليم", "نصنصنصنص").mapIndexed { row, text ->
+            TerminalLine(row, cells(text), softWrapped = row < 4)
+        }
+        val viewport = TerminalScreenState(TerminalSnapshot.empty(2, 8).copy(
+            lines = rows.takeLast(2),
+            scrollback = rows.dropLast(2),
+        ))
+        val full = TerminalScreenState(TerminalSnapshot.empty(5, 8).copy(lines = rows))
+        val engine = TerminalShaping(paint())
+        val reference = TerminalShaping(paint())
+        for (row in 0..1) {
+            val actual = engine.layout(viewport, row, 12f)!!
+            val expected = reference.layout(full, row + 3, 12f)!!
+            for (col in 0..7) {
+                assertEquals(expected.visualColumn(col), actual.visualColumn(col))
+                assertEquals(expected.resolvedRtl(col), actual.resolvedRtl(col))
+            }
+            val actualPixels = render(rows[row + 3].cells, paint(), actual)
+            val referencePixels = render(rows[row + 3].cells, paint(), expected)
+            try {
+                assertTrue(actualPixels.sameAs(referencePixels))
+            } finally {
+                actualPixels.recycle()
+                referencePixels.recycle()
+            }
+        }
+        assertEquals(2, engine.glyphShapeCount)
+        assertEquals(5, reference.glyphShapeCount)
+    }
+
+    @Test
+    fun paragraphLayoutSurvivesRecoloringAndInvalidatesOnTextChange() {
+        assumeTrue(Build.VERSION.SDK_INT >= 31)
+        val terminal = TerminalEmulatorFactory.create(initialRows = 3, initialCols = 8) as TerminalEmulatorImpl
+        try {
+            terminal.writeInput("نص حكيم له سر".toByteArray())
+            terminal.processPendingUpdates()
+            val snapshot = terminal.snapshot.value
+            assertTrue(snapshot.lines[0].softWrapped)
+            val state = TerminalScreenState(snapshot)
+            val paint = paint()
+            val layouts = (0..1).map { paint.layout(state, it, 12f)!! }
+            val recolored = snapshot.lines.mapIndexed { row, line ->
+                if (row == 2) return@mapIndexed line.copy(cells = cells("00000001"))
+                line.copy(cells = PackedCells.from(line.cells.map { it.copy(fgColor = Color.Red) }))
+            }
+            state.updateSnapshot(snapshot.copy(lines = recolored))
+            for (row in 0..1) assertSame(layouts[row], paint.layout(state, row, 12f))
+            assertNull(paint.layout(state, 2, 12f))
+            val changed = recolored.toMutableList()
+            changed[1] = changed[1].copy(cells = cells("ABCDEF  "))
+            state.updateSnapshot(snapshot.copy(lines = changed))
+            assertTrue(layouts[0] !== paint.layout(state, 0, 12f))
+        } finally {
+            terminal.close()
+        }
+    }
+
+    @Test
     fun levelOneDropsBidiFormattingControls() {
         val terminal = TerminalEmulatorFactory.create(initialRows = 1, initialCols = 20) as TerminalEmulatorImpl
         terminal.writeInput("A\u200f\u202eB\u202c\u2067C\u2069Z".toByteArray())
@@ -507,10 +568,10 @@ abstract class TerminalShapingChecks {
         assertNotSame(beforeResize, engine.layout(replacement.cells, 8f))
     }
 
-    private fun render(cells: PackedCells, paint: TextPaint): Bitmap {
+    private fun render(cells: PackedCells, paint: TextPaint, shapedLine: ShapedLine? = null): Bitmap {
         val bitmap = Bitmap.createBitmap(cells.size * 12, 40, Bitmap.Config.ARGB_8888)
         CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, androidx.compose.ui.graphics.Canvas(bitmap.asImageBitmap()), Size(bitmap.width.toFloat(), 40f)) {
-            drawLine(TerminalLine(0, cells), 0, 12f, 40f, 28f, paint, Paint(), Color.White, Color.Black, null)
+            drawLine(TerminalLine(0, cells), 0, 12f, 40f, 28f, paint, Paint(), Color.White, Color.Black, null, shapedLine = shapedLine)
         }
         return bitmap
     }

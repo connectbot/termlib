@@ -103,10 +103,19 @@ struct VTermState
 
   /* Last glyph output, for Unicode recombining purposes */
   uint32_t *combine_chars;
-  size_t combine_chars_size; // Number of ELEMENTS in the above
+  int combine_count;
   int combine_valid; // Attachment is invalidated by terminal commands and resize
   int combine_width; // The width of the glyph above
   VTermPos combine_pos;   // Position before movement
+
+  /* Unicode properties depend only on the code point. Keep frequently used
+   * classifications local to the parser state. */
+  struct {
+    uint32_t codepoint;
+    int8_t width;
+    bool combining;
+    unsigned short emoji_root;
+  } unicode_cache[64];
 
   struct {
     unsigned int keypad:1;
@@ -294,9 +303,7 @@ void vterm_screen_free(VTermScreen *screen);
 
 VTermEncoding *vterm_lookup_encoding(VTermEncodingType type, char designation);
 
-int vterm_unicode_width(uint32_t codepoint);
-int vterm_unicode_can_extend(const uint32_t *chars, int count, uint32_t cp);
-int vterm_unicode_cluster_width(const uint32_t *chars, int count);
-int vterm_unicode_is_combining(uint32_t codepoint);
+int vterm_unicode_can_extend(VTermState *state, const uint32_t *chars, int count, uint32_t cp);
+int vterm_unicode_cluster_width(VTermState *state, const uint32_t *chars, int count);
 
 #endif

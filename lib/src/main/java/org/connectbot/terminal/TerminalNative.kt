@@ -121,11 +121,17 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
         return withNative { nativeDispatchCharacter(nativePtr, checkNotNull(callbacks), modifiers, character) }
     }
 
-    /** Fill bounded row/column requests in Kotlin-owned direct scratch. */
-    fun getCells(buffer: ByteBuffer, requests: Int): Int {
+    /**
+     * Fill bounded row/column requests in Kotlin-owned direct scratch.
+     *
+     * Fixed records return a cell count. Compact records return a payload
+     * length in words and update each request with the number of cells written
+     * and its payload length. The caller can resume any partially filled row.
+     */
+    fun getCells(buffer: ByteBuffer, requests: Int, compact: Boolean = false): Int {
         require(buffer.isDirect && !buffer.isReadOnly && buffer.capacity() >= CellData.BUFFER_BYTES)
         require(buffer.order() == java.nio.ByteOrder.nativeOrder() && requests in 0..CellData.MAX_REQUESTS)
-        return withNative { nativeGetCells(nativePtr, checkNotNull(callbacks), buffer, requests) }
+        return withNative { nativeGetCells(nativePtr, checkNotNull(callbacks), buffer, requests, compact) }
     }
 
     /**
@@ -205,7 +211,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
     private external fun nativePaste(ptr: Long, callbacks: TerminalCallbacks, data: ByteArray)
 
     fun pasteText(data: ByteArray) = withNative { nativePaste(nativePtr, checkNotNull(callbacks), data) }
-    private external fun nativeGetCells(ptr: Long, callbacks: TerminalCallbacks, buffer: ByteBuffer, requests: Int): Int
+    private external fun nativeGetCells(ptr: Long, callbacks: TerminalCallbacks, buffer: ByteBuffer, requests: Int, compact: Boolean): Int
     private external fun nativeSetPaletteColors(ptr: Long, callbacks: TerminalCallbacks, colors: IntArray, count: Int): Int
     private external fun nativeSetDefaultColors(ptr: Long, callbacks: TerminalCallbacks, fgColor: Int, bgColor: Int): Int
     private external fun nativeSetBoldHighbright(ptr: Long, callbacks: TerminalCallbacks, enabled: Boolean): Int

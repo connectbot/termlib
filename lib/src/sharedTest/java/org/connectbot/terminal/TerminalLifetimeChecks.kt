@@ -244,7 +244,7 @@ internal class NativeCallbackStub : TerminalCallbacks {
     override fun moveCursor(row: Int, col: Int, oldRow: Int, oldCol: Int, visible: Boolean): Int = 0
     override fun setTermProp(prop: Int, value: TerminalProperty): Int = 0
     override fun bell(): Int = bellAction()
-    override fun pushScrollbackLine(cols: Int, start: Int, count: Int, cells: ByteBuffer, softWrapped: Boolean): Int = 0
+    override fun pushScrollbackLine(cols: Int, start: Int, count: Int, wordCount: Int, cells: ByteBuffer, softWrapped: Boolean): Int = 0
     override fun popScrollbackLine(cols: Int, start: Int, count: Int, cells: ByteBuffer): Int = 0
     override fun clearScrollback(): Int = 0
     override fun onKeyboardInput(data: ByteArray): Int = 0

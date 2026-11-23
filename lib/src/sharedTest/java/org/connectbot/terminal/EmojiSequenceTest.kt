@@ -25,7 +25,7 @@ class EmojiSequenceTest {
         override fun bell() = 0
         override fun clearScrollback() = 0
         override fun onKeyboardInput(data: ByteArray) = 0
-        override fun pushScrollbackLine(cols: Int, start: Int, count: Int, cells: ByteBuffer, softWrapped: Boolean) = 0
+        override fun pushScrollbackLine(cols: Int, start: Int, count: Int, wordCount: Int, cells: ByteBuffer, softWrapped: Boolean) = 0
         override fun popScrollbackLine(cols: Int, start: Int, count: Int, cells: ByteBuffer) = 0
         override fun onTextFragment(kind: Int, command: Int, data: ByteArray, initial: Boolean, final: Boolean, cursorRow: Int, cursorCol: Int) = 0
     }

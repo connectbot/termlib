@@ -13,6 +13,15 @@ internal object TerminalFrameTrace {
     fun draw(snapshot: TerminalSnapshot) {
         if (Build.VERSION.SDK_INT < 29 || !Trace.isEnabled()) return
         Trace.setCounter("terminal.draw.sequence", snapshot.sequenceNumber)
+        recordTick("terminal.draw.tick", snapshot)
+    }
+
+    fun published(snapshot: TerminalSnapshot) = recordTick("terminal.publish.tick", snapshot)
+
+    fun applied(snapshot: TerminalSnapshot) = recordTick("terminal.apply.tick", snapshot)
+
+    private fun recordTick(counter: String, snapshot: TerminalSnapshot) {
+        if (Build.VERSION.SDK_INT < 29 || !Trace.isEnabled()) return
         val cells = snapshot.lines.firstOrNull()?.cells ?: return
         if (cells.size < 8) return
         var tick = 0L
@@ -21,6 +30,6 @@ internal object TerminalFrameTrace {
             if (ch !in '0'..'9') return
             tick = tick * 10 + ch.code - '0'.code
         }
-        Trace.setCounter("terminal.draw.tick", tick)
+        Trace.setCounter(counter, tick)
     }
 }

@@ -1,4 +1,5 @@
 #include "vterm_internal.h"
+#include "compact-screen.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -37,9 +38,21 @@ typedef struct
 /* Internal representation of a screen cell */
 typedef struct
 {
-  uint32_t chars[VTERM_MAX_CHARS_PER_CELL];
+  uint64_t extras; /* up to three packed code points, or a tagged pool index */
+  uint32_t first;
   ScreenPen pen;
 } ScreenCell;
+
+#define CELL_EXTRAS_POOLED (UINT64_C(1) << 63)
+#define CELL_CODEPOINT_MASK UINT64_C(0x1fffff)
+
+typedef struct {
+  uint32_t chars[VTERM_MAX_CHARS_PER_CELL - 1];
+  union {
+    uint32_t refs;
+    uint32_t next_free;
+  } state;
+} CellExtras;
 
 struct VTermScreen
 {
@@ -68,16 +81,159 @@ struct VTermScreen
   /* buffer will == buffers[0] or buffers[1], depending on altscreen */
   ScreenCell *buffer;
 
+  CellExtras *extras;
+  uint32_t extras_capacity;
+  uint32_t extras_used;
+  uint32_t extras_live;
+  uint32_t first_free_extras;
+
   /* buffer for a single screen row used in scrollback storage callbacks */
   VTermScreenCell *sb_buffer;
+  void (*sb_push_compact_row)(int row, int cols, void *user);
 
   ScreenPen pen;
 };
 
-static inline void clearcell(const VTermScreen *screen, ScreenCell *cell)
+static void release_extras(VTermScreen *screen, uint32_t id)
 {
-  cell->chars[0] = 0;
+  CellExtras *extra = &screen->extras[id - 1];
+  if(--extra->state.refs == 0) {
+    extra->state.next_free = screen->first_free_extras;
+    screen->first_free_extras = id;
+    screen->extras_live--;
+  }
+}
+
+static uint32_t alloc_extras(VTermScreen *screen)
+{
+  uint32_t id = screen->first_free_extras;
+  if(id) {
+    screen->first_free_extras = screen->extras[id - 1].state.next_free;
+  }
+  else {
+    uint32_t capacity = screen->extras_capacity;
+    if(screen->extras_used == capacity) {
+      if(capacity > UINT32_MAX / 2)
+        abort();
+      size_t new_capacity = capacity ? (size_t)capacity * 2 : 16;
+      if(new_capacity > SIZE_MAX / sizeof(CellExtras))
+        abort();
+      CellExtras *pool = vterm_allocator_malloc(screen->vt, new_capacity * sizeof(pool[0]));
+      if(!pool)
+        abort();
+      if(capacity) {
+        memcpy(pool, screen->extras, capacity * sizeof(pool[0]));
+        vterm_allocator_free(screen->vt, screen->extras);
+      }
+      screen->extras = pool;
+      screen->extras_capacity = new_capacity;
+    }
+    id = ++screen->extras_used;
+  }
+  screen->extras[id - 1].state.refs = 1;
+  screen->extras_live++;
+  return id;
+}
+
+static inline uint32_t pooled_extras(const ScreenCell *cell)
+{
+  return cell->extras & CELL_EXTRAS_POOLED ? (uint32_t)cell->extras : 0;
+}
+
+static inline void set_inline_chars(VTermScreen *screen, ScreenCell *cell, uint32_t first, uint64_t extras)
+{
+  uint32_t id = pooled_extras(cell);
+  if(id)
+    release_extras(screen, id);
+  cell->first = first;
+  cell->extras = extras;
+}
+
+static const uint32_t *cell_tail(const VTermScreen *screen, const ScreenCell *cell, uint32_t inline_tail[4])
+{
+  uint32_t id = pooled_extras(cell);
+  if(id)
+    return screen->extras[id - 1].chars;
+  inline_tail[0] = cell->extras & CELL_CODEPOINT_MASK;
+  inline_tail[1] = (cell->extras >> 21) & CELL_CODEPOINT_MASK;
+  inline_tail[2] = cell->extras >> 42;
+  inline_tail[3] = 0;
+  return inline_tail;
+}
+
+static void set_chars(VTermScreen *screen, ScreenCell *cell, const uint32_t *chars, uint32_t placement)
+{
+  uint32_t first = chars[0];
+  if(!first || first == UINT32_MAX) {
+    set_inline_chars(screen, cell, first, 0);
+    return;
+  }
+  if(first != 0x10eeee) {
+    uint64_t packed = 0;
+    int i = 1;
+    for(; i <= 3 && chars[i] && chars[i] <= CELL_CODEPOINT_MASK; i++)
+      packed |= (uint64_t)chars[i] << ((i - 1) * 21);
+    if(!chars[i]) {
+      set_inline_chars(screen, cell, first, packed);
+      return;
+    }
+  }
+
+  uint32_t id = pooled_extras(cell);
+  if(!id || screen->extras[id - 1].state.refs != 1) {
+    if(id)
+      release_extras(screen, id);
+    id = alloc_extras(screen);
+    cell->extras = CELL_EXTRAS_POOLED | id;
+  }
+  cell->first = first;
+  uint32_t *tail = screen->extras[id - 1].chars;
+  int limit = first == 0x10eeee ? 4 : VTERM_MAX_CHARS_PER_CELL;
+  int i = 1;
+  for(; i < limit && chars[i]; i++)
+    tail[i - 1] = chars[i];
+  if(i < VTERM_MAX_CHARS_PER_CELL)
+    tail[i - 1] = 0;
+  if(first == 0x10eeee)
+    tail[14 - 1] = placement;
+}
+
+static inline void clearcell(VTermScreen *screen, ScreenCell *cell)
+{
+  set_inline_chars(screen, cell, 0, 0);
   cell->pen = screen->pen;
+}
+
+/* Retain source entries before releasing the overwritten destination. The
+ * ranges can overlap within a row or during resize. */
+static void copy_cells(VTermScreen *screen, ScreenCell *dest, const ScreenCell *src, size_t count)
+{
+  if(dest == src || !count)
+    return;
+  if(screen->extras_live) {
+    const ScreenCell *added = src, *removed = dest;
+    uintptr_t from = (uintptr_t)src, to = (uintptr_t)dest;
+    size_t gap = (from < to ? to - from : from - to) / sizeof(ScreenCell);
+    /* Entries in the intersection are still represented exactly once. */
+    if(gap < count) {
+      if(from < to)
+        removed += count - gap;
+      else
+        added += count - gap;
+    }
+    size_t changed = gap < count ? gap : count;
+    for(size_t i = 0; i < changed; i++) {
+      uint32_t id = pooled_extras(&added[i]);
+      if(id)
+        screen->extras[id - 1].state.refs++;
+    }
+    for(size_t i = 0; i < changed; i++) {
+      uint32_t id = pooled_extras(&removed[i]);
+      if(id)
+        release_extras(screen, id);
+    }
+  }
+  memmove(dest, src, count * sizeof(src[0]));
 }
 
 static inline ScreenCell *getcell(const VTermScreen *screen, int row, int col)
@@ -100,6 +256,14 @@ static ScreenCell *alloc_buffer(VTermScreen *screen, int rows, int cols)
   }
 
   return new_buffer;
+}
+
+static inline void accumulate_damage(VTermScreen *screen, VTermRect rect)
+{
+  if(screen->damaged.start_row == -1)
+    screen->damaged = rect;
+  else
+    rect_expand(&screen->damaged, &rect);
 }
 
 static void damagerect(VTermScreen *screen, VTermRect rect)
@@ -143,11 +307,7 @@ static void damagerect(VTermScreen *screen, VTermRect rect)
   case VTERM_DAMAGE_SCREEN:
   case VTERM_DAMAGE_SCROLL:
     /* Never emit damage event */
-    if(screen->damaged.start_row == -1)
-      screen->damaged = rect;
-    else {
-      rect_expand(&screen->damaged, &rect);
-    }
+    accumulate_damage(screen, rect);
     return;
 
   default:
@@ -183,34 +343,35 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
    * complete old footprint, including a leading cell just outside the write. */
   int damage_start = pos.col;
   int damage_end = pos.col + info->width;
-  if(cell->chars[0] == (uint32_t)-1 && pos.col > 0) {
-    clearcell(screen, getcell(screen, pos.row, pos.col - 1));
+  if(cell->first == UINT32_MAX && pos.col > 0) {
+    clearcell(screen, cell - 1);
     damage_start--;
   }
-  ScreenCell *after = getcell(screen, pos.row, damage_end);
-  if(after && after->chars[0] == (uint32_t)-1) {
-    clearcell(screen, after);
+  if(damage_end >= 0 && damage_end < screen->cols && cell[info->width].first == UINT32_MAX) {
+    clearcell(screen, cell + info->width);
     damage_end++;
   }
 
-  int i;
-  for(i = 0; i < VTERM_MAX_CHARS_PER_CELL && info->chars[i]; i++) {
-    cell->chars[i] = info->chars[i];
+  uint32_t first = info->chars[0];
+  if(first)
     cell->pen = screen->pen;
+  if(first && first != 0x10eeee && first != UINT32_MAX && !info->chars[1]) {
+    set_inline_chars(screen, cell, first, 0);
   }
-  if(i < VTERM_MAX_CHARS_PER_CELL)
-    cell->chars[i] = 0;
-  if(info->chars[0] == 0x10eeee) {
-    cell->pen.fg = screen->state->pen.fg;
-    const VTermColor *color = &screen->state->pen.underline_color;
-    cell->chars[4] = 0;
-    cell->chars[14] = VTERM_COLOR_IS_INDEXED(color) ? color->indexed.idx :
-      (color->rgb.red << 16) | (color->rgb.green << 8) | color->rgb.blue;
+  else {
+    uint32_t placement = 0;
+    if(first == 0x10eeee) {
+      cell->pen.fg = screen->state->pen.fg;
+      const VTermColor *color = &screen->state->pen.underline_color;
+      placement = VTERM_COLOR_IS_INDEXED(color) ? color->indexed.idx :
+        (color->rgb.red << 16) | (color->rgb.green << 8) | color->rgb.blue;
+    }
+    set_chars(screen, cell, info->chars, placement);
   }
 
   for(int col = 1; col < info->width; col++) {
-    ScreenCell *continuation = getcell(screen, pos.row, pos.col + col);
-    continuation->chars[0] = (uint32_t)-1;
+    ScreenCell *continuation = cell + col;
+    set_inline_chars(screen, continuation, UINT32_MAX, 0);
     continuation->pen = screen->pen;
   }
 
@@ -228,7 +389,10 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   if(screen->callbacks && screen->callbacks->edit)
     screen->callbacks->edit(rect, screen->cbdata);
 
-  damagerect(screen, rect);
+  if(screen->damage_merge == VTERM_DAMAGE_SCROLL || screen->damage_merge == VTERM_DAMAGE_SCREEN)
+    accumulate_damage(screen, rect);
+  else
+    damagerect(screen, rect);
 
   return 1;
 }
@@ -249,12 +413,17 @@ static int premove(VTermRect rect, void *user)
 {
   VTermScreen *screen = user;
 
-  if(((screen->callbacks && screen->callbacks->sb_pushline) ||
-        (screen->callbacks_has_pushline4 && screen->callbacks && screen->callbacks->sb_pushline4)) &&
+  if(screen->callbacks &&
+     (screen->sb_push_compact_row || screen->callbacks->sb_pushline ||
+      (screen->callbacks_has_pushline4 && screen->callbacks->sb_pushline4)) &&
      rect.start_row == 0 && rect.start_col == 0 &&        // starts top-left corner
      rect.end_col == screen->cols &&                      // full width
      screen->buffer == screen->buffers[BUFIDX_PRIMARY]) { // not altscreen
     for(int row = 0; row < rect.end_row; row++) {
+      if(screen->sb_push_compact_row) {
+        screen->sb_push_compact_row(row, screen->cols, screen->cbdata);
+        continue;
+      }
       const VTermLineInfo *lineinfo = vterm_state_get_lineinfo(screen->state, row);
       sb_pushline_from_row(screen, row, lineinfo->continuation);
     }
@@ -270,6 +439,12 @@ static int moverect_internal(VTermRect dest, VTermRect src, void *user)
   int cols = src.end_col - src.start_col;
   int downward = src.start_row - dest.start_row;
 
+  if(cols == screen->cols) {
+    copy_cells(screen, getcell(screen, dest.start_row, 0), getcell(screen, src.start_row, 0),
+        (size_t)cols * (src.end_row - src.start_row));
+    return 1;
+  }
+
   int init_row, test_row, inc_row;
   if(downward < 0) {
     init_row = dest.end_row - 1;
@@ -283,9 +458,9 @@ static int moverect_internal(VTermRect dest, VTermRect src, void *user)
   }
 
   for(int row = init_row; row != test_row; row += inc_row)
-    memmove(getcell(screen, row, dest.start_col),
+    copy_cells(screen, getcell(screen, row, dest.start_col),
             getcell(screen, row + downward, src.start_col),
-            cols * sizeof(ScreenCell));
+            cols);
 
   return 1;
 }
@@ -317,11 +492,11 @@ static int erase_internal(VTermRect rect, int selective, void *user)
 
     int start = rect.start_col, end = rect.end_col;
     ScreenCell *first = getcell(screen, row, start);
-    if(first && first->chars[0] == (uint32_t)-1 && start > 0 &&
+    if(first && first->first == UINT32_MAX && start > 0 &&
         (!selective || !first->pen.protected_cell))
       start--;
     ScreenCell *after = getcell(screen, row, end);
-    if(after && after->chars[0] == (uint32_t)-1 &&
+    if(after && after->first == UINT32_MAX &&
         (!selective || !after->pen.protected_cell))
       end++;
     if(start != rect.start_col || end != rect.end_col) {
@@ -345,7 +520,7 @@ static int erase_internal(VTermRect rect, int selective, void *user)
         screen->callbacks->edit(changed, screen->cbdata);
       }
 
-      cell->chars[0] = 0;
+      set_inline_chars(screen, cell, 0, 0);
       cell->pen = (ScreenPen){
         /* Only copy .fg and .bg; leave things like rv in reset state */
         .fg = screen->pen.fg,
@@ -570,7 +745,7 @@ static int bell(void *user)
 static int line_popcount(ScreenCell *buffer, int row, int rows, int cols)
 {
   int col = cols - 1;
-  while(col >= 0 && buffer[row * cols + col].chars[0] == 0)
+  while(col >= 0 && buffer[row * cols + col].first == 0)
     col--;
   return col + 1;
 }
@@ -649,7 +824,7 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
       fprintf(stderr, "  scroll %d rows +%d downwards\n", rowcount, downwards);
 #endif
 
-      memmove(&new_buffer[downwards * new_cols], &new_buffer[0],   rowcount * new_cols * sizeof(ScreenCell));
+      copy_cells(screen, &new_buffer[downwards * new_cols], new_buffer, (size_t)rowcount * new_cols);
       memmove(&new_lineinfo[downwards],          &new_lineinfo[0], rowcount            * sizeof(new_lineinfo[0]));
 
       new_row += downwards;
@@ -685,7 +860,7 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
 
       while(count) {
         /* TODO: This could surely be done a lot faster by memcpy()'ing the entire range */
-        new_buffer[new_row * new_cols + new_col] = old_buffer[old_row * old_cols + old_col];
+        copy_cells(screen, &new_buffer[new_row * new_cols + new_col], &old_buffer[old_row * old_cols + old_col], 1);
 
         if(old_cursor.row == old_row && old_cursor.col == old_col)
           new_cursor.row = new_row, new_cursor.col = new_col;
@@ -760,11 +935,7 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
         VTermScreenCell *src = &screen->sb_buffer[pos.col];
         ScreenCell *dst = &new_buffer[pos.row * new_cols + pos.col];
 
-        for(int i = 0; i < VTERM_MAX_CHARS_PER_CELL; i++) {
-          dst->chars[i] = src->chars[i];
-          if(!src->chars[i])
-            break;
-        }
+        set_chars(screen, dst, src->chars, src->chars[0] == 0x10eeee ? src->chars[14] : 0);
 
         dst->pen.bold      = src->attrs.bold;
         dst->pen.underline = src->attrs.underline;
@@ -779,10 +950,9 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
 
         dst->pen.fg = src->fg;
         dst->pen.bg = src->bg;
-        if(src->chars[0] == 0x10eeee) dst->chars[14] = src->chars[14];
 
         if(src->width == 2 && pos.col < (new_cols-1))
-          (dst + 1)->chars[0] = (uint32_t) -1;
+          set_inline_chars(screen, dst + 1, UINT32_MAX, 0);
       }
       for( ; pos.col < new_cols; pos.col++)
         clearcell(screen, &new_buffer[pos.row * new_cols + pos.col]);
@@ -795,7 +965,7 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
   if(new_row >= 0) {
     /* Scroll new rows back up to the top and fill in blanks at the bottom */
     int moverows = new_rows - new_row - 1;
-    memmove(&new_buffer[0], &new_buffer[(new_row + 1) * new_cols], moverows * new_cols * sizeof(ScreenCell));
+    copy_cells(screen, new_buffer, &new_buffer[(new_row + 1) * new_cols], (size_t)moverows * new_cols);
     memmove(&new_lineinfo[0], &new_lineinfo[new_row + 1], moverows * sizeof(new_lineinfo[0]));
 
     new_cursor.row -= (new_row + 1);
@@ -810,6 +980,12 @@ static void resize_buffer(VTermScreen *screen, int bufidx, int new_rows, int new
   if(screen->callbacks && screen->callbacks->image_resize)
     screen->callbacks->image_resize(bufidx, new_cursor.row - old_cursor.row, new_rows, new_cols, screen->cbdata);
 
+  if(screen->extras_live)
+    for(size_t i = 0; i < (size_t)old_rows * old_cols; i++) {
+      uint32_t id = pooled_extras(&old_buffer[i]);
+      if(id)
+        release_extras(screen, id);
+    }
   vterm_allocator_free(screen->vt, old_buffer);
   screen->buffers[bufidx] = new_buffer;
 
@@ -957,6 +1133,7 @@ static VTermScreen *screen_new(VTerm *vt)
   screen->callbacks = NULL;
   screen->cbdata    = NULL;
   screen->callbacks_has_pushline4 = false;
+  screen->sb_push_compact_row = NULL;
 
   screen->buffers[BUFIDX_PRIMARY] = alloc_buffer(screen, rows, cols);
 
@@ -977,6 +1154,8 @@ INTERNAL void vterm_screen_free(VTermScreen *screen)
     vterm_allocator_free(screen->vt, screen->buffers[BUFIDX_ALTSCREEN]);
 
   vterm_allocator_free(screen->vt, screen->sb_buffer);
+  if(screen->extras)
+    vterm_allocator_free(screen->vt, screen->extras);
 
   vterm_allocator_free(screen->vt, screen);
 }
@@ -1013,10 +1192,10 @@ static size_t _get_chars(const VTermScreen *screen, const int utf8, void *buffer
     for(int col = rect.start_col; col < rect.end_col; col++) {
       ScreenCell *cell = getcell(screen, row, col);
 
-      if(cell->chars[0] == 0)
+      if(cell->first == 0)
         // Erased cell, might need a space
         padding++;
-      else if(cell->chars[0] == (uint32_t)-1)
+      else if(cell->first == UINT32_MAX)
         // Gap behind a double-width char, do nothing
         ;
       else {
@@ -1024,8 +1203,13 @@ static size_t _get_chars(const VTermScreen *screen, const int utf8, void *buffer
           PUT(UNICODE_SPACE);
           padding--;
         }
-        for(int i = 0; i < VTERM_MAX_CHARS_PER_CELL && cell->chars[i]; i++) {
-          PUT(cell->chars[i]);
+        PUT(cell->first);
+        if(cell->extras) {
+          uint32_t inline_tail[4];
+          const uint32_t *tail = cell_tail(screen, cell, inline_tail);
+          for(int i = 0; i < VTERM_MAX_CHARS_PER_CELL - 1 && tail[i]; i++) {
+            PUT(tail[i]);
+          }
         }
       }
     }
@@ -1056,32 +1240,49 @@ int vterm_screen_get_cell(const VTermScreen *screen, VTermPos pos, VTermScreenCe
   if(!intcell)
     return 0;
 
-  for(int i = 0; i < VTERM_MAX_CHARS_PER_CELL; i++) {
-    cell->chars[i] = intcell->chars[i];
-    if(!intcell->chars[i])
-      break;
+  cell->chars[0] = intcell->first;
+  uint32_t id = pooled_extras(intcell);
+  if(id) {
+    const uint32_t *tail = screen->extras[id - 1].chars;
+    for(int i = 1; i < VTERM_MAX_CHARS_PER_CELL; i++) {
+      cell->chars[i] = tail[i - 1];
+      if(!cell->chars[i])
+        break;
+    }
+    if(intcell->first == 0x10eeee)
+      cell->chars[14] = tail[14 - 1];
+  }
+  else {
+    uint64_t tail = intcell->extras;
+    cell->chars[1] = tail & CELL_CODEPOINT_MASK;
+    if(cell->chars[1]) {
+      cell->chars[2] = (tail >> 21) & CELL_CODEPOINT_MASK;
+      if(cell->chars[2]) {
+        cell->chars[3] = tail >> 42;
+        if(cell->chars[3])
+          cell->chars[4] = 0;
+      }
+    }
   }
 
-  cell->attrs.bold      = intcell->pen.bold;
-  cell->attrs.underline = intcell->pen.underline;
-  cell->attrs.italic    = intcell->pen.italic;
-  cell->attrs.blink     = intcell->pen.blink;
-  cell->attrs.reverse   = intcell->pen.reverse ^ screen->global_reverse;
-  cell->attrs.conceal   = intcell->pen.conceal;
-  cell->attrs.strike    = intcell->pen.strike;
-  cell->attrs.font      = intcell->pen.font;
-  cell->attrs.small     = intcell->pen.small;
-  cell->attrs.baseline  = intcell->pen.baseline;
-
-  cell->attrs.dwl = intcell->pen.dwl;
-  cell->attrs.dhl = intcell->pen.dhl;
+  cell->attrs = (VTermScreenCellAttrs){
+    .bold = intcell->pen.bold,
+    .underline = intcell->pen.underline,
+    .italic = intcell->pen.italic,
+    .blink = intcell->pen.blink,
+    .reverse = intcell->pen.reverse ^ screen->global_reverse,
+    .conceal = intcell->pen.conceal,
+    .strike = intcell->pen.strike,
+    .font = intcell->pen.font,
+    .small = intcell->pen.small,
+    .baseline = intcell->pen.baseline,
+    .dwl = intcell->pen.dwl,
+    .dhl = intcell->pen.dhl,
+  };
 
   cell->fg = intcell->pen.fg;
   cell->bg = intcell->pen.bg;
-  if(intcell->chars[0] == 0x10eeee) cell->chars[14] = intcell->chars[14];
-
-  if(pos.col < (screen->cols - 1) &&
-     getcell(screen, pos.row, pos.col + 1)->chars[0] == (uint32_t)-1)
+  if(pos.col < (screen->cols - 1) && intcell[1].first == UINT32_MAX)
     cell->width = 2;
   else
     cell->width = 1;
@@ -1089,12 +1290,105 @@ int vterm_screen_get_cell(const VTermScreen *screen, VTermPos pos, VTermScreenCe
   return 1;
 }
 
+static uint32_t compact_rgb(const VTermColor *color, const int32_t palette[256])
+{
+  if(VTERM_COLOR_IS_INDEXED(color))
+    return palette[color->indexed.idx];
+  return (color->rgb.red << 16) | (color->rgb.green << 8) | color->rgb.blue;
+}
+
+static inline size_t pack_screen_row(const VTermScreen *screen, VTermPos start, int *count,
+    uint8_t *output, size_t capacity, const int32_t palette[256], bool *continuation)
+{
+  const ScreenCell *cell = getcell(screen, start.row, start.col);
+  const int requested = *count;
+  *count = 0;
+  if(!cell || requested < 0 || requested > screen->cols - start.col)
+    return 0;
+
+  size_t used = 0;
+  int copied = 0;
+  bool continued = continuation && *continuation;
+  for(int col = start.col; copied < requested; col++, cell++, copied++) {
+    uint32_t header[4] = {0};
+    if(capacity - used < sizeof(header))
+      break;
+    if(continuation ? continued : cell->first == UINT32_MAX) {
+      memcpy(output + used, header, sizeof(header));
+      used += sizeof(header);
+      continued = false;
+      continue;
+    }
+
+    uint32_t inline_tail[4];
+    const uint32_t *tail = NULL;
+    const bool placeholder = cell->first == 0x10eeee;
+    unsigned extra = 0;
+    if(cell->first && cell->extras) {
+      tail = cell_tail(screen, cell, inline_tail);
+      const unsigned max_extra = placeholder ? 3 : VTERM_MAX_CHARS_PER_CELL - 1;
+      while(extra < max_extra && tail[extra])
+        extra++;
+    }
+    size_t tail_bytes = extra * sizeof(uint32_t);
+    size_t bytes = sizeof(header) + tail_bytes + (placeholder ? sizeof(uint32_t) : 0);
+    if(bytes > capacity - used)
+      break;
+
+    const ScreenPen *pen = &cell->pen;
+    const unsigned width = 1 + (col + 1 < screen->cols && cell[1].first == UINT32_MAX);
+    header[0] = vterm_compact_meta(cell->first, extra, width);
+    if(!placeholder)
+      header[1] = compact_rgb(&pen->fg, palette);
+    else if(!VTERM_COLOR_IS_DEFAULT_FG(&pen->fg))
+      header[1] = VTERM_COLOR_IS_INDEXED(&pen->fg) ? pen->fg.indexed.idx : compact_rgb(&pen->fg, palette);
+    header[2] = compact_rgb(&pen->bg, palette);
+    header[3] = pen->bold | (pen->underline << 1) | (pen->italic << 3) |
+        (pen->blink << 4) | ((pen->reverse ^ screen->global_reverse) << 5) |
+        (pen->conceal << 6) | (pen->strike << 7) | (pen->font << 8) |
+        (pen->dwl << 12) | (pen->dhl << 13) | (pen->small << 15) |
+        (pen->baseline << 16) | (VTERM_COLOR_IS_DEFAULT_BG(&pen->bg) << 18);
+    memcpy(output + used, header, sizeof(header));
+    if(extra)
+      memcpy(output + used + sizeof(header), tail, tail_bytes);
+    if(placeholder) {
+      uint32_t id = pooled_extras(cell);
+      uint32_t placement = id ? screen->extras[id - 1].chars[13] : 0;
+      memcpy(output + used + sizeof(header) + tail_bytes, &placement, sizeof(placement));
+    }
+    used += bytes;
+    continued = width == 2;
+  }
+  *count = copied;
+  if(continuation)
+    *continuation = continued;
+  return used;
+}
+
+size_t vterm_screen_pack_row(const VTermScreen *screen, VTermPos start, int *count,
+    uint8_t *output, size_t capacity, const int32_t palette[256])
+{
+  return pack_screen_row(screen, start, count, output, capacity, palette, NULL);
+}
+
+size_t vterm_screen_pack_scrollback(const VTermScreen *screen, VTermPos start, int *count,
+    uint8_t *output, size_t capacity, const int32_t palette[256], bool *continuation)
+{
+  return pack_screen_row(screen, start, count, output, capacity, palette, continuation);
+}
+
+void vterm_screen_set_compact_scrollback_callback(VTermScreen *screen,
+    void (*callback)(int row, int cols, void *user))
+{
+  screen->sb_push_compact_row = callback;
+}
+
 int vterm_screen_is_eol(const VTermScreen *screen, VTermPos pos)
 {
   /* This cell is EOL if this and every cell to the right is black */
   for(; pos.col < screen->cols; pos.col++) {
     ScreenCell *cell = getcell(screen, pos.row, pos.col);
-    if(cell->chars[0] != 0)
+    if(cell->first != 0)
       return 0;
   }
 

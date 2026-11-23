@@ -62,6 +62,11 @@ public:
             terminal.mCallbacks = callbacks;
         }
         ~CallbackScope() {
+            if (mTerminal.mScrollbackBuffer) {
+                mTerminal.mEnv->DeleteLocalRef(mTerminal.mScrollbackBuffer);
+                mTerminal.mScrollbackBuffer = nullptr;
+                mTerminal.mScrollbackBytes = nullptr;
+            }
             mTerminal.mCallbacks = nullptr;
             mTerminal.mEnv = nullptr;
         }
@@ -83,7 +88,7 @@ public:
     bool dispatchCharacter(int modifiers, int codepoint);
 
     // Cell data retrieval for rendering
-    int getCells(JNIEnv* env, jobject buffer, int requests);
+    int getCells(JNIEnv* env, jobject buffer, int requests, bool compact);
 
     // Color configuration
     int setPaletteColors(const uint32_t* colors, int count);
@@ -101,6 +106,7 @@ private:
     static int termSettermprop(VTermProp prop, VTermValue* val, void* user);
     static int termBell(void* user);
     static int termSbPushline(int cols, const VTermScreenCell* cells, void* user);
+    static void termSbPushCompactRow(int row, int cols, void* user);
     static int termSbPopline(int cols, VTermScreenCell* cells, void* user);
     static int termSbClear(void* user);
 
@@ -120,7 +126,6 @@ private:
     int imageEdit(int kind, VTermRect rect, int downward = 0, int rightward = 0);
     jlong imageFragment(bool kitty, VTermStringFragment frag);
     bool mReservingImage = false;
-    bool mImageTracking = false;
     bool mOsc1337Image = false;
     jmethodID mImageFragmentMethod{};
     jmethodID mImageEditMethod{};
@@ -139,15 +144,18 @@ private:
     void finishCursorBatch();
     void invokeSetTermProp(VTermProp prop, VTermValue* val);
     void invokeBell();
-    void invokePushScrollbackLine(int cols, const VTermScreenCell* cells, bool softWrapped);
+    uint8_t* scrollbackBuffer();
+    void invokePushScrollbackLine(int cols, int row, const VTermScreenCell* cells);
     int invokePopScrollbackLine(int cols, VTermScreenCell* cells);
     void invokeClearScrollback();
     void invokeKeyboardOutput(const char* data, size_t len);
     int invokeTextFragment(int kind, int command, VTermStringFragment frag, int row, int col);
     void packCell(const VTermScreenCell& cell, jint* out);
+    int packCompactCell(const VTermScreenCell& cell, int width, uint8_t* out, int available);
+    void packCellStyle(const VTermScreenCell& cell, jint* out);
 
     // Helper functions
-    void resolveColor(const VTermColor& color, uint8_t& r, uint8_t& g, uint8_t& b);
+    jint resolveColor(const VTermColor& color) const;
 
     // libvterm state
     VTerm* mVt{};
@@ -155,6 +163,7 @@ private:
     VTermScreenCallbacks mScreenCallbacks{};
     VTermStateFallbacks mStateFallbacks{};
     VTermSelectionCallbacks mSelectionCallbacks{};
+    jint mPackedPalette[256]{};
 
     // Selection buffer for OSC 52 clipboard (libvterm uses this for base64 decoding)
     static constexpr size_t SELECTION_BUFFER_SIZE = 8192;
@@ -177,6 +186,8 @@ private:
     // Java callback object and method IDs
     JNIEnv* mEnv{};
     jobject mCallbacks{};  // Borrowed only during CallbackScope
+    jobject mScrollbackBuffer{};
+    uint8_t* mScrollbackBytes{};
     jmethodID mDamageMethod{};
     jmethodID mMoverectMethod{};
     jmethodID mMoveCursorMethod{};

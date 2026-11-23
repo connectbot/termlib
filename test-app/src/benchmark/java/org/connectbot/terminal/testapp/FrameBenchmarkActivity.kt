@@ -25,6 +25,8 @@ import org.connectbot.terminal.InlineImages
 import org.connectbot.terminal.Terminal
 import org.connectbot.terminal.TerminalEmulatorFactory
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.LockSupport
 import kotlin.concurrent.thread
 import kotlin.math.abs
@@ -45,6 +47,7 @@ class FrameBenchmarkActivity : ComponentActivity() {
             if (mode != null) preferredDisplayModeId = mode.modeId
         }
         val workload = intent.getStringExtra("workload") ?: "text"
+        val accessibility = getSystemService(android.view.accessibility.AccessibilityManager::class.java)
         var outputBytes = 0L
         val terminal = TerminalEmulatorFactory.create(initialRows = 24, initialCols = 80, inlineImages = if (workload in listOf("png", "rgba", "animation")) InlineImages.On() else InlineImages.Off, onKeyboardInput = {
             outputBytes += it.size
@@ -67,19 +70,58 @@ class FrameBenchmarkActivity : ComponentActivity() {
         val frames = if (workload == "cacafire") {
             captureFrames()
         } else {
+            val evenText = "سلام क्षि မြန်မာ "
+            val oddText = "مرحبا র্ক ខ្មែរ "
             List(1200) { tick ->
+                if (workload == "shaping-recolor") {
+                    return@List buildString {
+                        append("\u001b[3${tick % 8}m")
+                        for (row in 2..dimensions.value.first) {
+                            // Leave space at the right edge to keep each row a separate paragraph.
+                            append("\u001b[${row};1H")
+                            append(evenText.repeat(4))
+                        }
+                        append("\u001b[0m")
+                    }.toByteArray()
+                }
                 val content = when (workload) {
                     "text" -> "abc日é ".repeat(150)
-                    "shaping" -> (if (tick % 2 == 0) "سلام क्षि မြန်မာ " else "مرحبا র্ক ខ្មែរ ").repeat(dimensions.value.first * 7)
+                    "shaping" -> (if (tick % 2 == 0) evenText else oddText).repeat(dimensions.value.first * 7)
+                    "shaping-even" -> evenText.repeat(dimensions.value.first * 7)
+                    "shaping-odd" -> oddText.repeat(dimensions.value.first * 7)
                     "shaping-static" -> "سلام क्षि தமிழ் ".repeat(dimensions.value.first * 7)
                     else -> ""
                 }
                 ("\u001b[2;1H" + if (content.isNotEmpty()) "\u001b[3${tick % 8}m$content\u001b[0m" else "").toByteArray()
             }
         }
+        val inputPhaseUs = intent.getIntExtra("inputPhaseUs", -1)
+        require(inputPhaseUs in -1..16_666)
+        val clockReady = if (inputPhaseUs >= 0) CountDownLatch(1) else null
+        var anchorNanos = 0L
         setContent {
             val pulse = remember { mutableLongStateOf(0) }
-            LaunchedEffect(Unit) { while (true) withFrameNanos { pulse.longValue = it } }
+            LaunchedEffect(Unit) {
+                var previousFrame = 0L
+                var stableFrames = 0
+                while (true) withFrameNanos { frameNanos ->
+                    if (clockReady?.count == 1L) {
+                        val interval = frameNanos - previousFrame
+                        previousFrame = frameNanos
+                        val rate = display?.refreshRate ?: 0f
+                        stableFrames = if (abs(rate - 60f) < 0.1f && interval in 16_000_000L..17_300_000L) {
+                            stableFrames + 1
+                        } else {
+                            0
+                        }
+                        if (stableFrames == 8) {
+                            anchorNanos = frameNanos
+                            clockReady.countDown()
+                        }
+                    }
+                    pulse.longValue = frameNanos
+                }
+            }
             Box(Modifier.fillMaxSize()) {
                 Terminal(terminal, typeface = Typeface.MONOSPACE, initialFontSize = 10.sp, forcedSize = dimensions.value, keyboardEnabled = true, showSoftKeyboard = false)
                 Canvas(Modifier.fillMaxSize()) {
@@ -89,7 +131,15 @@ class FrameBenchmarkActivity : ComponentActivity() {
             }
         }
         thread(name = "terminal-benchmark-reader") {
-            val start = System.nanoTime()
+            val start = if (clockReady != null) {
+                check(clockReady.await(5, TimeUnit.SECONDS)) { "No stable 60 Hz app frames to anchor input timing" }
+                val periodNanos = 1_000_000_000L / 60
+                val offset = anchorNanos + inputPhaseUs * 1_000L
+                val elapsed = (System.nanoTime() - offset).coerceAtLeast(0L)
+                offset + (elapsed / periodNanos + 1) * periodNanos
+            } else {
+                System.nanoTime()
+            }
             var tick = 0
             while (running) {
                 val deadline = start + tick * 1_000_000_000L / 60
@@ -98,7 +148,10 @@ class FrameBenchmarkActivity : ComponentActivity() {
                 if (!running) break
                 Trace.beginSection("terminal.benchmark.input")
                 Trace.setCounter("terminal.benchmark.tick", tick.toLong())
-                if (tick % 60 == 0) Trace.setCounter("terminal.benchmark.refreshMilliHz", ((display?.refreshRate ?: 0f) * 1000).toLong())
+                if (tick % 60 == 0) {
+                    Trace.setCounter("terminal.benchmark.refreshMilliHz", ((display?.refreshRate ?: 0f) * 1000).toLong())
+                    Trace.setCounter("terminal.benchmark.accessibilityEnabled", if (accessibility.isEnabled) 1 else 0)
+                }
                 if (workload != "idle") {
                     // Label the same input batch atomically. A separate marker write
                     // could be captured one snapshot later than the text it labels.

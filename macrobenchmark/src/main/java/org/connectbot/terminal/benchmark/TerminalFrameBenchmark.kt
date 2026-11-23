@@ -1,5 +1,6 @@
 package org.connectbot.terminal.benchmark
 
+import android.app.UiAutomation
 import android.content.Intent
 import androidx.benchmark.ExperimentalBenchmarkConfigApi
 import androidx.benchmark.ExperimentalConfig
@@ -10,6 +11,7 @@ import androidx.benchmark.perfetto.ExperimentalPerfettoCaptureApi
 import androidx.benchmark.perfetto.PerfettoConfig
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.Configurator
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,6 +23,9 @@ class TerminalFrameBenchmark {
 
     @Test fun terminalFrames() {
         val args = InstrumentationRegistry.getArguments()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val automationFlags = Configurator.getInstance().uiAutomationFlags
+        val automationAccessibility = args.getString("automationAccessibility") == "true"
         val workload = args.getString("workload") ?: "text"
         val duration = args.getString("durationMs")?.toLong() ?: 20_000L
         benchmark.measureRepeated(
@@ -30,6 +35,9 @@ class TerminalFrameBenchmark {
             compilationMode = CompilationMode.Full(),
             iterations = args.getString("iterations")?.toInt() ?: 5,
             setupBlock = {
+                if (!automationAccessibility) {
+                    checkNotNull(instrumentation.getUiAutomation(automationFlags))
+                }
                 killProcess()
                 pressHome()
                 startActivityAndWait(
@@ -38,8 +46,13 @@ class TerminalFrameBenchmark {
                         putExtra("workload", workload)
                         putExtra("rows", args.getString("rows")?.toInt() ?: 24)
                         putExtra("durationMs", duration)
+                        args.getString("inputPhaseUs")?.let { putExtra("inputPhaseUs", it.toInt()) }
                     },
                 )
+                if (!automationAccessibility) {
+                    // Launch synchronization needs accessibility. Frame timing does not.
+                    checkNotNull(instrumentation.getUiAutomation(automationFlags or UiAutomation.FLAG_DONT_USE_ACCESSIBILITY))
+                }
                 Thread.sleep(3_000)
             },
             measureBlock = { Thread.sleep(duration) },

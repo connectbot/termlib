@@ -23,10 +23,6 @@ internal class TerminalDispatcher {
         schedule()
     }
 
-    fun executeAfter(delayMillis: Long, action: () -> Unit) {
-        workers.schedule({ execute(action) }, delayMillis, TimeUnit.MILLISECONDS)
-    }
-
     fun <T> call(action: () -> T): T {
         if (executing.get() == true) return action()
         val task = FutureTask(action)
@@ -57,6 +53,11 @@ internal class TerminalDispatcher {
     }
 
     companion object {
+        /** The emulator holds its state lock and coalesces requests before submitting. */
+        fun scheduleSnapshot(task: Runnable, delayNanos: Long) {
+            workers.schedule(task, delayNanos, TimeUnit.NANOSECONDS)
+        }
+
         private val workers = Executors.newScheduledThreadPool(2) { task ->
             Thread(task, "terminal-state").apply { isDaemon = true }
         }

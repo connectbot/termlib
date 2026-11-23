@@ -56,19 +56,37 @@ internal data class ImageSource(val bytes: ImageBytes, val width: Int, val heigh
         val w = (width + sample - 1) / sample
         val h = (height + sample - 1) / sample
         val pixels = IntArray(w * h)
-        stream().buffered(ImageBytes.CHUNK).use { input ->
-            for (y in 0 until height) {
-                for (x in 0 until width) {
-                    val r = input.read()
-                    val g = input.read()
-                    val b = input.read()
-                    val a = if (format == 32) input.read() else 255
-                    require(r >= 0 && g >= 0 && b >= 0 && a >= 0) { "EINVAL:short pixel data" }
-                    if (x % sample == 0 && y % sample == 0) {
-                        pixels[y / sample * w + x / sample] =
-                            (a shl 24) or (r shl 16) or (g shl 8) or b
+        val channels = if (format == 32) 4 else 3
+        val buffer = ByteArray(ImageBytes.CHUNK)
+        val sampleMask = sample - 1
+        stream().use { input ->
+            var x = 0
+            var y = 0
+            var dest = 0
+            var remaining = width * height
+            while (remaining > 0) {
+                val count = minOf(remaining, buffer.size / channels)
+                val bytes = count * channels
+                var offset = 0
+                while (offset < bytes) {
+                    val read = input.read(buffer, offset, bytes - offset)
+                    require(read > 0) { "EINVAL:short pixel data" }
+                    offset += read
+                }
+                for (index in 0 until bytes step channels) {
+                    if ((x or y) and sampleMask == 0) {
+                        val r = buffer[index].toInt() and 255
+                        val g = buffer[index + 1].toInt() and 255
+                        val b = buffer[index + 2].toInt() and 255
+                        val a = if (channels == 4) buffer[index + 3].toInt() and 255 else 255
+                        pixels[dest++] = (a shl 24) or (r shl 16) or (g shl 8) or b
+                    }
+                    if (++x == width) {
+                        x = 0
+                        y++
                     }
                 }
+                remaining -= count
             }
             require(input.read() == -1) { "EINVAL:excess pixel data" }
         }
