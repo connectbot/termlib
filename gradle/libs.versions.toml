@@ -11,7 +11,7 @@ dokka = "2.3.0"
 sonarqube = "7.6.0.18749"
 kover = "0.9.11"
 
-composeBom = "2026.09.00"
+composeBom = "2026.11.01"
 lifecycleViewModel = "2.11.1"
 activityCompose = "1.13.0"
 composeRuntime = "1.13.0"
