@@ -85,7 +85,7 @@ Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() �
 
 Changes since 0.3.15.
 
-[Compare source versions](https://github.com/connectbot/termlib/compare/0.3.15...a7ea79b61634a362420affade0ab5b84ca65a705)
+[Compare source versions](https://github.com/connectbot/termlib/compare/0.3.15...664393b769a7cdf554fce1712dc9a77ae6c3e1ab)
 
 ### Terminal
 
