@@ -180,6 +180,40 @@ class BoxDrawingGoldenTest {
     }
 
     @Test
+    fun batchedBoxesMatchIndividualDrawsAcrossMetricsClippingAndAlpha() {
+        for (width in listOf(9f, 12f, 25.5f)) {
+            val height = 17.5f
+            fun render(batched: Boolean): Bitmap {
+                val bitmap = Bitmap.createBitmap((width * 40).toInt(), 70, Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bitmap)
+                canvas.drawColor(android.graphics.Color.BLACK)
+                canvas.clipRect(2f, 3f, bitmap.width - 4f, bitmap.height - 1f)
+                val renderer = TerminalBoxDrawing()
+                for (row in 0 until 4) {
+                    if (batched) renderer.beginRow(canvas, batchRectangles = true)
+                    for (col in 0 until 40) {
+                        val ch = (0x2500 + row * 40 + col).toChar()
+                        val neighbors = if (col % 3 == 0) 0x55 else 0
+                        val color = when (col / 10) {
+                            0, 3 -> -1
+                            1 -> 0x8044AAFF.toInt()
+                            else -> android.graphics.Color.RED
+                        }
+                        renderer.draw(canvas, ch, col * width, row * height, width, height, color, 16f, neighbors)
+                    }
+                    if (batched) renderer.endRow()
+                }
+                return bitmap
+            }
+            val expected = render(batched = false)
+            val actual = render(batched = true)
+            assertTrue("Batched box pixels differ at cell width $width", actual.sameAs(expected))
+            actual.recycle()
+            expected.recycle()
+        }
+    }
+
+    @Test
     fun stippleShadersPreservePixelsAcrossColorsAndCellSizes() {
         val renderer = TerminalBoxDrawing()
         for (width in listOf(9f, 25.5f)) {
