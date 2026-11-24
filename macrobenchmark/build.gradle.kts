@@ -5,12 +5,15 @@ plugins {
 android {
     namespace = "org.connectbot.terminal.benchmark"
     compileSdk = 37
+    compileSdkMinor = 1
     targetProjectPath = ":test-app"
+
     defaultConfig {
         minSdk = 31
         targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
     buildTypes {
         create("benchmark") {
             isDebuggable = true
@@ -18,6 +21,7 @@ android {
             matchingFallbacks += "release"
         }
     }
+
     experimentalProperties["android.experimental.self-instrumenting"] = true
 
     // Allow an updated official processor when a newer Android trace format
