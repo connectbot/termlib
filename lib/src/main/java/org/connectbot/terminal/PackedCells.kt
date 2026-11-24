@@ -130,10 +130,10 @@ internal class PackedCells private constructor(
         return if (ch in 32..126) ch else -1
     }
 
-    fun boxCharacter(col: Int): Char? = if (col in indices && offsets[col + 1] - offsets[col] == 1) {
-        text[offsets[col]].takeIf { it in '\u2500'..'\u259F' }
-    } else {
-        null
+    fun boxCodePoint(col: Int): Int {
+        if (col !in indices || offsets[col + 1] - offsets[col] != 1) return 0
+        val codePoint = text[offsets[col]].code
+        return if (codePoint in 0x2500..0x259F) codePoint else 0
     }
 
     // One lazily allocated measurement array per retained row, replaced on font changes.

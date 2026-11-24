@@ -116,6 +116,93 @@ class AndroidRenderBenchmarkTest {
         InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("benchmark", result) })
     }
 
+    /** Compare box and block workloads against ASCII through the production renderer. */
+    @Test
+    @SdkSuppress(minSdkVersion = 31)
+    fun boxAndBlockRenderingOverhead() {
+        val args = InstrumentationRegistry.getArguments()
+        assumeTrue(args.getString("renderBenchmark") == "true")
+        val rows = args.getString("renderRows")?.toInt() ?: 24
+        val cols = args.getString("renderCols")?.toInt() ?: 80
+        val workloads = linkedMapOf(
+            "ascii" to listOf("Terminal text 123 ", "Updated text 456 "),
+            "boxes" to listOf((0x2500..0x259F).map(Int::toChar).joinToString(""), (0x2500..0x259F).reversed().map(Int::toChar).joinToString("")),
+            "shades" to listOf("░▒▓", "▓░▒"),
+            "mixed" to listOf("┌─┼┐ Terminal ░▒▓ 123 ", "╔═╬╗ Updated ▓░▒ 456 "),
+        )
+        val terminal = TerminalEmulatorFactory.create(initialRows = rows, initialCols = cols) as TerminalEmulatorImpl
+        val snapshots = workloads.mapValues { (_, texts) ->
+            texts.map { text ->
+                val content = buildString {
+                    append("\u001b[2J")
+                    val repeated = text.repeat((rows * cols) / text.length + 1)
+                    for (row in 0 until rows) {
+                        append("\u001b[${row + 1};1H")
+                        append(repeated.substring(row * cols, (row + 1) * cols))
+                    }
+                }
+                terminal.writeInput(content.toByteArray())
+                terminal.processPendingUpdates()
+                terminal.snapshot.value
+            }
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            for (hardware in listOf(false, true)) {
+                for (changing in listOf(false, true)) {
+                    val results = linkedMapOf<String, Long>()
+                    for ((name, frames) in snapshots) {
+                        val state = TerminalScreenState(frames[0])
+                        val paint = TerminalTextPaint(Typeface.MONOSPACE, 20f)
+                        val underline = Paint()
+                        val scope = CanvasDrawScope()
+                        val bitmap = Bitmap.createBitmap(cols * 12, rows * 24, Bitmap.Config.ARGB_8888)
+                        val softwareCanvas = androidx.compose.ui.graphics.Canvas(bitmap.asImageBitmap())
+                        val node = RenderNode("render-comparison")
+                        node.setPosition(0, 0, bitmap.width, bitmap.height)
+                        var tick = 0
+                        fun frame() {
+                            state.updateSnapshot(frames[if (changing) tick++ % frames.size else 0])
+                            paint.viewport(state)
+                            val canvas = if (hardware) androidx.compose.ui.graphics.Canvas(node.beginRecording()) else softwareCanvas
+                            try {
+                                scope.draw(Density(1f), LayoutDirection.Ltr, canvas, Size(bitmap.width.toFloat(), bitmap.height.toFloat())) {
+                                    drawRect(Color.Black)
+                                    for (row in 0 until rows) {
+                                        val line = state.getVisibleLine(row)
+                                        drawLine(
+                                            line, row, 12f, 24f, 20f, paint, underline, Color.White, Color.Black, null,
+                                            aboveLine = if (row > 0) state.getVisibleLine(row - 1) else null,
+                                            belowLine = if (row + 1 < rows) state.getVisibleLine(row + 1) else null,
+                                            shapedLine = paint.layout(state, row, 12f),
+                                        )
+                                    }
+                                }
+                            } finally {
+                                if (hardware) node.endRecording()
+                            }
+                        }
+                        repeat(30) { frame() }
+                        val samples = List(9) {
+                            val start = System.nanoTime()
+                            repeat(20) { frame() }
+                            (System.nanoTime() - start) / 20
+                        }.sorted()
+                        results[name] = samples[4]
+                        node.discardDisplayList()
+                        bitmap.recycle()
+                        paint.clearShaping()
+                    }
+                    for ((name, nanos) in results) {
+                        val ratio = nanos.toDouble() / results.getValue("ascii")
+                        val result = "${rows}x$cols ${if (hardware) "recording" else "software"} ${if (changing) "changing" else "static"} $name ns/frame=$nanos ratio=$ratio"
+                        Log.i("TermRenderBenchmark", result)
+                        InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("benchmark", result) })
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     @SdkSuppress(minSdkVersion = 29)
     fun shadedBlocksOnRecordingCanvas() {

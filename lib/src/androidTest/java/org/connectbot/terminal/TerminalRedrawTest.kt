@@ -128,6 +128,33 @@ class TerminalRedrawTest {
     }
 
     @Test
+    fun batchedBoxesMatchIndividualDrawsInHardwareWindow() {
+        val batched = mutableStateOf(true)
+        val renderer = TerminalBoxDrawing()
+        compose.setContent {
+            Canvas(Modifier.size(300.dp, 100.dp)) {
+                drawRect(Color.Black)
+                val canvas = drawContext.canvas.nativeCanvas
+                assertTrue(canvas.isHardwareAccelerated)
+                for (row in 0 until 8) {
+                    if (batched.value) renderer.beginRow(canvas)
+                    for (column in 0 until 20) {
+                        val ch = (0x2500 + row * 20 + column).toChar()
+                        val color = if (column < 10) android.graphics.Color.CYAN else android.graphics.Color.WHITE
+                        renderer.draw(canvas, ch, column * 9.5f, row * 16.5f, 9.5f, 16.5f, color, 16f)
+                    }
+                    if (batched.value) renderer.endRow()
+                }
+            }
+        }
+        val actual = captureWindow()
+        compose.runOnIdle { batched.value = false }
+        val expected = captureWindow()
+        assertTrue("Reference must contain box drawing", expected.getPixel(166, 105) != expected.getPixel(0, 0))
+        assertTrue("Batched rectangles changed hardware window pixels", actual.sameAs(expected))
+    }
+
+    @Test
     fun cursorAndSelectionInvertRetainedWindowPixelsWithoutTrails() {
         val terminal = terminal("\u001B[?12l\u001B[2 q\u001B[32;44m█ colored 表 🎉\u001B[H")
         var selection: SelectionController? = null

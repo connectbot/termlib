@@ -2260,7 +2260,9 @@ internal fun DrawScope.drawLine(
     textPaint.isUnderlineText = false
     textPaint.isStrikeThruText = false
     var paintedColor = Color.Unspecified
+    var paintedArgb = 0
     var paintedStyle = -1
+    var boxRenderer: TerminalBoxDrawing? = null
     val plainForeground = activeSelection == null && detectedUrls == null && !autoDetectUrls && line.semanticSegments.isEmpty()
     var drawnUntil = 0
     for (col in 0 until cells.size) {
@@ -2286,7 +2288,8 @@ internal fun DrawScope.drawLine(
             ((autoDetectUrls || line.semanticSegments.isNotEmpty()) && line.getHyperlinkUrlAt(col, autoDetectUrls) != null)
         if (!cells.blank(col) && !cells.placeholder(col)) {
             if (fg != paintedColor) {
-                textPaint.color = fg.toArgb()
+                paintedArgb = fg.toArgb()
+                textPaint.color = paintedArgb
                 paintedColor = fg
             }
             val style = flags and 9
@@ -2295,25 +2298,29 @@ internal fun DrawScope.drawLine(
                 textPaint.textSkewX = if (flags and 8 != 0) -0.25f else 0f
                 paintedStyle = style
             }
-            val box = cells.boxCharacter(col)
-            if (box != null) {
-                val renderer = (textPaint as? TerminalTextPaint)?.boxDrawing ?: TerminalBoxDrawing()
-                fun dashKind(ch: Char?, horizontal: Boolean): Int = when (ch?.code) {
+            val box = cells.boxCodePoint(col)
+            if (box != 0) {
+                val renderer = boxRenderer ?: ((textPaint as? TerminalTextPaint)?.boxDrawing ?: TerminalBoxDrawing()).also {
+                    it.beginRow(canvas)
+                    boxRenderer = it
+                }
+                fun dashKind(codePoint: Int, horizontal: Boolean): Int = when (codePoint) {
                     in if (horizontal) 0x254C..0x254D else 0x254E..0x254F -> 1
                     in if (horizontal) 0x2504..0x2505 else 0x2506..0x2507 -> 2
                     in if (horizontal) 0x2508..0x2509 else 0x250A..0x250B -> 3
                     else -> 0
                 }
-                val neighboringDashes = if (box >= '\u2580') {
+                val neighboringDashes = if (box >= 0x2580) {
                     0
                 } else {
-                    dashKind(cells.boxCharacter(col - 1), true) or
-                        (dashKind(cells.boxCharacter(col + 1), true) shl 2) or
-                        (dashKind(aboveLine?.cells?.boxCharacter(col), false) shl 4) or
-                        (dashKind(belowLine?.cells?.boxCharacter(col), false) shl 6)
+                    dashKind(cells.boxCodePoint(col - 1), true) or
+                        (dashKind(cells.boxCodePoint(col + 1), true) shl 2) or
+                        (dashKind(aboveLine?.cells?.boxCodePoint(col) ?: 0, false) shl 4) or
+                        (dashKind(belowLine?.cells?.boxCodePoint(col) ?: 0, false) shl 6)
                 }
-                renderer.draw(canvas, box, x, y, cellWidth, charHeight, fg.toArgb(), textPaint.textSize, neighboringDashes)
+                renderer.draw(canvas, box.toChar(), x, y, cellWidth, charHeight, paintedArgb, textPaint.textSize, neighboringDashes)
             } else {
+                boxRenderer?.flushRectangles()
                 if (android.os.Build.VERSION.SDK_INT >= 31 && shaped == null && plainForeground && width == 1 &&
                     flags and (1 or 6 or 8 or 32 or 128) == 0 && textPaint is TerminalTextPaint && textPaint.usesSystemMonospace && cells.singleAscii(col) >= 0
                 ) {
@@ -2329,7 +2336,10 @@ internal fun DrawScope.drawLine(
                 }
             }
         }
-        if (underline != 0 || hyperlink || flags and 128 != 0) underlinePaint.color = fg.toArgb()
+        if (underline != 0 || hyperlink || flags and 128 != 0) {
+            boxRenderer?.flushRectangles()
+            underlinePaint.color = fg.toArgb()
+        }
         if (underline == 1 || hyperlink) {
             canvas.drawLine(x, y + charBaseline + 2f, x + cellWidth, y + charBaseline + 2f, underlinePaint)
         }
@@ -2344,6 +2354,7 @@ internal fun DrawScope.drawLine(
             drawCurlyUnderline(x, y + charBaseline, cellWidth, charWidth, fg, underlinePaint)
         }
     }
+    boxRenderer?.endRow()
     line.images.forEach { if (it.z >= 0) it.draw(canvas, row, charWidth, charHeight) }
 }
 

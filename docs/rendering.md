@@ -146,6 +146,11 @@ italic. Selection and reverse video still determine the drawing color.
 Shades use fine repeating stipples with approximately 25%, 50%, and 75%
 foreground coverage, following kitty's patterned appearance.
 
+Straight box arms and block rectangles are clipped numerically and drawn in
+terminal coordinates. Hardware Canvas groups same-color opaque rectangles by
+stroke width within each row. Translucent rectangles preserve draw order, and
+curves and diagonals keep Canvas clipping for their antialiased edges.
+
 Only standalone characters take this path; combining clusters retain font
 shaping. The magnifier uses the same renderer. Powerline, Braille, and symbols
 outside these two Unicode ranges retain normal font rendering.
@@ -191,8 +196,11 @@ assertions check placement and background ordering. Android's
 `TerminalRedrawTest` compares incremental rendering with fresh surfaces using
 real window capture; Robolectric's PixelCopy path cannot perform that capture.
 
-`AndroidRenderBenchmarkTest` measures warmed software Canvas rendering on ART,
-not GPU frame presentation. Enable it with
-`-Pandroid.testInstrumentationRunnerArguments.renderBenchmark=true`.  Use the
+`AndroidRenderBenchmarkTest` measures warmed drawing and recording time on ART.
+The measurements stop before GPU presentation. Enable the benchmark with
+`-Pandroid.testInstrumentationRunnerArguments.renderBenchmark=true`.
+`boxAndBlockRenderingOverhead` compares dense box glyphs, shades, and mixed text
+with ASCII on software Canvas and hardware display-list recording. It measures
+both repeated snapshots and alternating content. Use the
 capture/replay and memory tests described in `benchmark/README.md` to measure
 the native boundary separately.
