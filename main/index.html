@@ -115,9 +115,27 @@
   <!-- BEGIN DOCS API CHANGES -->
 <section id="api-changes"><h2>New and changed APIs</h2>
 <p>Changes since 0.3.15.</p>
-<p><a href="https://github.com/connectbot/termlib/compare/0.3.15...23f65c6d8af34e2b58003e386190de2e0d1e911a">Compare source versions</a></p>
+<p><a href="https://github.com/connectbot/termlib/compare/0.3.15...904d55cb1f6b7de0ef39af431cc6356b66531fcb">Compare source versions</a></p>
 <h3>Terminal</h3>
-<p>No public API signature changes.</p>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/index.html"><code class="language-kotlin">org.connectbot.terminal.TerminalAccessibilityController</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/refresh-review.html"><code class="language-kotlin">abstract fun refreshReview()</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/resume-live-output.html"><code class="language-kotlin">abstract fun resumeLiveOutput()</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/return-to-input.html"><code class="language-kotlin">abstract fun returnToInput()</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/start-review.html"><code class="language-kotlin">abstract fun startReview()</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/is-reviewing.html"><code class="language-kotlin">abstract val isReviewing: Boolean</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/index.html"><code class="language-kotlin">interface TerminalAccessibilityController</code></a></li>
+</ul>
+<h4><a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/index.html"><code class="language-kotlin">org.connectbot.terminal.TerminalAccessibilityOptions</code></a></h4><ul>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/-terminal-accessibility-options.html"><code class="language-kotlin">constructor(announceOutput: Boolean = true, announceCursor: Boolean = true)</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/-terminal-accessibility-options.html"><code class="language-kotlin">constructor(announceOutput: Boolean = true, announceCursor: Boolean = true, requestInitialFocus: Boolean = false)</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/copy.html"><code class="language-kotlin">fun copy(announceOutput: Boolean = this.announceOutput, announceCursor: Boolean = this.announceCursor): TerminalAccessibilityOptions</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/announce-cursor.html"><code class="language-kotlin">val announceCursor: Boolean</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/announce-output.html"><code class="language-kotlin">val announceOutput: Boolean</code></a></li>
+<li>Added: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/index.html"><code class="language-kotlin">data class TerminalAccessibilityOptions(val announceOutput: Boolean = true, val announceCursor: Boolean = true, val requestInitialFocus: Boolean = false)</code></a></li>
+</ul>
+<h4><code class="language-kotlin">org.connectbot.terminal.TerminalKt</code></h4><ul>
+<li>Changed: <a href="-connect-bot%20-terminal/org.connectbot.terminal/-terminal.html"><code class="language-kotlin">fun Terminal(terminalEmulator: TerminalEmulator, modifier: Modifier = Modifier, typeface: Typeface = Typeface.MONOSPACE, initialFontSize: TextUnit = 11.sp, minFontSize: TextUnit = 6.sp, maxFontSize: TextUnit = 30.sp, backgroundColor: Color = Color.Black, foregroundColor: Color = Color.White, selectionBackgroundColor: Color = Color.Unspecified, selectionForegroundColor: Color = Color.Unspecified, keyboardEnabled: Boolean = false, showSoftKeyboard: Boolean = true, focusRequester: FocusRequester = remember { FocusRequester() }, onTerminalTap: () -&gt; Unit = {}, onImeVisibilityChanged: (Boolean) -&gt; Unit = {}, forcedSize: Pair&lt;Int, Int&gt;? = null, modifierManager: ModifierManager? = null, onSelectionControllerAvailable: (SelectionController) -&gt; Unit? = null, onHyperlinkClick: (String) -&gt; Unit = {}, onComposeControllerAvailable: (ComposeController) -&gt; Unit? = null, onPasteRequest: () -&gt; Unit? = null, rightAltMode: RightAltMode = RightAltMode.CharacterModifier, delKeyMode: DelKeyMode = DelKeyMode.Delete, onInterceptKey: (KeyEvent) -&gt; Boolean? = null, resizeSuspended: Boolean = false, onPageGesture: (Int) -&gt; Unit? = null, accessibilityOptions: TerminalAccessibilityOptions = TerminalAccessibilityOptions(), onAccessibilityControllerAvailable: (TerminalAccessibilityController) -&gt; Unit? = null, accessibilityState: TerminalAccessibilityState? = null)</code></a></li>
+</ul>
 </section>
 <!-- END DOCS API CHANGES -->
 <h2 class="">Packages</h2>

@@ -85,9 +85,39 @@ Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() �
 
 Changes since 0.3.15.
 
-[Compare source versions](https://github.com/connectbot/termlib/compare/0.3.15...23f65c6d8af34e2b58003e386190de2e0d1e911a)
+[Compare source versions](https://github.com/connectbot/termlib/compare/0.3.15...904d55cb1f6b7de0ef39af431cc6356b66531fcb)
 
 ### Terminal
 
-No public API signature changes.
+#### org.connectbot.terminal.TerminalAccessibilityController
+
+- Added: [abstract fun refreshReview()](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/refresh-review.html)
+
+- Added: [abstract fun resumeLiveOutput()](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/resume-live-output.html)
+
+- Added: [abstract fun returnToInput()](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/return-to-input.html)
+
+- Added: [abstract fun startReview()](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/start-review.html)
+
+- Added: [abstract val isReviewing: Boolean](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/is-reviewing.html)
+
+- Added: [interface TerminalAccessibilityController](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/index.html)
+
+#### org.connectbot.terminal.TerminalAccessibilityOptions
+
+- Added: [constructor(announceOutput: Boolean = true, announceCursor: Boolean = true)](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/-terminal-accessibility-options.html)
+
+- Added: [constructor(announceOutput: Boolean = true, announceCursor: Boolean = true, requestInitialFocus: Boolean = false)](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/-terminal-accessibility-options.html)
+
+- Added: [fun copy(announceOutput: Boolean = this.announceOutput, announceCursor: Boolean = this.announceCursor): TerminalAccessibilityOptions](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/copy.html)
+
+- Added: [val announceCursor: Boolean](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/announce-cursor.html)
+
+- Added: [val announceOutput: Boolean](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/announce-output.html)
+
+- Added: [data class TerminalAccessibilityOptions(val announceOutput: Boolean = true, val announceCursor: Boolean = true, val requestInitialFocus: Boolean = false)](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/index.html)
+
+#### org.connectbot.terminal.TerminalKt
+
+- Changed: [fun Terminal(terminalEmulator: TerminalEmulator, modifier: Modifier = Modifier, typeface: Typeface = Typeface.MONOSPACE, initialFontSize: TextUnit = 11.sp, minFontSize: TextUnit = 6.sp, maxFontSize: TextUnit = 30.sp, backgroundColor: Color = Color.Black, foregroundColor: Color = Color.White, selectionBackgroundColor: Color = Color.Unspecified, selectionForegroundColor: Color = Color.Unspecified, keyboardEnabled: Boolean = false, showSoftKeyboard: Boolean = true, focusRequester: FocusRequester = remember { FocusRequester() }, onTerminalTap: () -> Unit = {}, onImeVisibilityChanged: (Boolean) -> Unit = {}, forcedSize: Pair<Int, Int>? = null, modifierManager: ModifierManager? = null, onSelectionControllerAvailable: (SelectionController) -> Unit? = null, onHyperlinkClick: (String) -> Unit = {}, onComposeControllerAvailable: (ComposeController) -> Unit? = null, onPasteRequest: () -> Unit? = null, rightAltMode: RightAltMode = RightAltMode.CharacterModifier, delKeyMode: DelKeyMode = DelKeyMode.Delete, onInterceptKey: (KeyEvent) -> Boolean? = null, resizeSuspended: Boolean = false, onPageGesture: (Int) -> Unit? = null, accessibilityOptions: TerminalAccessibilityOptions = TerminalAccessibilityOptions(), onAccessibilityControllerAvailable: (TerminalAccessibilityController) -> Unit? = null, accessibilityState: TerminalAccessibilityState? = null)](-connect-bot%20-terminal/org.connectbot.terminal/-terminal.html)
 <!-- END DOCS API CHANGES -->
