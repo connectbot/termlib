@@ -85,13 +85,15 @@ Keyboard → TerminalEmulator.dispatchKey() → libvterm → onKeyboardInput() �
 
 Changes since 0.3.15.
 
-[Compare source versions](https://github.com/connectbot/termlib/compare/0.3.15...904d55cb1f6b7de0ef39af431cc6356b66531fcb)
+[Compare source versions](https://github.com/connectbot/termlib/compare/0.3.15...04229a4ccf0b177c0d46a4bde4ed5ac3321c06cd)
 
 ### Terminal
 
 #### org.connectbot.terminal.TerminalAccessibilityController
 
 - Added: [abstract fun refreshReview()](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/refresh-review.html)
+
+- Added: [open fun requestAccessibilityFocus()](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/request-accessibility-focus.html)
 
 - Added: [abstract fun resumeLiveOutput()](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-controller/resume-live-output.html)
 
@@ -115,7 +117,15 @@ Changes since 0.3.15.
 
 - Added: [val announceOutput: Boolean](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/announce-output.html)
 
+- Added: [val requestInitialFocus: Boolean](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/request-initial-focus.html)
+
 - Added: [data class TerminalAccessibilityOptions(val announceOutput: Boolean = true, val announceCursor: Boolean = true, val requestInitialFocus: Boolean = false)](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-options/index.html)
+
+#### org.connectbot.terminal.TerminalAccessibilityState
+
+- Added: [constructor()](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-state/-terminal-accessibility-state.html)
+
+- Added: [class TerminalAccessibilityState](-connect-bot%20-terminal/org.connectbot.terminal/-terminal-accessibility-state/index.html)
 
 #### org.connectbot.terminal.TerminalKt
 
